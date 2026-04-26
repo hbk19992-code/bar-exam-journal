@@ -15,7 +15,7 @@ import {
 
 /* ============================================================ 1. FIREBASE CONFIG ============================================================ */
 const firebaseConfig = {
-  apiKey: "AIzaSyB...", // 발급받은 실제 API 키 전체를 입력하세요.
+  apiKey: "AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ", // 발급받은 실제 API 키 전체를 입력하세요.
   authDomain: "bar-journal-kr.firebaseapp.com",
   projectId: "bar-journal-kr",
   storageBucket: "bar-journal-kr.appspot.com",
