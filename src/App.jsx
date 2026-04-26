@@ -19,12 +19,13 @@ Layers, FileText, TrendingUp, Smile, Library, LogOut, Cloud, CloudOff,
 /* ============================================================ FIREBASE CONFIG ============================================================ */
 /* 본인 Firebase 콘솔 → 프로젝트 설정 → 일반 → 내 앱에서 복사한 값으로 교체하세요 */
 const firebaseConfig = {
-apiKey: import.meta.env.VITE_FIREBASE_API_KEY || “YOUR_API_KEY”,
-authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || “YOUR_PROJECT.firebaseapp.com”,
-projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || “YOUR_PROJECT_ID”,
-storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || “YOUR_PROJECT.appspot.com”,
-messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || “0”,
-appId: import.meta.env.VITE_FIREBASE_APP_ID || “YOUR_APP_ID”,
+apiKey: import.meta.env.VITE_FIREBASE_API_KEY || “AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ”,
+authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || “barexam-c7e31.firebaseapp.com",
+  projectId: "barexam-c7e31”,
+projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || “barexam-c7e31”,
+storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || “barexam-c7e31.firebasestorage.app”,
+messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || “1067070517667”,
+appId: import.meta.env.VITE_FIREBASE_APP_ID || “1:1067070517667:web:f076c529d404983d8b2a16”,
 };
 const fbApp = initializeApp(firebaseConfig);
 const fbAuth = getAuth(fbApp);
