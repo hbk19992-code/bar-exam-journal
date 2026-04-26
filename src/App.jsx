@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 /* ============================================================
-   THEME & DATA (하드코딩된 이름 제거, 표준 따옴표 사용)
+   THEME & DATA
 ============================================================ */
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');`;
@@ -391,6 +391,7 @@ function TopBar({ dday, examLabel, examDate, logout }) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 4 }}>
             <div className="mono" style={{ fontSize: 10, color: C.muted, letterSpacing: '0.05em' }}>{examDate.replaceAll('-', '.')}</div>
+            <button onClick={logout} style={{ fontSize: 10, background: 'none', border: `1px solid ${C.line}`, padding: '2px 6px', cursor: 'pointer', color: C.muted }}>로그아웃</button>
           </div>
         </div>
       </div>
@@ -1943,7 +1944,7 @@ function BookCard({ book, onUp, onDown, onDelete }) {
           <Minus size={11} />
         </button>
         <button onClick={onDelete} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}>
-          <X size={12} color: C.muted />
+          <X size={12} color={C.muted} />
         </button>
       </div>
     </div>
