@@ -17,7 +17,7 @@ import {
 /* ============================================================ 1. FIREBASE CONFIG ============================================================ */
 // 이전 대화에서 확인된 현준님의 Firebase 프로젝트 설정값입니다.
 const firebaseConfig = {
-  apiKey: "AIzaSyB...", // 현준님의 실제 API Key
+  apiKey: "AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ", // 현준님의 실제 API Key
   authDomain: "bar-journal-kr.firebaseapp.com",
   projectId: "bar-journal-kr",
   storageBucket: "bar-journal-kr.appspot.com",
