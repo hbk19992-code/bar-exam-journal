@@ -89,7 +89,8 @@ const TRACK_TYPES = [
 ];
 
 /* 본인 Google 이메일을 아래 배열에 추가하세요. 이 이메일로 로그인했을 때만 15회 변시 점수가 표시됩니다. */
-const OWNER_EMAILS = [‘hbk19992@gmail.com’,
+const OWNER_EMAILS = [
+‘hbk19992@gmail.com’,
 ];
 
 const PREV_SCORES = {
@@ -1135,13 +1136,54 @@ return (
 
 /* ============================================================ CALENDAR ============================================================ */
 
-function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks, moods, setMoods, schedules = [], onGoToLog }) {
+function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks, moods, setMoods, schedules = [], setSchedules, onGoToLog }) {
 const [cursor, setCursor] = useState(() => {
 const d = new Date(today + ‘T00:00:00’);
 return { y: d.getFullYear(), m: d.getMonth() };
 });
 const [selected, setSelected] = useState(today);
 const cells = useMemo(() => monthGrid(cursor.y, cursor.m), [cursor]);
+
+// 일정 추가 모드: null | ‘start’ | ‘end’ | ‘form’
+const [addMode, setAddMode] = useState(null);
+const [pendingStart, setPendingStart] = useState(null);
+const [pendingEnd, setPendingEnd] = useState(null);
+const [draftTitle, setDraftTitle] = useState(’’);
+const [draftColor, setDraftColor] = useState(’#5B4A33’);
+
+function startAddMode() {
+setAddMode(‘start’);
+setPendingStart(null); setPendingEnd(null);
+setDraftTitle(’’); setDraftColor(’#5B4A33’);
+}
+function cancelAddMode() {
+setAddMode(null);
+setPendingStart(null); setPendingEnd(null);
+}
+function commitSchedule() {
+if (!setSchedules || !pendingStart || !pendingEnd || !draftTitle.trim()) return;
+const [s, e] = pendingStart <= pendingEnd ? [pendingStart, pendingEnd] : [pendingEnd, pendingStart];
+setSchedules([…(schedules || []), {
+id: uid(), title: draftTitle.trim(), color: draftColor, start: s, end: e,
+}]);
+cancelAddMode();
+}
+function handleDayTap(d) {
+if (addMode === ‘start’) {
+setPendingStart(d); setPendingEnd(d); setAddMode(‘end’);
+} else if (addMode === ‘end’) {
+setPendingEnd(d); setAddMode(‘form’);
+} else {
+setSelected(d);
+}
+}
+function isInPending(d) {
+if (!pendingStart) return false;
+const end = pendingEnd || pendingStart;
+const [s, e] = pendingStart <= end ? [pendingStart, end] : [end, pendingStart];
+return d >= s && d <= e;
+}
+const palette = [’#5B4A33’, ‘#1E3A5F’, ‘#7A2828’, ‘#2D5A3D’, ‘#8B6914’, ‘#7A1E1E’];
 
 // schedules: assign vertical lanes (0/1/2) so multiple overlapping schedules don’t collide visually
 const scheduleLanes = useMemo(() => {
@@ -1225,7 +1267,7 @@ return out;
 
 return (
 <div className=“fadeIn” style={{ paddingTop:20 }}>
-<div style={{ background:C.paper, border:`1px solid ${C.line}`, display:‘flex’, alignItems:‘center’, justifyContent:‘space-between’, padding:‘10px 14px’, marginBottom:12 }}>
+<div style={{ background:C.paper, border:`1px solid ${C.line}`, display:‘flex’, alignItems:‘center’, justifyContent:‘space-between’, padding:‘10px 14px’, marginBottom:8 }}>
 <button onClick={prevMonth} style={{ background:‘none’, border:‘none’, padding:6, cursor:‘pointer’, color:C.ink }}><ChevronLeft size={18} /></button>
 <div style={{ display:‘flex’, alignItems:‘center’, gap:10 }}>
 <div className=“serif” style={{ fontSize:18, fontWeight:600, letterSpacing:’-0.01em’ }}>{monthName}</div>
@@ -1238,6 +1280,42 @@ style={{ background:‘transparent’, border:`1px solid ${C.line}`, color:C.mut
 </div>
 
 ```
+  {/* 일정 추가 토글바 */}
+  {addMode === null ? (
+    <button onClick={startAddMode}
+      style={{ width:'100%', background:C.paper, border:`1px dashed ${C.line}`, color:C.muted, padding:'8px', cursor:'pointer', fontSize:11, marginBottom:8, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+      <Plus size={12} /> 일정 추가 (시작일·종료일 두 번 탭)
+    </button>
+  ) : addMode === 'form' ? (
+    <div style={{ background:C.ink, color:'#fff', padding:'12px 14px', marginBottom:8 }}>
+      <div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', opacity:0.7, marginBottom:8, fontWeight:600 }}>
+        새 일정 · {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace('-','/')} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace('-','/')}
+      </div>
+      <input value={draftTitle} onChange={e => setDraftTitle(e.target.value)} autoFocus
+        placeholder="일정 제목 (예: 김영환 헌법 인강)"
+        style={{ width:'100%', background:'rgba(255,255,255,0.1)', border:'none', borderBottom:'1px solid rgba(255,255,255,0.3)', color:'#fff', padding:'7px 4px', fontSize:13, marginBottom:10, outline:'none' }} />
+      <div style={{ display:'flex', gap:5, marginBottom:10, alignItems:'center' }}>
+        <span style={{ fontSize:10, opacity:0.7, marginRight:4 }}>색</span>
+        {palette.map(c => (
+          <button key={c} onClick={() => setDraftColor(c)}
+            style={{ width:22, height:22, background:c, cursor:'pointer', border: draftColor === c ? '2px solid #fff' : '1px solid rgba(255,255,255,0.3)', padding:0 }} />
+        ))}
+      </div>
+      <div style={{ display:'flex', gap:6 }}>
+        <button onClick={cancelAddMode} style={{ flex:1, background:'rgba(255,255,255,0.1)', color:'#fff', border:'none', padding:'8px', cursor:'pointer', fontSize:12 }}>취소</button>
+        <button onClick={commitSchedule} disabled={!draftTitle.trim()}
+          style={{ flex:2, background: draftTitle.trim() ? '#fff' : 'rgba(255,255,255,0.3)', color: draftTitle.trim() ? C.ink : 'rgba(255,255,255,0.5)', border:'none', padding:'8px', cursor: draftTitle.trim() ? 'pointer' : 'default', fontSize:12, fontWeight:600 }}>저장</button>
+      </div>
+    </div>
+  ) : (
+    <div style={{ background:C.accent, color:'#fff', padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div className="kserif" style={{ fontSize:12, fontWeight:600 }}>
+        {addMode === 'start' ? '시작일을 탭하세요' : `종료일을 탭하세요 · 시작 ${pendingStart.slice(5).replace('-','/')}`}
+      </div>
+      <button onClick={cancelAddMode} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', padding:'4px 10px', fontSize:11, cursor:'pointer' }}>취소</button>
+    </div>
+  )}
+
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'10px 8px', marginBottom:14 }}>
     <div style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', marginBottom:6 }}>
       {['일','월','화','수','목','금','토'].map((d, i) => (
@@ -1265,16 +1343,18 @@ style={{ background:‘transparent’, border:`1px solid ${C.line}`, color:C.mut
         const isBlockFirst = cInfo?.dayInBlock === 1;
         const mock = getMockExam(d, settings);
         const isMockFirst = mock && d === mock.start;
+        const inPending = addMode && isInPending(d);
+        const isPendingStart = pendingStart === d;
         return (
-          <button key={i} onClick={() => setSelected(d)}
+          <button key={i} onClick={() => handleDayTap(d)}
             style={{
               position:'relative', aspectRatio:'1 / 1.15',
-              background: isSelected ? C.ink : (mock ? '#FBE4E4' : intensityBg[intLevel]),
-              border: isToday && !isSelected ? `1.5px solid ${C.accent}` : `1px solid ${isSelected ? C.ink : 'transparent'}`,
+              background: inPending ? C.accent : (isSelected && !addMode) ? C.ink : (mock ? '#FBE4E4' : intensityBg[intLevel]),
+              border: isPendingStart ? `2px solid ${C.ink}` : isToday && !isSelected && !inPending ? `1.5px solid ${C.accent}` : `1px solid ${(isSelected && !addMode) ? C.ink : 'transparent'}`,
               cursor:'pointer', padding:'3px 3px 2px',
               display:'flex', flexDirection:'column', alignItems:'stretch',
               opacity: inMonth ? 1 : 0.35,
-              color: isSelected ? C.paper : C.ink, overflow:'hidden',
+              color: (inPending || (isSelected && !addMode)) ? C.paper : C.ink, overflow:'hidden',
             }}>
             {mock && (<div style={{ position:'absolute', top:0, left:0, right:0, height:3, background: C.accent, opacity: isSelected ? 0.85 : 1 }} />)}
             {!mock && cycleColor && (<div style={{ position:'absolute', top:0, left:0, right:0, height:3, background: cycleColor, opacity: isSelected ? 0.85 : 1 }} />)}
