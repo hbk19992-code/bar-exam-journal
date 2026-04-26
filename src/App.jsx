@@ -14,22 +14,22 @@ import {
 } from 'lucide-react';
 
 /* ============================================================ 1. FIREBASE CONFIG ============================================================ */
-// 💡 주의: 여기에 발급받으신 실제 apiKey를 반드시 넣어주세요!
 const firebaseConfig = {
-  apiKey: "AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ", 
-  authDomain: "bar-journal-kr.firebaseapp.com",
-  projectId: "bar-journal-kr",
-  storageBucket: "bar-journal-kr.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: "AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ",
+  authDomain: "barexam-c7e31.firebaseapp.com",
+  projectId: "barexam-c7e31",
+  storageBucket: "barexam-c7e31.firebasestorage.app",
+  messagingSenderId: "1067070517667",
+  appId: "1:1067070517667:web:f076c529d404983d8b2a16",
+  measurementId: "G-73C90VZK5Z"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-/* ============================================================ 2. UTILS & CONSTANTS ============================================================ */
-// 🚨 이 함수들이 맨 위에 있어야 에러가 나지 않습니다!
+/* ============================================================ 2. UTILS ============================================================ */
+// 🚨 이 유틸리티 함수들이 지워지면 화면이 하얗게 뜹니다! 절대 지우지 마세요.
 function todayISO() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -68,7 +68,54 @@ function monthGrid(year, month0) {
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   });
 }
+function getMockExam(dateISO, settings) {
+  if (!settings.mockExams) return null;
+  for (const m of settings.mockExams) {
+    if (dateISO >= m.start && dateISO <= m.end) return { ...m, dayNum: daysDiff(m.start, dateISO) + 1, totalDays: daysDiff(m.start, m.end) + 1 };
+  }
+  return null;
+}
+function nextMockExam(dateISO, settings) {
+  if (!settings.mockExams) return null;
+  const upcoming = settings.mockExams.filter(m => m.start > dateISO).sort((a, b) => a.start.localeCompare(b.start));
+  return upcoming[0] || null;
+}
+function getCycleInfo(dateISO, settings) {
+  const { cycleDefs, examDate, mockExams = [] } = settings;
+  if (examDate && dateISO >= examDate) return null;
+  const anchors = [...mockExams.map(m => ({ start: m.start, end: m.end, kind: 'mock', label: m.label })), ...(examDate ? [{ start: examDate, end: examDate, kind: 'exam', label: '본시험' }] : [])].sort((a, b) => a.start.localeCompare(b.start));
+  if (anchors.length === 0) return null;
+  for (const a of anchors) { if (a.kind === 'mock' && dateISO >= a.start && dateISO <= a.end) return null; }
+  const targetAnchor = anchors.find(a => a.start > dateISO);
+  if (!targetAnchor) return null;
+  const prevAnchor = [...anchors].reverse().find(a => a.end < dateISO);
+  const windowStart = prevAnchor ? addDays(prevAnchor.end, 1) : null;
+  const windowEnd = addDays(targetAnchor.start, -1);
+  if (dateISO > windowEnd) return null;
+  const distFromEnd = daysDiff(dateISO, windowEnd);
+  if (distFromEnd < 0) return null;
+  const cycleDayLengths = [...cycleDefs].reverse().map(c => c.blocks.reduce((s, b) => s + b.days, 0));
+  const fullRotation = cycleDayLengths.reduce((a, b) => a + b, 0);
+  if (fullRotation === 0) return null;
+  let rem = distFromEnd % fullRotation;
+  for (let rci = 0; rci < cycleDefs.length; rci++) {
+    const cycle = [...cycleDefs].reverse()[rci];
+    if (rem < cycleDayLengths[rci]) {
+      let r = rem;
+      for (let block of [...cycle.blocks].reverse()) {
+        if (r < block.days) {
+          if (windowStart && dateISO < windowStart) return null;
+          return { subject: block.subject, cycleLabel: cycle.label, dayInBlock: block.days - r, blockDays: block.days, isBlockLast: r === 0, anchorLabel: targetAnchor.label, daysToAnchor: distFromEnd + 1 };
+        }
+        r -= block.days;
+      }
+    }
+    rem -= cycleDayLengths[rci];
+  }
+  return null;
+}
 
+/* ============================================================ 3. DATA & THEME ============================================================ */
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');`;
 
 const C = { bg: '#F4EEE1', paper: '#FBF7EC', ink: '#1A1915', muted: '#6B6558', line: '#CFC7B4', lineSoft: '#E5DFCE', accent: '#7A1E1E', accentSoft: '#A84040', good: '#3C5A3A' };
@@ -116,43 +163,7 @@ const DEFAULT_SETTINGS = {
   d30Mode: true, autoGenMockReview: true,
 };
 
-function getCycleInfo(dateISO, settings) {
-  const { cycleDefs, examDate, mockExams = [] } = settings;
-  if (examDate && dateISO >= examDate) return null;
-  const anchors = [...mockExams.map(m => ({ start: m.start, end: m.end, label: m.label })), ...(examDate ? [{ start: examDate, end: examDate, label: '본시험' }] : [])].sort((a, b) => a.start.localeCompare(b.start));
-  const targetAnchor = anchors.find(a => a.start > dateISO);
-  if (!targetAnchor) return null;
-  
-  const distFromEnd = daysDiff(dateISO, addDays(targetAnchor.start, -1));
-  if (distFromEnd < 0) return null;
-
-  const cycleDayLengths = [...cycleDefs].reverse().map(c => c.blocks.reduce((s, b) => s + b.days, 0));
-  const fullRotation = cycleDayLengths.reduce((a, b) => a + b, 0);
-  if (fullRotation === 0) return null;
-
-  let rem = distFromEnd % fullRotation;
-  for (let rci = 0; rci < cycleDefs.length; rci++) {
-    const cycle = [...cycleDefs].reverse()[rci];
-    if (rem < cycleDayLengths[rci]) {
-      let r = rem;
-      for (let block of [...cycle.blocks].reverse()) {
-        if (r < block.days) return { subject: block.subject, cycleLabel: cycle.label, dayInBlock: block.days - r, blockDays: block.days, isBlockLast: r === 0, anchorLabel: targetAnchor.label, daysToAnchor: distFromEnd + 1 };
-        r -= block.days;
-      }
-    }
-    rem -= cycleDayLengths[rci];
-  }
-  return null;
-}
-
-function getMockExam(dateISO, settings) {
-  for (const m of (settings.mockExams || [])) {
-    if (dateISO >= m.start && dateISO <= m.end) return { ...m, dayNum: daysDiff(m.start, dateISO) + 1, totalDays: daysDiff(m.start, m.end) + 1 };
-  }
-  return null;
-}
-
-/* ============================================================ 3. APP MAIN ============================================================ */
+/* ============================================================ 4. APP MAIN ============================================================ */
 export default function App() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -176,11 +187,14 @@ export default function App() {
     return onAuthStateChanged(auth, (u) => { setUser(u); setAuthChecked(true); });
   }, []);
 
-  // 🚨 무한 로딩 방지 타이머가 포함된 데이터 로드 로직
+  // 🚨 안전장치: 파이어베이스 연결 지연 시 5초 후 강제 로딩 해제
   useEffect(() => {
     if (user) {
       setLoaded(false);
-      const fallbackTimer = setTimeout(() => { console.warn("Firebase timeout. Loading fallback."); setLoaded(true); }, 5000);
+      const fallbackTimer = setTimeout(() => { 
+        console.warn("Firebase 연결 지연. 로컬 데이터로 임시 시작합니다."); 
+        setLoaded(true); 
+      }, 5000);
       
       const fetchData = async () => {
         try {
@@ -195,7 +209,7 @@ export default function App() {
             setExamScores(d.examScores || []); setMoods(d.moods || {});
             setSchedules(d.schedules || []);
           } else {
-            // 마이그레이션
+            // 마이그레이션 로직
             const localSettings = window.localStorage.getItem('bar-settings');
             if (localSettings) {
               setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(localSettings) });
@@ -211,7 +225,7 @@ export default function App() {
             }
           }
         } catch (e) {
-          console.error("Data fetch error:", e);
+          console.error("데이터 동기화 실패:", e);
         } finally {
           clearTimeout(fallbackTimer);
           setLoaded(true);
@@ -221,7 +235,6 @@ export default function App() {
     }
   }, [user]);
 
-  // 클라우드 자동 저장
   useEffect(() => {
     if (loaded && user) {
       const fullState = { settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules };
@@ -229,7 +242,6 @@ export default function App() {
     }
   }, [settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, loaded, user]);
 
-  // 모의고사 자동 리뷰 생성
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
     setTodos(prev => {
@@ -257,7 +269,7 @@ export default function App() {
   if (!user) return <LoginView />;
   if (!loaded) return <div style={{ background: C.bg, minHeight: '100vh', display: 'grid', placeItems: 'center', fontFamily: "'Noto Serif KR', serif" }}>데이터 동기화 중...</div>;
 
-  const dday = daysDiff(today, settings.examDate);
+  const dday = useMemo(() => daysDiff(today, settings.examDate), [today, settings.examDate]);
   const sharedProps = { today, settings, setSettings, logs, setLogs, reviews, setReviews, books, setBooks, todos, setTodos, tracks, setTracks, materials, setMaterials, materialLog, setMaterialLog, examScores, setExamScores, moods, setMoods, schedules, setSchedules };
 
   return (
@@ -282,7 +294,7 @@ export default function App() {
   );
 }
 
-/* ============================================================ 4. UI COMPONENTS ============================================================ */
+/* ============================================================ 5. UI COMPONENTS ============================================================ */
 function SectionTitle({ children, action }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -1021,28 +1033,4 @@ function ReportView({ today, settings, logs }) {
           return (
             <div key={w.fullName} style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}><span className="kserif" style={{ fontSize: 12, fontWeight: 600, color: w.color }}>{w.fullName}</span><span className="mono" style={{ fontSize: 10, color: C.muted }}>{fmtHour(w.minutes)} / {fmtHour(w.target)}</span></div>
-              <div style={{ height: 4, background: C.lineSoft, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: pct >= 100 ? C.good : w.color }} /></div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================ SETTINGS ============================================================ */
-function SettingsView({ settings, setSettings, onLogout }) {
-  return (
-    <div className="fadeIn" style={{ padding: '18px 0 24px' }}>
-      <h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600, marginBottom: 16 }}>설정</h1>
-      <SectionTitle>시험 설정</SectionTitle>
-      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 18 }}>
-        <input value={settings.examLabel} onChange={e => setSettings({ ...settings, examLabel: e.target.value })} style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12, marginBottom: 10 }} />
-        <input type="date" value={settings.examDate} onChange={e => setSettings({ ...settings, examDate: e.target.value })} style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12 }} />
-      </div>
-      <SectionTitle>계정</SectionTitle>
-      <button onClick={onLogout} style={{ width: '100%', padding: 14, background: C.accent, color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>로그아웃</button>
-      <div style={{ textAlign: 'center', fontSize: 10, color: C.muted, marginTop: 30, fontStyle: 'italic' }}>Bar Exam Journal · 임현준 · 16회 변시</div>
-    </div>
-  );
-}
+              <div style={{ height: 4, background: C.lineSoft, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width:
