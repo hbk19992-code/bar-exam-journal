@@ -3,8 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip,
-  CartesianGrid,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid,
 } from 'recharts';
 import {
   Plus, X, Check, Trash2, BookOpen, RotateCw, BarChart3,
@@ -15,8 +14,9 @@ import {
 } from 'lucide-react';
 
 /* ============================================================ 1. FIREBASE CONFIG ============================================================ */
+// 💡 주의: 여기에 발급받으신 실제 apiKey를 반드시 넣어주세요!
 const firebaseConfig = {
-  apiKey: "AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ", // 본인의 실제 API 키로 교체하세요
+  apiKey: "AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ", 
   authDomain: "bar-journal-kr.firebaseapp.com",
   projectId: "bar-journal-kr",
   storageBucket: "bar-journal-kr.appspot.com",
@@ -28,15 +28,50 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-/* ============================================================ 2. THEME & DATA ============================================================ */
+/* ============================================================ 2. UTILS & CONSTANTS ============================================================ */
+// 🚨 이 함수들이 맨 위에 있어야 에러가 나지 않습니다!
+function todayISO() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+function addDays(iso, n) {
+  const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+function daysDiff(fromISO, toISO) {
+  return Math.round((new Date(toISO + 'T00:00:00') - new Date(fromISO + 'T00:00:00')) / 86400000);
+}
+function fmtKDate(iso) {
+  const d = new Date(iso + 'T00:00:00'); const days = ['일', '월', '화', '수', '목', '금', '토'];
+  return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${days[d.getDay()]})`;
+}
+function fmtMin(n) {
+  if (!n) return '0분';
+  const h = Math.floor(n / 60), m = n % 60;
+  if (h && m) return `${h}시간 ${m}분`;
+  if (h) return `${h}시간`;
+  return `${m}분`;
+}
+function fmtHour(n) { return `${Math.round((n / 60) * 10) / 10}h`; }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function weekStartOf(iso) {
+  const d = new Date(iso + 'T00:00:00'); const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+function weekDays(startISO) { return [...Array(7)].map((_, i) => addDays(startISO, i)); }
+function monthGrid(year, month0) {
+  const first = new Date(year, month0, 1);
+  const start = new Date(year, month0, 1 - first.getDay());
+  return [...Array(42)].map((_, i) => {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  });
+}
+
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');`;
 
-const C = {
-  bg: '#F4EEE1', paper: '#FBF7EC', ink: '#1A1915', muted: '#6B6558',
-  line: '#CFC7B4', lineSoft: '#E5DFCE',
-  accent: '#7A1E1E', accentSoft: '#A84040',
-  good: '#3C5A3A', warn: '#B86A1E', book: '#5B4A33', trackTint: '#F0E8D2',
-};
+const C = { bg: '#F4EEE1', paper: '#FBF7EC', ink: '#1A1915', muted: '#6B6558', line: '#CFC7B4', lineSoft: '#E5DFCE', accent: '#7A1E1E', accentSoft: '#A84040', good: '#3C5A3A' };
 
 const SUBJECTS = {
   '공법': { color: '#1E3A5F', short: '공', types: [{ key: '선택형', label: '선택형' }, { key: '사례형_1문', label: '사례형 1문' }, { key: '사례형_2문', label: '사례형 2문' }, { key: '기록형', label: '기록형' }]},
@@ -53,40 +88,6 @@ const TRACK_TYPES = [
   { key: 'aux', label: '최판/보조자료', short: '보', color: '#8B6914', placeholder: '예: 캡슐, 로만, 찌라시' },
 ];
 
-const PREV_SCORES = {
-  '공법': { 선택형: 52.5, 사례형_1문: 48.25, 사례형_2문: 37.45, 기록형: 40.42, total: 178.62, max: 400 },
-  '형사법': { 선택형: 62.5, 사례형_1문: 50.46, 사례형_2문: 31.99, 기록형: 28.28, total: 173.23, max: 400 },
-  '민사법': { 선택형: 87.5, 사례형_1문: 79.09, 사례형_2문: 37.36, 사례형_3문: 53.06, 기록형: 85.93, total: 342.94, max: 700 },
-  '국제거래법': { '1문': 43.59, '2문': 26.09, total: 69.68, max: 160 },
-  grandTotal: 764.47, grandMax: 1660,
-};
-
-const CYCLE_DEFS = [
-  { id: 1, label: '사이클 1', blocks: [{ subject: '민사법', days: 8 }, { subject: '형사법', days: 6 }, { subject: '공법', days: 5 }] },
-  { id: 2, label: '사이클 2', blocks: [{ subject: '민사법', days: 5 }, { subject: '형사법', days: 3 }, { subject: '공법', days: 2 }] },
-];
-
-const DEFAULT_MATERIALS = [
-  { id: 'mat-1', name: '청취', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 },
-  { id: 'mat-2', name: '요사', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 },
-  { id: 'mat-3', name: '청원', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 },
-  { id: 'mat-4', name: '캡슐(형법)', subject: '형사법', color: '#7A2828', rounds: 0, target: 3 },
-  { id: 'mat-5', name: '로만(형소)', subject: '형사법', color: '#7A2828', rounds: 0, target: 3 },
-  { id: 'mat-6', name: '민 암기장', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 },
-  { id: 'mat-7', name: '민소 암기장', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 4 },
-  { id: 'mat-8', name: '형소 암기장', subject: '형사법', color: '#7A2828', rounds: 0, target: 4 },
-  { id: 'mat-9', name: '상 암기장', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 3 },
-  { id: 'mat-10', name: '공기록 찌라시', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 },
-  { id: 'mat-11', name: '민기록 찌라시', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 3 },
-  { id: 'mat-12', name: '형기록 찌라시', subject: '형사법', color: '#7A2828', rounds: 0, target: 3 },
-  { id: 'mat-13', name: '헌 핸드북', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 },
-  { id: 'mat-14', name: '행 핸드북', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 },
-  { id: 'mat-15', name: '민 최판', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 2 },
-  { id: 'mat-16', name: '형 최판', subject: '형사법', color: '#7A2828', rounds: 0, target: 2 },
-  { id: 'mat-17', name: '헌 최판', subject: '공법', color: '#1E3A5F', rounds: 0, target: 2 },
-  { id: 'mat-18', name: '행 최판', subject: '공법', color: '#1E3A5F', rounds: 0, target: 2 },
-];
-
 const MOCK_REVIEW_TEMPLATES = [
   { offset: 1, title: '휴식' }, { offset: 2, title: '휴식' },
   { offset: 3, title: '공사례 리뷰 — 목차 / 쟁점 / 분량' }, { offset: 3, title: '공기록 리뷰' },
@@ -96,111 +97,62 @@ const MOCK_REVIEW_TEMPLATES = [
   { offset: 7, title: '민객 오답 정리' }, { offset: 7, title: '경제법 리뷰' },
 ];
 
+const PREV_SCORES = { 공법: { 선택형: 52.5, 사례형_1문: 48.25, 사례형_2문: 37.45, 기록형: 40.42, total: 178.62, max: 400 }, 형사법: { 선택형: 62.5, 사례형_1문: 50.46, 사례형_2문: 31.99, 기록형: 28.28, total: 173.23, max: 400 }, 민사법: { 선택형: 87.5, 사례형_1문: 79.09, 사례형_2문: 37.36, 사례형_3문: 53.06, 기록형: 85.93, total: 342.94, max: 700 }, 국제거래법: { '1문': 43.59, '2문': 26.09, total: 69.68, max: 160 }, grandTotal: 764.47, grandMax: 1660 };
+
+const DEFAULT_MATERIALS = [
+  { id: 'mat-1', name: '청취', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 }, { id: 'mat-2', name: '요사', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 },
+  { id: 'mat-3', name: '청원', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 }, { id: 'mat-4', name: '캡슐(형법)', subject: '형사법', color: '#7A2828', rounds: 0, target: 3 },
+  { id: 'mat-6', name: '민 암기장', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 },
+];
+
 const DEFAULT_SETTINGS = {
   examDate: '2027-01-07', examLabel: '제16회 변호사시험',
   weeklyTargets: { '공법': 600, '형사법': 600, '민사법': 900, '국제거래법': 300 },
-  cycleDefs: CYCLE_DEFS,
-  mockExams: [
-    { id: 'mock-1', label: '모의고사 1차', start: '2026-06-22', end: '2026-06-26' },
-    { id: 'mock-2', label: '모의고사 2차', start: '2026-08-03', end: '2026-08-07' },
-    { id: 'mock-3', label: '모의고사 3차', start: '2026-10-16', end: '2026-10-20' },
+  cycleDefs: [
+    { id: 1, label: '사이클 1', blocks: [{ subject: '민사법', days: 8 }, { subject: '형사법', days: 6 }, { subject: '공법', days: 5 }] },
+    { id: 2, label: '사이클 2', blocks: [{ subject: '민사법', days: 5 }, { subject: '형사법', days: 3 }, { subject: '공법', days: 2 }] },
   ],
+  mockExams: [{ id: 'mock-1', label: '모의고사 1차', start: '2026-06-22', end: '2026-06-26' }],
   d30Mode: true, autoGenMockReview: true,
 };
-
-/* ============================================================ 3. UTILS ============================================================ */
-function todayISO() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
-function addDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
-function daysDiff(fromISO, toISO) { return Math.round((new Date(toISO + 'T00:00:00') - new Date(fromISO + 'T00:00:00')) / 86400000); }
-function fmtKDate(iso) { const d = new Date(iso + 'T00:00:00'); const days = ['일', '월', '화', '수', '목', '금', '토']; return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${days[d.getDay()]})`; }
-function fmtMin(n) { if (!n) return '0분'; const h = Math.floor(n / 60), m = n % 60; if (h && m) return `${h}시간 ${m}분`; if (h) return `${h}시간`; return `${m}분`; }
-function fmtHour(n) { return `${Math.round((n / 60) * 10) / 10}h`; }
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-function weekStartOf(iso) { const d = new Date(iso + 'T00:00:00'); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
-function weekDays(startISO) { return [...Array(7)].map((_, i) => addDays(startISO, i)); }
-
-function monthGrid(year, month0) {
-  const first = new Date(year, month0, 1);
-  const start = new Date(year, month0, 1 - first.getDay());
-  return [...Array(42)].map((_, i) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  });
-}
-
-function getMockExam(dateISO, settings) {
-  if (!settings.mockExams) return null;
-  for (const m of settings.mockExams) {
-    if (dateISO >= m.start && dateISO <= m.end) {
-      return { ...m, dayNum: daysDiff(m.start, dateISO) + 1, totalDays: daysDiff(m.start, m.end) + 1 };
-    }
-  }
-  return null;
-}
-function nextMockExam(dateISO, settings) {
-  if (!settings.mockExams) return null;
-  const upcoming = settings.mockExams.filter(m => m.start > dateISO).sort((a, b) => a.start.localeCompare(b.start));
-  return upcoming[0] || null;
-}
 
 function getCycleInfo(dateISO, settings) {
   const { cycleDefs, examDate, mockExams = [] } = settings;
   if (examDate && dateISO >= examDate) return null;
-
-  const anchors = [
-    ...mockExams.map(m => ({ start: m.start, end: m.end, kind: 'mock', label: m.label })),
-    ...(examDate ? [{ start: examDate, end: examDate, kind: 'exam', label: '본시험' }] : []),
-  ].sort((a, b) => a.start.localeCompare(b.start));
-
-  if (anchors.length === 0) return null;
-  for (const a of anchors) { if (a.kind === 'mock' && dateISO >= a.start && dateISO <= a.end) return null; }
-
+  const anchors = [...mockExams.map(m => ({ start: m.start, end: m.end, label: m.label })), ...(examDate ? [{ start: examDate, end: examDate, label: '본시험' }] : [])].sort((a, b) => a.start.localeCompare(b.start));
   const targetAnchor = anchors.find(a => a.start > dateISO);
   if (!targetAnchor) return null;
-
-  const prevAnchor = [...anchors].reverse().find(a => a.end < dateISO);
-  const windowStart = prevAnchor ? addDays(prevAnchor.end, 1) : null;
-  const windowEnd = addDays(targetAnchor.start, -1);
-  if (dateISO > windowEnd) return null;
-
-  const distFromEnd = daysDiff(dateISO, windowEnd);
+  
+  const distFromEnd = daysDiff(dateISO, addDays(targetAnchor.start, -1));
   if (distFromEnd < 0) return null;
 
-  const reversedCycles = [...cycleDefs].reverse();
-  const cycleDayLengths = reversedCycles.map(c => c.blocks.reduce((s, b) => s + b.days, 0));
+  const cycleDayLengths = [...cycleDefs].reverse().map(c => c.blocks.reduce((s, b) => s + b.days, 0));
   const fullRotation = cycleDayLengths.reduce((a, b) => a + b, 0);
   if (fullRotation === 0) return null;
 
-  const posFromEnd = distFromEnd;
-  const rotation = Math.floor(posFromEnd / fullRotation);
-  let rem = posFromEnd % fullRotation;
-
-  for (let rci = 0; rci < reversedCycles.length; rci++) {
-    const cycle = reversedCycles[rci];
-    const cLen = cycleDayLengths[rci];
-    if (rem < cLen) {
-      const reversedBlocks = [...cycle.blocks].reverse();
+  let rem = distFromEnd % fullRotation;
+  for (let rci = 0; rci < cycleDefs.length; rci++) {
+    const cycle = [...cycleDefs].reverse()[rci];
+    if (rem < cycleDayLengths[rci]) {
       let r = rem;
-      for (let rbi = 0; rbi < reversedBlocks.length; rbi++) {
-        const block = reversedBlocks[rbi];
-        if (r < block.days) {
-          if (windowStart && dateISO < windowStart) return null;
-          return {
-            subject: block.subject, cycleLabel: cycle.label,
-            dayInBlock: block.days - r, blockDays: block.days,
-            isBlockLast: r === 0, anchorLabel: targetAnchor.label, daysToAnchor: distFromEnd + 1,
-          };
-        }
+      for (let block of [...cycle.blocks].reverse()) {
+        if (r < block.days) return { subject: block.subject, cycleLabel: cycle.label, dayInBlock: block.days - r, blockDays: block.days, isBlockLast: r === 0, anchorLabel: targetAnchor.label, daysToAnchor: distFromEnd + 1 };
         r -= block.days;
       }
     }
-    rem -= cLen;
+    rem -= cycleDayLengths[rci];
   }
   return null;
 }
 
-/* ============================================================ 4. MAIN APP ============================================================ */
+function getMockExam(dateISO, settings) {
+  for (const m of (settings.mockExams || [])) {
+    if (dateISO >= m.start && dateISO <= m.end) return { ...m, dayNum: daysDiff(m.start, dateISO) + 1, totalDays: daysDiff(m.start, m.end) + 1 };
+  }
+  return null;
+}
+
+/* ============================================================ 3. APP MAIN ============================================================ */
 export default function App() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -224,9 +176,12 @@ export default function App() {
     return onAuthStateChanged(auth, (u) => { setUser(u); setAuthChecked(true); });
   }, []);
 
+  // 🚨 무한 로딩 방지 타이머가 포함된 데이터 로드 로직
   useEffect(() => {
     if (user) {
       setLoaded(false);
+      const fallbackTimer = setTimeout(() => { console.warn("Firebase timeout. Loading fallback."); setLoaded(true); }, 5000);
+      
       const fetchData = async () => {
         try {
           const docRef = doc(db, "users", user.uid);
@@ -240,26 +195,25 @@ export default function App() {
             setExamScores(d.examScores || []); setMoods(d.moods || {});
             setSchedules(d.schedules || []);
           } else {
-            // 마이그레이션 (로컬 스토리지에 데이터가 있으면 복원)
+            // 마이그레이션
             const localSettings = window.localStorage.getItem('bar-settings');
             if (localSettings) {
-              const parsedSettings = JSON.parse(localSettings);
-              setSettings({ ...DEFAULT_SETTINGS, ...parsedSettings });
+              setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(localSettings) });
               setLogs(JSON.parse(window.localStorage.getItem('bar-logs')) || {});
               setReviews(JSON.parse(window.localStorage.getItem('bar-reviews')) || []);
               setBooks(JSON.parse(window.localStorage.getItem('bar-books')) || []);
               setTodos(JSON.parse(window.localStorage.getItem('bar-todos')) || {});
               setTracks(JSON.parse(window.localStorage.getItem('bar-tracks')) || {});
               setMaterials(JSON.parse(window.localStorage.getItem('bar-materials')) || DEFAULT_MATERIALS);
-              setMaterialLog(JSON.parse(window.localStorage.getItem('bar-material-log')) || {});
               setExamScores(JSON.parse(window.localStorage.getItem('bar-exam-scores')) || []);
               setMoods(JSON.parse(window.localStorage.getItem('bar-moods')) || {});
               setSchedules(JSON.parse(window.localStorage.getItem('bar-schedules')) || []);
             }
           }
         } catch (e) {
-          console.error("동기화 에러:", e);
+          console.error("Data fetch error:", e);
         } finally {
+          clearTimeout(fallbackTimer);
           setLoaded(true);
         }
       };
@@ -267,22 +221,21 @@ export default function App() {
     }
   }, [user]);
 
+  // 클라우드 자동 저장
   useEffect(() => {
     if (loaded && user) {
       const fullState = { settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules };
-      setDoc(doc(db, "users", user.uid), fullState, { merge: true });
+      setDoc(doc(db, "users", user.uid), fullState, { merge: true }).catch(e => console.error(e));
     }
   }, [settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, loaded, user]);
 
-  // 모의고사 종료 후 자동 리뷰 생성
+  // 모의고사 자동 리뷰 생성
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
     setTodos(prev => {
-      let next = { ...prev };
-      let changed = false;
+      let next = { ...prev }; let changed = false;
       (settings.mockExams || []).forEach(m => {
-        const sentinelDate = m.end;
-        const sentinelMark = `__mockreview__${m.id}`;
+        const sentinelDate = m.end; const sentinelMark = `__mockreview__${m.id}`;
         const existing = next[sentinelDate] || [];
         if (existing.some(t => t.title === sentinelMark)) return;
         if (today < m.end) return;
@@ -291,12 +244,10 @@ export default function App() {
           const list = next[targetDate] || [];
           if (!list.some(t => t.title === tmpl.title && t.fromMock === m.id)) {
             list.push({ id: uid(), title: tmpl.title, done: false, fromMock: m.id });
-            next = { ...next, [targetDate]: list };
-            changed = true;
+            next = { ...next, [targetDate]: list }; changed = true;
           }
         });
-        next = { ...next, [sentinelDate]: [...existing, { id: uid(), title: sentinelMark, done: true, hidden: true }] };
-        changed = true;
+        next = { ...next, [sentinelDate]: [...existing, { id: uid(), title: sentinelMark, done: true, hidden: true }] }; changed = true;
       });
       return changed ? next : prev;
     });
@@ -304,9 +255,9 @@ export default function App() {
 
   if (!authChecked) return <div style={{ background: C.bg, minHeight: '100vh' }} />;
   if (!user) return <LoginView />;
-  if (!loaded) return <div style={{ background: C.bg, minHeight: '100vh', display: 'grid', placeItems: 'center', fontFamily: 'Noto Serif KR' }}>데이터 동기화 중...</div>;
+  if (!loaded) return <div style={{ background: C.bg, minHeight: '100vh', display: 'grid', placeItems: 'center', fontFamily: "'Noto Serif KR', serif" }}>데이터 동기화 중...</div>;
 
-  const dday = useMemo(() => daysDiff(today, settings.examDate), [today, settings.examDate]);
+  const dday = daysDiff(today, settings.examDate);
   const sharedProps = { today, settings, setSettings, logs, setLogs, reviews, setReviews, books, setBooks, todos, setTodos, tracks, setTracks, materials, setMaterials, materialLog, setMaterialLog, examScores, setExamScores, moods, setMoods, schedules, setSchedules };
 
   return (
@@ -331,14 +282,32 @@ export default function App() {
   );
 }
 
-/* ============================================================ COMPONENTS ============================================================ */
+/* ============================================================ 4. UI COMPONENTS ============================================================ */
+function SectionTitle({ children, action }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+      <h2 className="kserif" style={{ margin: 0, fontSize: 11, letterSpacing: '0.24em', color: C.muted, textTransform: 'uppercase', fontWeight: 600 }}>{children}</h2>
+      {action && <button onClick={action.onClick} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 11, cursor: 'pointer', letterSpacing: '0.05em' }}>{action.label} ›</button>}
+    </div>
+  );
+}
+
+function Stat({ icon: Icon, label, value, color }) {
+  return (
+    <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '12px 12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <Icon size={14} color={color || C.muted} strokeWidth={1.5} />
+      <div className="serif" style={{ fontSize: 20, fontWeight: 600, color: C.ink, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 10, color: C.muted }}>{label}</div>
+    </div>
+  );
+}
 
 function LoginView() {
   return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'grid', placeItems: 'center', fontFamily: "'Noto Sans KR', sans-serif" }}>
       <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '40px 30px', textAlign: 'center', width: '90%', maxWidth: 320 }}>
         <h1 className="serif" style={{ fontSize: 24, margin: '0 0 10px', color: C.ink }}>Bar Exam Journal</h1>
-        <p style={{ fontSize: 13, color: C.muted, marginBottom: 30, lineHeight: 1.5 }}>나만의 변호사시험 학습 데이터를<br/>클라우드에 안전하게 보관하세요.</p>
+        <p style={{ fontSize: 13, color: C.muted, marginBottom: 30, lineHeight: 1.5 }}>클라우드 기반 학습 기록 서비스</p>
         <button onClick={() => signInWithPopup(auth, new GoogleAuthProvider())} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '14px', cursor: 'pointer', fontWeight: 600 }}>Google 계정으로 시작하기</button>
       </div>
     </div>
@@ -348,10 +317,10 @@ function LoginView() {
 function TopBar({ dday, examLabel, examDate, userName }) {
   const overdue = dday < 0;
   return (
-    <header style={{ borderBottom: `1px solid ${C.line}`, background: C.paper, padding: '18px 18px 14px' }}>
+    <header style={{ borderBottom: `1px solid ${C.line}`, background: C.paper, padding: '18px 18px 14px', marginBottom: 15 }}>
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <div>
-          <div className="kserif" style={{ fontSize: 11, letterSpacing: '0.22em', color: C.muted, textTransform: 'uppercase' }}>BAR EXAM JOURNAL · {userName || '수험생'}</div>
+          <div className="kserif" style={{ fontSize: 11, letterSpacing: '0.22em', color: C.muted }}>BAR JOURNAL · {userName || '수험생'}</div>
           <div className="kserif" style={{ fontSize: 17, fontWeight: 600, marginTop: 4, color: C.ink }}>{examLabel}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -381,26 +350,7 @@ function BottomNav({ view, setView }) {
   );
 }
 
-function Stat({ icon: Icon, label, value, color }) {
-  return (
-    <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '12px 12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <Icon size={14} color={color || C.muted} strokeWidth={1.5} />
-      <div className="serif" style={{ fontSize: 20, fontWeight: 600, color: C.ink, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 10, color: C.muted }}>{label}</div>
-    </div>
-  );
-}
-
-function SectionTitle({ children, action }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-      <h2 className="kserif" style={{ margin: 0, fontSize: 11, letterSpacing: '0.24em', color: C.muted, textTransform: 'uppercase', fontWeight: 600 }}>{children}</h2>
-      {action && <button onClick={action.onClick} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 11, cursor: 'pointer', letterSpacing: '0.05em' }}>{action.label} ›</button>}
-    </div>
-  );
-}
-
-function CycleCard({ info, today, withMinor = true }) {
+function CycleCard({ info }) {
   if (!info) return null;
   const subColor = SUBJECTS[info.subject].color;
   return (
@@ -412,7 +362,7 @@ function CycleCard({ info, today, withMinor = true }) {
           {info.anchorLabel && <div className="mono" style={{ fontSize: 10, opacity: 0.85, letterSpacing: '0.03em' }}>{info.anchorLabel} D-{info.daysToAnchor}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
-          <div className="serif" style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.01em' }}>{info.subject}{info.subject === '민사법' && withMinor && <span style={{ fontSize: 13, opacity: 0.85, marginLeft: 6 }}>+ 국제거래법</span>}</div>
+          <div className="serif" style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.01em' }}>{info.subject}{info.subject === '민사법' && <span style={{ fontSize: 13, opacity: 0.85, marginLeft: 6 }}>+ 국제거래법</span>}</div>
         </div>
         <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, flexWrap: 'wrap' }}>
           <span style={{ background: 'rgba(255,255,255,0.18)', padding: '2px 7px', fontFamily: "'Noto Serif KR', serif", fontWeight: 600, letterSpacing: '0.05em' }}>{info.cycleLabel}</span>
@@ -440,17 +390,13 @@ function PrevScoreCard() {
       {open && (
         <div style={{ borderTop: `1px dashed ${C.lineSoft}`, padding: '14px 16px 18px', fontSize: 12 }}>
           {Object.keys(SUBJECTS).map(sub => {
-            const s = PREV_SCORES[sub];
-            const pct = Math.round((s.total / s.max) * 100);
+            const s = PREV_SCORES[sub]; const pct = Math.round((s.total / s.max) * 100);
             return (
               <div key={sub} style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                  <span className="kserif" style={{ fontWeight: 600, color: SUBJECTS[sub].color }}>{sub}</span>
-                  <span className="mono" style={{ color: C.muted, fontSize: 11 }}>{s.total.toFixed(2)} / {s.max} ({pct}%)</span>
+                  <span className="kserif" style={{ fontWeight: 600, color: SUBJECTS[sub].color }}>{sub}</span><span className="mono" style={{ color: C.muted, fontSize: 11 }}>{s.total.toFixed(2)} / {s.max} ({pct}%)</span>
                 </div>
-                <div style={{ height: 3, background: C.lineSoft, position: 'relative', marginBottom: 6 }}>
-                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: SUBJECTS[sub].color }} />
-                </div>
+                <div style={{ height: 3, background: C.lineSoft, position: 'relative', marginBottom: 6 }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: SUBJECTS[sub].color }} /></div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 10, color: C.muted }}>
                   {SUBJECTS[sub].types.map(t => s[t.key] !== undefined && <span key={t.key} className="mono"><span style={{ color: C.muted }}>{t.label}</span> <span style={{ color: C.ink }}>{s[t.key].toFixed(2)}</span></span>)}
                 </div>
@@ -465,12 +411,10 @@ function PrevScoreCard() {
 
 /* ============================================================ HOME ============================================================ */
 function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examScores, moods, setMoods, onGoTo }) {
-  const todayLog = logs[today] || {};
-  const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
-  const todayTodos = todos[today] || [];
-  const todayTodosOpen = todayTodos.filter(t => !t.done && !t.hidden).length;
-  const todayTracks = tracks[today] || {};
-  const tracksDone = TRACK_TYPES.filter(tt => todayTracks[tt.key]?.done).length;
+  const todayLog = logs[today] || {}; const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
+  const todayTodos = todos[today] || []; const todayTodosOpen = todayTodos.filter(t => !t.done && !t.hidden).length;
+  const todayTracks = tracks[today] || {}; const tracksDone = TRACK_TYPES.filter(tt => todayTracks[tt.key]?.done).length;
+  
   const cycleInfo = useMemo(() => getCycleInfo(today, settings), [today, settings]);
   const tomorrowInfo = useMemo(() => getCycleInfo(addDays(today, 1), settings), [today, settings]);
   const todayMock = useMemo(() => getMockExam(today, settings), [today, settings]);
@@ -480,9 +424,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
   const weekData = useMemo(() => {
     const arr = [];
     for (let i = 6; i >= 0; i--) {
-      const d = addDays(today, -i);
-      const lg = logs[d] || {};
-      const row = { date: d, day: new Date(d + 'T00:00:00').getDate() };
+      const d = addDays(today, -i); const lg = logs[d] || {}; const row = { date: d, day: new Date(d + 'T00:00:00').getDate() };
       Object.keys(SUBJECTS).forEach(sub => { let sum = 0; SUBJECTS[sub].types.forEach(t => sum += lg[`${sub}::${t.key}`] || 0); row[sub] = Math.round((sum / 60) * 10) / 10; });
       arr.push(row);
     }
@@ -508,8 +450,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
   const daysStudied = Object.keys(logs).filter(d => Object.values(logs[d] || {}).some(v => (v || 0) > 0)).length;
   const streak = useMemo(() => { let count = 0; for (let i = 0; i < 365; i++) { const d = addDays(today, -i); const lg = logs[d] || {}; if (Object.values(lg).reduce((s, v) => s + (v || 0), 0) > 0) count++; else if (i > 0) break; } return count; }, [logs, today]);
   const recentScores = examScores.slice(-3).reverse();
-  const inD30 = dday > 0 && dday <= 30;
-  const inD7 = dday > 0 && dday <= 7;
+  const inD30 = dday > 0 && dday <= 30; const inD7 = dday > 0 && dday <= 7;
 
   return (
     <div className="fadeIn" style={{ paddingTop: 20 }}>
@@ -520,8 +461,8 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
         <div style={{ position: 'absolute', right: 18, top: 22, display: 'flex', flexDirection: 'column', gap: 4 }}>{[...Array(8)].map((_, i) => <span key={i} style={{ width: 10, height: 1, background: i < 3 ? C.accent : C.line }} />)}</div>
       </section>
 
-      {inD7 && <div style={{ background: C.accent, color: '#fff', padding: '12px 16px', marginBottom: 14, fontSize: 12, lineHeight: 1.5 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><span className="kserif" style={{ fontWeight: 600, fontSize: 13 }}>벼락치기 모드 · D-{dday}</span><span className="mono" style={{ fontSize: 10, opacity: 0.85 }}>D-7 진입</span></div><div style={{ marginTop: 6, opacity: 0.9 }}>핸드북·찌라시·빈출쟁점·요사 위주 · 새 자료 No</div></div>}
-      {!inD7 && inD30 && <div style={{ background: '#1A1915', color: '#fff', padding: '12px 16px', marginBottom: 14, fontSize: 12, lineHeight: 1.5 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><span className="kserif" style={{ fontWeight: 600, fontSize: 13 }}>회독 압축 모드 · D-{dday}</span><span className="mono" style={{ fontSize: 10, opacity: 0.7 }}>D-30 진입</span></div><div style={{ marginTop: 6, opacity: 0.85 }}>회차 회독 위주로 · 객관식 복수 회차/일</div></div>}
+      {settings.d30Mode && inD7 && <div style={{ background: C.accent, color: '#fff', padding: '12px 16px', marginBottom: 14, fontSize: 12, lineHeight: 1.5 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><span className="kserif" style={{ fontWeight: 600, fontSize: 13 }}>벼락치기 모드 · D-{dday}</span><span className="mono" style={{ fontSize: 10, opacity: 0.85 }}>D-7 진입</span></div><div style={{ marginTop: 6, opacity: 0.9 }}>핸드북·찌라시·빈출쟁점·요사 위주 · 새 자료 No</div></div>}
+      {settings.d30Mode && !inD7 && inD30 && <div style={{ background: '#1A1915', color: '#fff', padding: '12px 16px', marginBottom: 14, fontSize: 12, lineHeight: 1.5 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><span className="kserif" style={{ fontWeight: 600, fontSize: 13 }}>회독 압축 모드 · D-{dday}</span><span className="mono" style={{ fontSize: 10, opacity: 0.7 }}>D-30 진입</span></div><div style={{ marginTop: 6, opacity: 0.85 }}>회차 회독 위주로 · 객관식 복수 회차/일</div></div>}
 
       {todayMock ? (
         <div style={{ marginBottom: 18 }}>
@@ -537,7 +478,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
         </div>
       ) : cycleInfo ? (
         <div style={{ marginBottom: 18 }}>
-          <CycleCard info={cycleInfo} today={today} />
+          <CycleCard info={cycleInfo} />
           {tomorrowInfo && tomorrowInfo.subject !== cycleInfo.subject && (
             <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderTop: 'none', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12 }}>
               <span style={{ color: C.muted, letterSpacing: '0.05em' }}>내일부터 →</span>
@@ -591,10 +532,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           const cur = weekSubjectMin[sub] || 0; const tgt = settings.weeklyTargets[sub] || 0; const pct = tgt ? Math.min(100, Math.round((cur / tgt) * 100)) : 0; const over = tgt && cur > tgt;
           return (
             <div key={sub} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                <span className="kserif" style={{ color: SUBJECTS[sub].color, fontWeight: 600 }}>{sub}</span>
-                <span className="mono" style={{ color: C.muted, fontSize: 11 }}>{fmtHour(cur)} / {fmtHour(tgt)} <span style={{ color: over ? C.good : pct >= 80 ? C.ink : C.muted, fontWeight: 600 }}>{pct}%</span></span>
-              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}><span className="kserif" style={{ color: SUBJECTS[sub].color, fontWeight: 600 }}>{sub}</span><span className="mono" style={{ color: C.muted, fontSize: 11 }}>{fmtHour(cur)} / {fmtHour(tgt)} <span style={{ color: over ? C.good : pct >= 80 ? C.ink : C.muted, fontWeight: 600 }}>{pct}%</span></span></div>
               <div style={{ height: 4, background: C.lineSoft, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: SUBJECTS[sub].color, transition: 'width .3s ease' }} /></div>
             </div>
           );
@@ -674,10 +612,6 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
   function intensity(mins) { if (mins === 0) return 0; if (mins < 60) return 1; if (mins < 180) return 2; if (mins < 360) return 3; return 4; }
   const intensityBg = ['transparent', '#EDE5D2', '#DFD3B5', '#C9B98E', '#A88E55'];
 
-  function prevMonth() { setCursor(c => c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 }); }
-  function nextMonth() { setCursor(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 }); }
-  function jumpToday() { const d = new Date(today + 'T00:00:00'); setCursor({ y: d.getFullYear(), m: d.getMonth() }); setSelected(today); }
-
   const monthName = `${cursor.y}.${String(cursor.m + 1).padStart(2, '0')}`;
   const selDate = selected;
   const selLog = logs[selDate] || {};
@@ -695,12 +629,12 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
   return (
     <div className="fadeIn" style={{ paddingTop: 20 }}>
       <div style={{ background: C.paper, border: `1px solid ${C.line}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', marginBottom: 12 }}>
-        <button onClick={prevMonth} style={{ background: 'none', border: 'none', padding: 6, cursor: 'pointer', color: C.ink }}><ChevronLeft size={18} /></button>
+        <button onClick={() => setCursor(c => c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 })} style={{ background: 'none', border: 'none', padding: 6, cursor: 'pointer', color: C.ink }}><ChevronLeft size={18} /></button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="serif" style={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' }}>{monthName}</div>
-          <button onClick={jumpToday} style={{ background: 'transparent', border: `1px solid ${C.line}`, color: C.muted, padding: '3px 8px', fontSize: 10, cursor: 'pointer', letterSpacing: '0.1em', fontFamily: "'Noto Serif KR', serif" }}>오늘</button>
+          <button onClick={() => { const d = new Date(today + 'T00:00:00'); setCursor({ y: d.getFullYear(), m: d.getMonth() }); setSelected(today); }} style={{ background: 'transparent', border: `1px solid ${C.line}`, color: C.muted, padding: '3px 8px', fontSize: 10, cursor: 'pointer', letterSpacing: '0.1em', fontFamily: "'Noto Serif KR', serif" }}>오늘</button>
         </div>
-        <button onClick={nextMonth} style={{ background: 'none', border: 'none', padding: 6, cursor: 'pointer', color: C.ink }}><ChevronRight size={18} /></button>
+        <button onClick={() => setCursor(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 })} style={{ background: 'none', border: 'none', padding: 6, cursor: 'pointer', color: C.ink }}><ChevronRight size={18} /></button>
       </div>
 
       <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '10px 8px', marginBottom: 14 }}>
@@ -709,19 +643,11 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
           {cells.map((d, i) => {
-            const dt = new Date(d + 'T00:00:00');
-            const inMonth = dt.getMonth() === cursor.m;
-            const isToday = d === today;
-            const isSelected = d === selected;
-            const dow = dt.getDay();
-            const mins = dayMinutes(d);
-            const intLevel = intensity(mins);
-            const reviewsOnDay = reviewsByDate[d] || [];
-            const todosOnDay = (todos[d] || []).filter(t => !t.hidden);
-            const todoOpen = todosOnDay.filter(t => !t.done).length;
-            const cInfo = getCycleInfo(d, settings);
-            const cycleColor = cInfo ? SUBJECTS[cInfo.subject].color : null;
-            const mock = getMockExam(d, settings);
+            const dt = new Date(d + 'T00:00:00'); const inMonth = dt.getMonth() === cursor.m; const isToday = d === today; const isSelected = d === selected; const dow = dt.getDay();
+            const mins = dayMinutes(d); const intLevel = intensity(mins); const reviewsOnDay = reviewsByDate[d] || [];
+            const todosOnDay = (todos[d] || []).filter(t => !t.hidden); const todoOpen = todosOnDay.filter(t => !t.done).length;
+            const cInfo = getCycleInfo(d, settings); const cycleColor = cInfo ? SUBJECTS[cInfo.subject].color : null; const isBlockFirst = cInfo?.dayInBlock === 1;
+            const mock = getMockExam(d, settings); const isMockFirst = mock && d === mock.start;
             const schs = (schedules || []).filter(s => d >= s.start && d <= s.end);
 
             return (
@@ -729,17 +655,16 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
                 {mock && (<div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: C.accent, opacity: isSelected ? 0.85 : 1 }} />)}
                 {!mock && cycleColor && (<div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: cycleColor, opacity: isSelected ? 0.85 : 1 }} />)}
                 <div style={{ fontSize: 11, fontWeight: isToday ? 700 : 500, textAlign: 'left', lineHeight: 1, marginTop: (cycleColor || mock) ? 4 : 1, fontFamily: "'JetBrains Mono', monospace", color: isSelected ? C.paper : (mock ? C.accent : (dow === 0 ? C.accent : dow === 6 ? '#1E3A5F' : C.ink)) }}>{dt.getDate()}</div>
-                
-                {/* --- 장기 일정 선 렌더링 --- */}
+                {mock ? (
+                  <div style={{ fontSize: 9, fontFamily: "'Noto Serif KR', serif", fontWeight: 700, color: isSelected ? C.paper : C.accent, textAlign: 'center', marginTop: 2, lineHeight: 1.1, letterSpacing: '-0.02em' }}>{isMockFirst ? '모의' : '시험'}<div style={{ fontSize: 8, marginTop: 1, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500, opacity: 0.85 }}>{mock.dayNum}일차</div></div>
+                ) : cInfo && (
+                  <div style={{ fontSize: 11, fontFamily: "'Noto Serif KR', serif", fontWeight: 700, color: isSelected ? C.paper : cycleColor, textAlign: 'center', marginTop: 2, opacity: isSelected ? 0.95 : (isBlockFirst ? 1 : 0.78) }}>{SUBJECTS[cInfo.subject].short}<span style={{ fontSize: 8, marginLeft: 1, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500, opacity: 0.7 }}>{cInfo.dayInBlock}</span></div>
+                )}
                 {schs.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 3, width: '100%', zIndex: 2 }}>
-                    {schs.map(sch => {
-                      const isStart = sch.start === d; const isEnd = sch.end === d;
-                      return <div key={sch.id} style={{ height: 3, background: sch.color || '#4A90E2', marginLeft: isStart ? 1 : -5, marginRight: isEnd ? 1 : -5, borderRadius: `${isStart ? 2 : 0}px ${isEnd ? 2 : 0}px ${isEnd ? 2 : 0}px ${isStart ? 2 : 0}px`, opacity: isSelected ? 1 : 0.8 }} />
-                    })}
+                    {schs.map(sch => { const isStart = sch.start === d; const isEnd = sch.end === d; return <div key={sch.id} style={{ height: 3, background: sch.color || '#4A90E2', marginLeft: isStart ? 1 : -5, marginRight: isEnd ? 1 : -5, borderRadius: `${isStart ? 2 : 0}px ${isEnd ? 2 : 0}px ${isEnd ? 2 : 0}px ${isStart ? 2 : 0}px`, opacity: isSelected ? 1 : 0.8 }} /> })}
                   </div>
                 )}
-                
                 <div style={{ flex: 1 }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }}>
                   {reviewsOnDay.length > 0 && <div style={{ display: 'flex', gap: 1.5, justifyContent: 'center' }}>{[...new Set(reviewsOnDay.map(r => r.subject))].slice(0, 4).map((sub, idx) => <span key={idx} style={{ width: 3, height: 3, borderRadius: '50%', background: SUBJECTS[sub]?.color || C.muted, opacity: isSelected ? 0.95 : 1 }} />)}</div>}
@@ -748,11 +673,6 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
               </button>
             );
           })}
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', paddingTop: 10, marginTop: 6, borderTop: `1px dashed ${C.lineSoft}`, fontSize: 10, color: C.muted }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 18, height: 3, background: C.accent }} /><span>모의고사</span></span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ display: 'flex', gap: 1 }}>{Object.keys(SUBJECTS).slice(0, 3).map(sub => (<span key={sub} style={{ width: 8, height: 3, background: SUBJECTS[sub].color }} />))}</span><span>사이클</span></span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 12, height: 3, background: '#4A90E2' }} /><span>일정</span></span>
         </div>
       </div>
 
@@ -787,7 +707,6 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, tra
         <span className="serif mono" style={{ fontSize: 14, fontWeight: 600, color: minutes > 0 ? C.ink : C.muted }}>{fmtMin(minutes)}</span>
       </div>
 
-      {/* 일정 섹션 추가 */}
       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}` }}>
         <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.muted, fontWeight: 600, marginBottom: 8 }}>장기 일정</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
@@ -813,13 +732,13 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, tra
       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}` }}>
         <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.muted, fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}><span>할 일</span></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
-          {todos.map(t => <TodoRow key={t.id} todo={t} onToggle={() => onToggleTodo(t.id)} onRemove={() => onRemoveTodo(t.id)} />)}
+          {todos.filter(t => !t.done).map(t => <TodoRow key={t.id} todo={t} onToggle={() => onToggleTodo(t.id)} onRemove={() => onRemoveTodo(t.id)} />)}
+          {todos.filter(t => t.done).map(t => <TodoRow key={t.id} todo={t} onToggle={() => onToggleTodo(t.id)} onRemove={() => onRemoveTodo(t.id)} />)}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <input value={newTodo} onChange={e => setNewTodo(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { onAddTodo(newTodo); setNewTodo(''); } }} placeholder="할 일 추가" style={{ flex: 1, border: `1px solid ${C.line}`, background: C.bg, padding: '8px 10px', fontSize: 12, outline: 'none' }} />
           <button onClick={() => { onAddTodo(newTodo); setNewTodo(''); }} className="lift" style={{ background: C.accent, color: '#fff', border: 'none', padding: '0 12px', fontSize: 12 }}><Plus size={14} /></button>
         </div>
-        {isToday && <button onClick={onGoToLog} style={{ width: '100%', marginTop: 10, background: 'transparent', border: `1px solid ${C.line}`, color: C.ink, padding: '8px', fontSize: 11, cursor: 'pointer', fontFamily: "'Noto Serif KR', serif" }}>오늘 공부 기록하러 가기 →</button>}
       </div>
     </div>
   );
@@ -924,7 +843,7 @@ function ScoresSection({ date, examScores, setExamScores }) {
             <input value={round} onChange={e => setRound(e.target.value)} placeholder="회차" type="number" inputMode="numeric" style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <input value={wrong} onChange={e => setWrong(e.target.value)} placeholder="틀림 개수" type="number" inputMode="numeric" style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
+            <input value={wrong} onChange={e => setWrong(e.target.value)} placeholder="틀린 개수" type="number" inputMode="numeric" style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
             <input value={total} onChange={e => setTotal(e.target.value)} placeholder="총 문제" type="number" inputMode="numeric" style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
             <button onClick={() => { if (round && wrong !== '') { setExamScores([...examScores, { id: uid(), date, round: parseInt(round), subject, type: '선택형', wrong: parseInt(wrong), total: total ? parseInt(total) : null, note: note.trim() || null }]); setRound(''); setWrong(''); setTotal(''); setNote(''); } }} style={{ background: C.ink, color: '#fff', border: 'none', padding: '0 18px', cursor: 'pointer', fontSize: 16 }}>+</button>
           </div>
@@ -952,21 +871,19 @@ function ExamsView({ examScores }) {
 
   return (
     <div className="fadeIn" style={{ padding: '18px 0 24px' }}>
-      <h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>기출 회차</h1>
+      <h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600, marginBottom: 14 }}>기출 회차</h1>
       {chartData.length === 0 ? <div style={{ background: C.paper, border: `1px dashed ${C.line}`, padding: 24, textAlign: 'center', fontSize: 12, color: C.muted, margin: '18px 0' }}>기록 탭에서 회차 점수를 입력해 보세요</div> : (
-        <>
-          <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '16px 12px 12px', margin: '14px 0 18px' }}>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
-                <CartesianGrid stroke={C.lineSoft} strokeDasharray="3 3" />
-                <XAxis dataKey="round" tick={{ fontSize: 10, fill: C.muted }} />
-                <YAxis reversed tick={{ fontSize: 10, fill: C.muted }} />
-                <Tooltip contentStyle={{ background: C.paper, border: `1px solid ${C.line}`, fontSize: 11 }} />
-                {subjects.map(sub => <Line key={sub} type="monotone" dataKey={sub} stroke={SUBJECTS[sub].color} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </>
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '16px 12px 12px', margin: '14px 0 18px' }}>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
+              <CartesianGrid stroke={C.lineSoft} strokeDasharray="3 3" />
+              <XAxis dataKey="round" tick={{ fontSize: 10, fill: C.muted }} />
+              <YAxis reversed tick={{ fontSize: 10, fill: C.muted }} />
+              <Tooltip contentStyle={{ background: C.paper, border: `1px solid ${C.line}`, fontSize: 11 }} />
+              {subjects.map(sub => <Line key={sub} type="monotone" dataKey={sub} stroke={SUBJECTS[sub].color} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       )}
       <SectionTitle>전체 기록</SectionTitle>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -1029,19 +946,69 @@ function TopicsReview({ today, reviews, setReviews }) {
 }
 
 function BooksReview({ today, books, setBooks }) {
-  return <div style={{ textAlign: 'center', padding: 20, color: C.muted, fontSize: 12 }}>문제집 관리 기능이 활성화되었습니다 (코드 축약을 위해 UI만 간략화)</div>;
+  const [showAdd, setShowAdd] = useState(false); const [title, setTitle] = useState(''); const [subject, setSubject] = useState('민사법'); const [target, setTarget] = useState(3);
+  return (
+    <>
+      <button onClick={() => setShowAdd(true)} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '10px', cursor: 'pointer', marginBottom: 14, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Plus size={14} /> 문제집 추가</button>
+      {showAdd && (
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 14 }}>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="제목" style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12, marginBottom: 8, outline: 'none' }} />
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>{Object.keys(SUBJECTS).map(s => <button key={s} onClick={() => setSubject(s)} style={{ flex: 1, background: subject === s ? SUBJECTS[s].color : C.bg, color: subject === s ? '#fff' : C.muted, border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`, padding: '6px 4px', fontSize: 10 }}>{SUBJECTS[s].short}</button>)}</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 11, color: C.muted }}>목표 회독:</span><input type="number" value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1} style={{ width: 50, background: C.bg, border: `1px solid ${C.line}`, padding: '5px', fontSize: 12, textAlign: 'center' }} /><span style={{ fontSize: 11, color: C.muted }}>회</span></div>
+          <div style={{ display: 'flex', gap: 6 }}><button onClick={() => setShowAdd(false)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12 }}>취소</button><button onClick={() => { if(title) { setBooks([...books, { id: uid(), title, subject, target, current: 0 }]); setShowAdd(false); setTitle(''); } }} style={{ flex: 1, background: C.ink, color: '#fff', border: 'none', padding: '8px', fontSize: 12 }}>추가</button></div>
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {books.map(b => {
+          const pct = Math.min(100, (b.current / b.target) * 100);
+          return (
+            <div key={b.id} style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '12px 14px', display: 'flex', gap: 10 }}>
+              <div style={{ width: 3, alignSelf: 'stretch', background: SUBJECTS[b.subject].color }} />
+              <div style={{ flex: 1 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><div style={{ fontSize: 13, fontWeight: 600 }}>{b.title}</div><div className="mono" style={{ fontSize: 11 }}><span style={{ color: b.current >= b.target ? C.good : C.ink, fontWeight: 600 }}>{b.current}</span><span style={{ color: C.muted }}> / {b.target}</span></div></div><div style={{ fontSize: 10, color: SUBJECTS[b.subject].color, fontWeight: 600, marginTop: 2 }}>{b.subject}</div><div style={{ height: 3, background: C.lineSoft, marginTop: 8, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: b.current >= b.target ? C.good : SUBJECTS[b.subject].color }} /></div></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><button onClick={() => setBooks(books.map(x => x.id === b.id ? { ...x, current: x.current + 1 } : x))} style={{ background: C.ink, color: '#fff', border: 'none', padding: '4px 6px' }}><Plus size={11} /></button><button onClick={() => setBooks(books.map(x => x.id === b.id && x.current > 0 ? { ...x, current: x.current - 1 } : x))} style={{ background: C.bg, color: C.muted, border: `1px solid ${C.line}`, padding: '4px 6px' }}><Minus size={11} /></button><button onClick={() => setBooks(books.filter(x => x.id !== b.id))} style={{ background: 'none', border: 'none', padding: '2px 0' }}><X size={12} color={C.muted} /></button></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
 }
+
 function MaterialsReview({ today, materials, setMaterials }) {
-  return <div style={{ textAlign: 'center', padding: 20, color: C.muted, fontSize: 12 }}>자료 관리 기능이 활성화되었습니다 (코드 축약을 위해 UI만 간략화)</div>;
+  const [showAdd, setShowAdd] = useState(false); const [name, setName] = useState(''); const [subject, setSubject] = useState('민사법'); const [target, setTarget] = useState(3);
+  return (
+    <>
+      <button onClick={() => setShowAdd(true)} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '10px', cursor: 'pointer', marginBottom: 14, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Plus size={14} /> 자료 추가</button>
+      {showAdd && (
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 14 }}>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="자료 이름" style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12, marginBottom: 8, outline: 'none' }} />
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>{Object.keys(SUBJECTS).map(s => <button key={s} onClick={() => setSubject(s)} style={{ flex: 1, background: subject === s ? SUBJECTS[s].color : C.bg, color: subject === s ? '#fff' : C.muted, border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`, padding: '6px 4px', fontSize: 10 }}>{SUBJECTS[s].short}</button>)}</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 11, color: C.muted }}>목표:</span><input type="number" value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1} style={{ width: 50, background: C.bg, border: `1px solid ${C.line}`, padding: '5px', fontSize: 12, textAlign: 'center' }} /><span style={{ fontSize: 11, color: C.muted }}>회</span></div>
+          <div style={{ display: 'flex', gap: 6 }}><button onClick={() => setShowAdd(false)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12 }}>취소</button><button onClick={() => { if(name) { setMaterials([...materials, { id: uid(), name, subject, color: SUBJECTS[subject].color, rounds: 0, target }]); setShowAdd(false); setName(''); } }} style={{ flex: 1, background: C.ink, color: '#fff', border: 'none', padding: '8px', fontSize: 12 }}>추가</button></div>
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {materials.map(m => {
+          const pct = Math.min(100, (m.rounds / m.target) * 100); const done = m.rounds >= m.target;
+          return (
+            <div key={m.id} style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ width: 3, alignSelf: 'stretch', background: m.color }} />
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}><div style={{ fontSize: 12, fontWeight: 600, color: C.ink }}>{m.name}</div><div className="mono" style={{ fontSize: 11 }}><span style={{ color: done ? C.good : C.ink, fontWeight: 600 }}>{m.rounds}</span><span style={{ color: C.muted }}>/{m.target}</span></div></div><div style={{ height: 2, background: C.lineSoft, marginTop: 5, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: done ? C.good : m.color }} /></div></div>
+              <div style={{ display: 'flex', gap: 3 }}><button onClick={() => setMaterials(materials.map(x => x.id === m.id && x.rounds > 0 ? { ...x, rounds: x.rounds - 1 } : x))} style={{ background: C.bg, color: C.muted, border: `1px solid ${C.line}`, padding: '4px 6px' }}><Minus size={11} /></button><button onClick={() => setMaterials(materials.map(x => x.id === m.id ? { ...x, rounds: x.rounds + 1 } : x))} style={{ background: C.ink, color: '#fff', border: 'none', padding: '4px 6px' }}><Plus size={11} /></button><button onClick={() => setMaterials(materials.filter(x => x.id !== m.id))} style={{ background: 'none', border: 'none', padding: '4px 0' }}><X size={11} color={C.muted} /></button></div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
 }
 
 /* ============================================================ REPORT ============================================================ */
-function ReportView({ today, settings, logs, examScores }) {
+function ReportView({ today, settings, logs }) {
   const weekStart = weekStartOf(today);
   const wDates = weekDays(weekStart);
   const weeklyBySubject = {}; Object.keys(SUBJECTS).forEach(s => weeklyBySubject[s] = 0);
   wDates.forEach(d => { Object.entries(logs[d] || {}).forEach(([k, v]) => { const [sub] = k.split('::'); if (weeklyBySubject[sub] !== undefined) weeklyBySubject[sub] += v || 0; }); });
-  
   const weeklyData = Object.entries(weeklyBySubject).map(([sub, m]) => ({ name: SUBJECTS[sub].short, fullName: sub, minutes: m, target: settings.weeklyTargets[sub] || 0, color: SUBJECTS[sub].color }));
 
   return (
@@ -1074,7 +1041,7 @@ function SettingsView({ settings, setSettings, onLogout }) {
         <input type="date" value={settings.examDate} onChange={e => setSettings({ ...settings, examDate: e.target.value })} style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12 }} />
       </div>
       <SectionTitle>계정</SectionTitle>
-      <button onClick={onLogout} style={{ width: '100%', padding: 14, background: C.accent, color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>로그아웃 (클라우드 동기화 중지)</button>
+      <button onClick={onLogout} style={{ width: '100%', padding: 14, background: C.accent, color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>로그아웃</button>
       <div style={{ textAlign: 'center', fontSize: 10, color: C.muted, marginTop: 30, fontStyle: 'italic' }}>Bar Exam Journal · 임현준 · 16회 변시</div>
     </div>
   );
