@@ -3,21 +3,19 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip,
+  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
   CartesianGrid,
 } from 'recharts';
 import {
-  Plus, X, Check, Trash2, BookOpen, RotateCw, BarChart3,
-  Settings as SettingsIcon, ChevronLeft, ChevronRight, ChevronDown,
-  Home, Clock, Download, RefreshCw, Minus,
-  Calendar as CalendarIcon, Square, CheckSquare,
-  Layers, TrendingUp, Library,
+  Plus, X, Check, Trash2, BookOpen, RotateCw,
+  Settings as SettingsIcon, ChevronLeft, ChevronRight,
+  Home, Clock, Calendar as CalendarIcon, Square, CheckSquare,
+  TrendingUp, Library,
 } from 'lucide-react';
 
 /* ============================================================ 1. FIREBASE CONFIG ============================================================ */
-// 이전 대화에서 확인된 현준님의 Firebase 프로젝트 설정값입니다.
 const firebaseConfig = {
-  apiKey: "AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ", // 현준님의 실제 API Key
+  apiKey: "AIzaSyB...", // 발급받은 실제 API 키 전체를 입력하세요.
   authDomain: "bar-journal-kr.firebaseapp.com",
   projectId: "bar-journal-kr",
   storageBucket: "bar-journal-kr.appspot.com",
@@ -36,7 +34,7 @@ const C = {
   bg: '#F4EEE1', paper: '#FBF7EC', ink: '#1A1915', muted: '#6B6558',
   line: '#CFC7B4', lineSoft: '#E5DFCE',
   accent: '#7A1E1E', accentSoft: '#A84040',
-  good: '#3C5A3A', warn: '#B86A1E', book: '#5B4A33',
+  good: '#3C5A3A',
 };
 
 const SUBJECTS = {
@@ -140,7 +138,6 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [today, setToday] = useState(todayISO());
 
-  // 앱의 모든 상태들
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [logs, setLogs] = useState({});
   const [reviews, setReviews] = useState([]);
@@ -159,22 +156,32 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
+      setLoaded(false);
       const fetchData = async () => {
-        const docRef = doc(db, "users", user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const d = docSnap.data();
-          setSettings(d.settings || DEFAULT_SETTINGS); setLogs(d.logs || {});
-          setReviews(d.reviews || []); setBooks(d.books || []);
-          setTodos(d.todos || {}); setTracks(d.tracks || {});
-          setMaterials(d.materials || []); setMaterialLog(d.materialLog || {});
-          setExamScores(d.examScores || []); setMoods(d.moods || {});
-          setSchedules(d.schedules || []);
-        } else {
-          // 신규 유저 초기 데이터 생성
-          await setDoc(docRef, { settings: DEFAULT_SETTINGS });
+        try {
+          const docRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const d = docSnap.data();
+            setSettings(d.settings || DEFAULT_SETTINGS); 
+            setLogs(d.logs || {});
+            setReviews(d.reviews || []); 
+            setBooks(d.books || []);
+            setTodos(d.todos || {}); 
+            setTracks(d.tracks || {});
+            setMaterials(d.materials || []); 
+            setMaterialLog(d.materialLog || {});
+            setExamScores(d.examScores || []); 
+            setMoods(d.moods || {});
+            setSchedules(d.schedules || []);
+          } else {
+            await setDoc(docRef, { settings: DEFAULT_SETTINGS });
+          }
+        } catch (e) {
+          console.error("동기화 에러:", e);
+        } finally {
+          setLoaded(true);
         }
-        setLoaded(true);
       };
       fetchData();
     }
@@ -202,7 +209,7 @@ export default function App() {
       <TopBar dday={dday} examLabel={settings.examLabel} userName={user.displayName} />
       
       <main style={{ maxWidth: 720, margin: '0 auto', padding: '0 18px' }}>
-        {view === 'home' && <HomeView {...sharedProps} dday={dday} onGoTo={setView} />}
+        {view === 'home' && <HomeView {...sharedProps} />}
         {view === 'log' && <LogView {...sharedProps} />}
         {view === 'calendar' && <CalendarView {...sharedProps} />}
         {view === 'review' && <ReviewView {...sharedProps} />}
@@ -214,15 +221,15 @@ export default function App() {
   );
 }
 
-/* ============================================================ 5. VIEW COMPONENTS ============================================================ */
+/* ============================================================ 5. COMPONENTS ============================================================ */
 
 function LoginView() {
   return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'grid', placeItems: 'center' }}>
       <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '40px 30px', textAlign: 'center', width: '90%', maxWidth: 320 }}>
         <h1 className="serif" style={{ fontSize: 24, margin: '0 0 10px' }}>Bar Exam Journal</h1>
-        <p style={{ fontSize: 12, color: C.muted, marginBottom: 30 }}>나만의 변시 학습 클라우드 기록장</p>
-        <button onClick={() => signInWithPopup(auth, new GoogleAuthProvider())} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '14px', cursor: 'pointer', fontWeight: 600 }}>Google 계정으로 시작하기</button>
+        <p style={{ fontSize: 12, color: C.muted, marginBottom: 30 }}>클라우드 기반 학습 기록 서비스</p>
+        <button onClick={() => signInWithPopup(auth, new GoogleAuthProvider())} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '14px', cursor: 'pointer', fontWeight: 600 }}>Google 계정으로 시작</button>
       </div>
     </div>
   );
@@ -233,7 +240,7 @@ function TopBar({ dday, examLabel, userName }) {
     <header style={{ borderBottom: `1px solid ${C.line}`, background: C.paper, padding: '18px 18px 14px', marginBottom: 20 }}>
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <div>
-          <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.22em', color: C.muted }}>JOURNAL · {userName || '수험생'}</div>
+          <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.22em', color: C.muted }}>JOURNAL · {userName}</div>
           <div className="kserif" style={{ fontSize: 17, fontWeight: 600, marginTop: 4 }}>{examLabel}</div>
         </div>
         <div className="serif" style={{ fontSize: 32, fontWeight: 600, color: dday < 0 ? C.muted : C.accent }}>D{dday < 0 ? '+' : '-'}{Math.abs(dday)}</div>
@@ -256,12 +263,10 @@ function BottomNav({ view, setView }) {
   );
 }
 
-/* --- HOME --- */
 function HomeView({ today, settings, logs, tracks }) {
   const cycle = useMemo(() => getCycleInfo(today, settings), [today, settings]);
   const dayMins = Object.values(logs[today] || {}).reduce((s, v) => s + (v || 0), 0);
   const trackDone = Object.values(tracks[today] || {}).filter(t => t.done).length;
-
   return (
     <div className="fadeIn">
       {cycle && (
@@ -272,28 +277,23 @@ function HomeView({ today, settings, logs, tracks }) {
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <StatCard label="오늘 공부" value={fmtMin(dayMins)} />
-        <StatCard label="트랙 진행" value={`${trackDone}/5`} />
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 15 }}>
+          <div style={{ fontSize: 11, color: C.muted }}>오늘 공부</div>
+          <div className="mono" style={{ fontSize: 20, fontWeight: 600 }}>{fmtMin(dayMins)}</div>
+        </div>
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 15 }}>
+          <div style={{ fontSize: 11, color: C.muted }}>트랙 진행</div>
+          <div className="mono" style={{ fontSize: 20, fontWeight: 600 }}>{trackDone}/5</div>
+        </div>
       </div>
     </div>
   );
 }
 
-function StatCard({ label, value }) {
-  return (
-    <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 15 }}>
-      <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>{label}</div>
-      <div className="mono" style={{ fontSize: 20, fontWeight: 600 }}>{value}</div>
-    </div>
-  );
-}
-
-/* --- CALENDAR (Line rendering) --- */
-function CalendarView({ today, logs, schedules, setSchedules, settings, todos, setTodos, moods, setMoods }) {
+function CalendarView({ today, schedules, setSchedules, settings, todos, setTodos, moods, setMoods }) {
   const [cursor, setCursor] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() });
   const [selected, setSelected] = useState(today);
   const cells = useMemo(() => monthGrid(cursor.y, cursor.m), [cursor]);
-
   return (
     <div className="fadeIn">
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' }}>
@@ -324,7 +324,7 @@ function CalendarView({ today, logs, schedules, setSchedules, settings, todos, s
   );
 }
 
-function DayDetail({ date, schedules, setSchedules, todos, setTodos, moods, setMoods }) {
+function DayDetail({ date, schedules, setSchedules }) {
   const [newSch, setNewSch] = useState('');
   const [schEnd, setSchEnd] = useState(date);
   const addSch = () => {
@@ -347,7 +347,6 @@ function DayDetail({ date, schedules, setSchedules, todos, setTodos, moods, setM
   );
 }
 
-/* --- LOG (Mobile Form) --- */
 function LogView({ examScores, setExamScores }) {
   const [round, setRound] = useState('');
   const [subject, setSubject] = useState('민사법');
@@ -359,7 +358,7 @@ function LogView({ examScores, setExamScores }) {
   };
   return (
     <div className="fadeIn" style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 15 }}>
-      <div className="kserif" style={{ fontSize: 12, fontWeight: 600, marginBottom: 15 }}>기출 회차 기록</div>
+      <div className="kserif" style={{ fontSize: 12, fontWeight: 600, marginBottom: 15 }}>기출 회차 기록 (모바일 최적화)</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <select value={subject} onChange={e => setSubject(e.target.value)} style={{ flex: 1.5, padding: 10, background: C.bg, border: `1px solid ${C.line}` }}>
@@ -376,22 +375,19 @@ function LogView({ examScores, setExamScores }) {
   );
 }
 
-/* --- REVIEW --- */
-function ReviewView({ reviews }) {
+function ReviewView() {
   return (
     <div className="fadeIn" style={{ textAlign: 'center', padding: '40px 0', color: C.muted }}>
       <Library size={40} style={{ marginBottom: 15, opacity: 0.5 }} />
-      <div className="kserif">회독 관리 서비스 준비 중입니다.</div>
+      <div className="kserif">회독 관리 기능 준비 중입니다.</div>
     </div>
   );
 }
 
-/* --- SETTINGS --- */
 function SettingsView({ onLogout }) {
   return (
     <div className="fadeIn">
       <button onClick={onLogout} style={{ width: '100%', padding: 14, background: C.accent, color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>로그아웃</button>
-      <div style={{ marginTop: 20, textAlign: 'center', fontSize: 10, color: C.muted }}>Bar Exam Journal v2.0 · 클라우드 동기화 모드</div>
     </div>
   );
 }
