@@ -14,14 +14,14 @@ import {
 } from 'lucide-react';
 
 /* ============================================================ 1. FIREBASE CONFIG ============================================================ */
+// 💡 주의: 이 부분의 apiKey 등 설정값을 반드시 본인의 Firebase 프로젝트 설정값으로 변경하세요!
 const firebaseConfig = {
   apiKey: "AIzaSyDPCD4aL-aKkBjMSRJ9X2jG_EMeQfL_udQ",
-  authDomain: "barexam-c7e31.firebaseapp.com",
-  projectId: "barexam-c7e31",
-  storageBucket: "barexam-c7e31.firebasestorage.app",
-  messagingSenderId: "1067070517667",
-  appId: "1:1067070517667:web:f076c529d404983d8b2a16",
-  measurementId: "G-73C90VZK5Z"
+  authDomain: "bar-journal-kr.firebaseapp.com",
+  projectId: "bar-journal-kr",
+  storageBucket: "bar-journal-kr.appspot.com",
+  messagingSenderId: "1234567890",
+  appId: "1:1234567890:web:abcdef123456"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -29,7 +29,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 /* ============================================================ 2. UTILS ============================================================ */
-// 🚨 이 유틸리티 함수들이 지워지면 화면이 하얗게 뜹니다! 절대 지우지 마세요.
 function todayISO() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -187,12 +186,12 @@ export default function App() {
     return onAuthStateChanged(auth, (u) => { setUser(u); setAuthChecked(true); });
   }, []);
 
-  // 🚨 안전장치: 파이어베이스 연결 지연 시 5초 후 강제 로딩 해제
   useEffect(() => {
     if (user) {
       setLoaded(false);
+      // 안전장치
       const fallbackTimer = setTimeout(() => { 
-        console.warn("Firebase 연결 지연. 로컬 데이터로 임시 시작합니다."); 
+        console.warn("Firebase 연결 지연. 강제로 화면을 엽니다."); 
         setLoaded(true); 
       }, 5000);
       
@@ -209,7 +208,6 @@ export default function App() {
             setExamScores(d.examScores || []); setMoods(d.moods || {});
             setSchedules(d.schedules || []);
           } else {
-            // 마이그레이션 로직
             const localSettings = window.localStorage.getItem('bar-settings');
             if (localSettings) {
               setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(localSettings) });
@@ -293,7 +291,6 @@ export default function App() {
     </div>
   );
 }
-
 /* ============================================================ 5. UI COMPONENTS ============================================================ */
 function SectionTitle({ children, action }) {
   return (
@@ -686,6 +683,13 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
             );
           })}
         </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', paddingTop: 10, marginTop: 6, borderTop: `1px dashed ${C.lineSoft}`, fontSize: 10, color: C.muted }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 18, height: 3, background: C.accent }} /><span>모의고사</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ display: 'flex', gap: 1 }}>{Object.keys(SUBJECTS).slice(0, 3).map(sub => (<span key={sub} style={{ width: 8, height: 3, background: SUBJECTS[sub].color }} />))}</span><span>사이클</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ display: 'flex', gap: 1 }}>{intensityBg.slice(1).map((bg, i) => (<span key={i} style={{ width: 7, height: 7, background: bg, border: `1px solid ${C.lineSoft}` }} />))}</span><span>공부량</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: C.accent }} /><span>회독</span></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 9, color: C.accent, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>✓N</span><span>할일</span></span>
+        </div>
       </div>
 
       <DayDetail date={selDate} minutes={selMinutes} log={selLog} todos={selTodos} dueReviews={selDueReviews} cycleInfo={selCycleInfo} mock={selMock} tracks={selTracks} mood={moods[selDate] || ''} setMood={(v) => setMoods(prev => { const next = { ...prev }; if (v) next[selDate] = v; else delete next[selDate]; return next; })} onAddTodo={addTodo} onToggleTodo={toggleTodo} onRemoveTodo={removeTodo} onGoToLog={onGoToLog} isToday={selDate === today} schedules={schedules} setSchedules={setSchedules} />
@@ -719,6 +723,44 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, tra
         <span className="serif mono" style={{ fontSize: 14, fontWeight: 600, color: minutes > 0 ? C.ink : C.muted }}>{fmtMin(minutes)}</span>
       </div>
 
+      {mock && (
+        <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.lineSoft}`, background: C.accent, color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}><span className="serif" style={{ fontSize: 18, fontWeight: 700, lineHeight: 1 }}>{mock.label.match(/\d/)?.[0] || '!'}</span></div>
+          <div style={{ flex: 1, minWidth: 0 }}><div className="kserif" style={{ fontSize: 14, fontWeight: 600 }}>{mock.label}</div><div className="mono" style={{ fontSize: 10.5, opacity: 0.9, marginTop: 2 }}>{mock.dayNum}/{mock.totalDays}일차 · {mock.start.slice(5)} ~ {mock.end.slice(5)}</div></div>
+        </div>
+      )}
+
+      {cycleInfo && !mock && (
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}`, background: SUBJECTS[cycleInfo.subject].color, color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}><span className="serif" style={{ fontSize: 18, fontWeight: 700 }}>{SUBJECTS[cycleInfo.subject].short}</span></div>
+          <div style={{ flex: 1, minWidth: 0 }}><div className="kserif" style={{ fontSize: 14, fontWeight: 600 }}>{cycleInfo.subject}{cycleInfo.subject === '민사법' && ' + 국제거래법'}</div><div className="mono" style={{ fontSize: 10.5, opacity: 0.9, marginTop: 2 }}>{cycleInfo.cycleLabel} · 블록 {cycleInfo.dayInBlock}/{cycleInfo.blockDays}일</div></div>
+          {cycleInfo.isBlockLast && <div style={{ fontSize: 10, padding: '3px 8px', background: 'rgba(255,255,255,0.2)', fontFamily: "'Noto Serif KR', serif", fontWeight: 600, letterSpacing: '0.05em' }}>블록 마지막날</div>}
+        </div>
+      )}
+
+      {TRACK_TYPES.some(tt => tracks[tt.key]?.done || tracks[tt.key]?.text) && (
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}` }}>
+          <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.muted, fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}><span>오늘 트랙</span><span className="mono" style={{ letterSpacing: 0, fontSize: 10 }}>{TRACK_TYPES.filter(tt => tracks[tt.key]?.done).length}/5</span></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {TRACK_TYPES.map(tt => {
+              const slot = tracks[tt.key]; if (!slot?.done && !slot?.text) return null;
+              return (
+                <div key={tt.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <span style={{ width: 18, height: 18, background: slot.done ? tt.color : 'transparent', color: slot.done ? '#fff' : tt.color, border: `1px solid ${tt.color}`, display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, fontFamily: "'Noto Serif KR', serif", flexShrink: 0 }}>{tt.short}</span>
+                  <span className="kserif" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: slot.done ? C.ink : C.muted }}>{slot.text || tt.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {Object.keys(subjectMin).length > 0 && (
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {Object.entries(subjectMin).map(([sub, m]) => <span key={sub} className="kserif" style={{ fontSize: 11, padding: '3px 8px', border: `1px solid ${SUBJECTS[sub].color}`, color: SUBJECTS[sub].color, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>{sub}<span className="mono" style={{ fontWeight: 400, opacity: 0.85 }}>{fmtHour(m)}</span></span>)}
+        </div>
+      )}
+
       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}` }}>
         <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.muted, fontWeight: 600, marginBottom: 8 }}>장기 일정</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
@@ -742,15 +784,35 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, tra
       </div>
 
       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}` }}>
-        <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.muted, fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}><span>할 일</span></div>
+        <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.muted, fontWeight: 600, marginBottom: 6 }}>한 줄</div>
+        <input value={moodLocal} onChange={e => setMoodLocal(e.target.value)} onBlur={() => setMood(moodLocal.trim())} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} placeholder="컨디션·느낀점 메모" style={{ width: '100%', background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '7px 10px', fontSize: 12, outline: 'none', fontFamily: "'Noto Serif KR', serif" }} />
+      </div>
+
+      {dueReviews.length > 0 && (
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}` }}>
+          <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.muted, fontWeight: 600, marginBottom: 8 }}>회독</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {dueReviews.map((r, i) => (
+              <div key={`due-${r.id}-${r.num}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: C.bg, border: `1px solid ${C.lineSoft}`, borderLeft: `3px solid ${SUBJECTS[r.subject]?.color || C.muted}` }}>
+                <span className="serif" style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: SUBJECTS[r.subject]?.color || C.muted, padding: '2px 6px', minWidth: 36, textAlign: 'center' }}>{r.num}회독</span><span className="kserif" style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: '12px 16px' }}>
+        <div className="kserif" style={{ fontSize: 10, letterSpacing: '0.2em', color: C.muted, fontWeight: 600, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}><span>할 일</span>{todos.length > 0 && <span className="mono" style={{ letterSpacing: 0, fontSize: 10 }}>{todos.filter(t => t.done).length}/{todos.length}</span>}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
           {todos.filter(t => !t.done).map(t => <TodoRow key={t.id} todo={t} onToggle={() => onToggleTodo(t.id)} onRemove={() => onRemoveTodo(t.id)} />)}
           {todos.filter(t => t.done).map(t => <TodoRow key={t.id} todo={t} onToggle={() => onToggleTodo(t.id)} onRemove={() => onRemoveTodo(t.id)} />)}
+          {todos.length === 0 && <div style={{ fontSize: 12, color: C.muted, padding: '8px 0' }}>등록된 할 일이 없습니다.</div>}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <input value={newTodo} onChange={e => setNewTodo(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { onAddTodo(newTodo); setNewTodo(''); } }} placeholder="할 일 추가" style={{ flex: 1, border: `1px solid ${C.line}`, background: C.bg, padding: '8px 10px', fontSize: 12, outline: 'none' }} />
-          <button onClick={() => { onAddTodo(newTodo); setNewTodo(''); }} className="lift" style={{ background: C.accent, color: '#fff', border: 'none', padding: '0 12px', fontSize: 12 }}><Plus size={14} /></button>
+          <button onClick={() => { onAddTodo(newTodo); setNewTodo(''); }} disabled={!newTodo.trim()} className="lift" style={{ background: newTodo.trim() ? C.accent : C.line, color: '#fff', border: 'none', padding: '0 12px', fontSize: 12, cursor: newTodo.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center' }}><Plus size={14} /></button>
         </div>
+        {isToday && <button onClick={onGoToLog} style={{ width: '100%', marginTop: 10, background: 'transparent', border: `1px solid ${C.line}`, color: C.ink, padding: '8px', fontSize: 11, cursor: 'pointer', fontFamily: "'Noto Serif KR', serif", letterSpacing: '0.05em' }}>오늘 공부 기록하러 가기 →</button>}
       </div>
     </div>
   );
@@ -760,7 +822,7 @@ function TodoRow({ todo, onToggle, onRemove }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', borderBottom: `1px dashed ${C.lineSoft}` }}>
       <button onClick={onToggle} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: todo.done ? C.good : C.muted, display: 'flex' }}>{todo.done ? <CheckSquare size={16} strokeWidth={2} /> : <Square size={16} strokeWidth={1.5} />}</button>
-      <span className="kserif" style={{ flex: 1, fontSize: 13, minWidth: 0, textDecoration: todo.done ? 'line-through' : 'none', color: todo.done ? C.muted : C.ink }}>{todo.title}</span>
+      <span className="kserif" style={{ flex: 1, fontSize: 13, minWidth: 0, textDecoration: todo.done ? 'line-through' : 'none', color: todo.done ? C.muted : C.ink, wordBreak: 'keep-all' }}>{todo.title}{todo.fromMock && <span style={{ fontSize: 9, color: C.accent, marginLeft: 6, fontFamily: "'JetBrains Mono', monospace" }}>모의리뷰</span>}</span>
       <button onClick={onRemove} style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: C.muted, display: 'flex' }}><X size={12} /></button>
     </div>
   );
@@ -776,8 +838,9 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
         <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ flex: 1, background: C.paper, border: `1px solid ${C.line}`, padding: '8px 10px', fontSize: 13, textAlign: 'center', outline: 'none' }} />
         <button onClick={() => setDate(addDays(date, 1))} style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '7px 10px', cursor: 'pointer' }}><ChevronRight size={14} /></button>
       </div>
+      {date !== today && <button onClick={() => setDate(today)} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 11, cursor: 'pointer', marginBottom: 12 }}>오늘로 돌아가기 →</button>}
       <TracksSection date={date} tracks={tracks} setTracks={setTracks} />
-      <TimeSection date={date} logs={logs} setLogs={setLogs} settings={settings} />
+      <TimeSection date={date} logs={logs} setLogs={setLogs} />
       <ScoresSection date={date} examScores={examScores} setExamScores={setExamScores} />
     </div>
   );
@@ -795,7 +858,7 @@ function TracksSection({ date, tracks, setTracks }) {
             <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: i < TRACK_TYPES.length - 1 ? `1px dashed ${C.lineSoft}` : 'none' }}>
               <button onClick={() => setTracks({ ...tracks, [date]: { ...dayTracks, [t.key]: { ...v, done: !v.done } } })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}>{v.done ? <CheckSquare size={18} color={t.color} /> : <Square size={18} color={C.muted} />}</button>
               <div style={{ width: 28, fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 16, color: t.color, textAlign: 'center', flexShrink: 0 }}>{t.short}</div>
-              <input value={v.text || ''} onChange={e => setTracks({ ...tracks, [date]: { ...dayTracks, [t.key]: { ...v, text: e.target.value } } })} placeholder={t.placeholder} style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, color: C.ink, padding: '2px 0' }} />
+              <input value={v.text || ''} onChange={e => setTracks({ ...tracks, [date]: { ...dayTracks, [t.key]: { ...v, text: e.target.value } } })} placeholder={t.placeholder} style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, color: C.ink, padding: '2px 0', textDecoration: 'none' }} />
             </div>
           );
         })}
@@ -812,19 +875,36 @@ function TimeSection({ date, logs, setLogs }) {
     const all = { ...logs }; if (Object.keys(next).length === 0) delete all[date]; else all[date] = next;
     setLogs(all);
   }
+  const subTotals = {}; Object.entries(dl).forEach(([k, v]) => { const [s] = k.split('::'); subTotals[s] = (subTotals[s] || 0) + (v || 0); });
+  const grandTotal = Object.values(dl).reduce((a, b) => a + b, 0);
+
   return (
     <div style={{ marginBottom: 24 }}>
       <SectionTitle>학습 시간 (분)</SectionTitle>
       <div style={{ background: C.paper, border: `1px solid ${C.line}` }}>
-        {Object.keys(SUBJECTS).map((sub, si) => (
-          <div key={sub} style={{ borderTop: si > 0 ? `1px solid ${C.lineSoft}` : 'none', padding: '10px 14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}><span className="kserif" style={{ fontSize: 13, fontWeight: 600, color: SUBJECTS[sub].color }}>{sub}</span></div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-              {SUBJECTS[sub].types.map(t => <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 4, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '4px 6px' }}><span style={{ fontSize: 10, color: C.muted, flex: 1 }}>{t.label}</span><button onClick={() => setMin(sub, t.key, Math.max(0, (dl[`${sub}::${t.key}`] || 0) - 15))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: C.muted }}><Minus size={11} /></button><input type="number" value={dl[`${sub}::${t.key}`] || ''} onChange={e => setMin(sub, t.key, parseInt(e.target.value) || 0)} style={{ width: 36, textAlign: 'center', background: 'transparent', border: 'none', outline: 'none', fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }} /><button onClick={() => setMin(sub, t.key, Math.max(0, (dl[`${sub}::${t.key}`] || 0) + 15))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: C.muted }}><Plus size={11} /></button></div>)}
+        {Object.keys(SUBJECTS).map((sub, si) => {
+          const meta = SUBJECTS[sub]; const sTot = subTotals[sub] || 0;
+          return (
+            <div key={sub} style={{ borderTop: si > 0 ? `1px solid ${C.lineSoft}` : 'none', padding: '10px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}><span className="kserif" style={{ fontSize: 13, fontWeight: 600, color: meta.color }}>{sub}</span><span className="mono" style={{ fontSize: 11, color: C.muted }}>{fmtMin(sTot)}</span></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                {meta.types.map(t => {
+                  const key = `${sub}::${t.key}`;
+                  return (
+                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 4, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '4px 6px' }}>
+                      <span style={{ fontSize: 10, color: C.muted, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
+                      <button onClick={() => setMin(sub, t.key, Math.max(0, (dl[key] || 0) - 15))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: C.muted }}><Minus size={11} /></button>
+                      <input type="number" inputMode="numeric" value={dl[key] || ''} onChange={e => setMin(sub, t.key, parseInt(e.target.value) || 0)} style={{ width: 36, textAlign: 'center', background: 'transparent', border: 'none', outline: 'none', fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: dl[key] > 0 ? meta.color : C.muted, fontWeight: 600 }} />
+                      <button onClick={() => setMin(sub, t.key, Math.max(0, (dl[key] || 0) + 15))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: C.muted }}><Plus size={11} /></button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+      {grandTotal > 0 && <div style={{ textAlign: 'right', marginTop: 8, fontSize: 12, color: C.muted }}>합계 <span className="mono" style={{ color: C.ink, fontWeight: 600 }}>{fmtMin(grandTotal)}</span></div>}
     </div>
   );
 }
@@ -832,6 +912,12 @@ function TimeSection({ date, logs, setLogs }) {
 function ScoresSection({ date, examScores, setExamScores }) {
   const [round, setRound] = useState(''); const [subject, setSubject] = useState('공법'); const [wrong, setWrong] = useState(''); const [total, setTotal] = useState(''); const [note, setNote] = useState('');
   const todays = examScores.filter(s => s.date === date).sort((a,b) => (a.subject + a.round).localeCompare(b.subject + b.round));
+
+  function add() {
+    if (!round || wrong === '') return;
+    setExamScores([...examScores, { id: uid(), date, round: parseInt(round), subject, type: '선택형', wrong: parseInt(wrong), total: total ? parseInt(total) : null, note: note.trim() || null }]);
+    setRound(''); setWrong(''); setTotal(''); setNote('');
+  }
 
   return (
     <div style={{ marginBottom: 24 }}>
@@ -855,9 +941,9 @@ function ScoresSection({ date, examScores, setExamScores }) {
             <input value={round} onChange={e => setRound(e.target.value)} placeholder="회차" type="number" inputMode="numeric" style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <input value={wrong} onChange={e => setWrong(e.target.value)} placeholder="틀린 개수" type="number" inputMode="numeric" style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
+            <input value={wrong} onChange={e => setWrong(e.target.value)} placeholder="틀림 개수" type="number" inputMode="numeric" style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
             <input value={total} onChange={e => setTotal(e.target.value)} placeholder="총 문제" type="number" inputMode="numeric" style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
-            <button onClick={() => { if (round && wrong !== '') { setExamScores([...examScores, { id: uid(), date, round: parseInt(round), subject, type: '선택형', wrong: parseInt(wrong), total: total ? parseInt(total) : null, note: note.trim() || null }]); setRound(''); setWrong(''); setTotal(''); setNote(''); } }} style={{ background: C.ink, color: '#fff', border: 'none', padding: '0 18px', cursor: 'pointer', fontSize: 16 }}>+</button>
+            <button onClick={add} style={{ background: C.ink, color: '#fff', border: 'none', padding: '0 18px', cursor: 'pointer', fontSize: 16 }}>+</button>
           </div>
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="메모(선택)" style={{ width: '100%', background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '8px', fontSize: 12, outline: 'none' }} />
         </div>
@@ -883,31 +969,44 @@ function ExamsView({ examScores }) {
 
   return (
     <div className="fadeIn" style={{ padding: '18px 0 24px' }}>
-      <h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600, marginBottom: 14 }}>기출 회차</h1>
+      <div style={{ marginBottom: 6 }}><h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>기출 회차</h1><div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>객관식 회차별 틀린 개수 추이</div></div>
       {chartData.length === 0 ? <div style={{ background: C.paper, border: `1px dashed ${C.line}`, padding: 24, textAlign: 'center', fontSize: 12, color: C.muted, margin: '18px 0' }}>기록 탭에서 회차 점수를 입력해 보세요</div> : (
-        <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '16px 12px 12px', margin: '14px 0 18px' }}>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
-              <CartesianGrid stroke={C.lineSoft} strokeDasharray="3 3" />
-              <XAxis dataKey="round" tick={{ fontSize: 10, fill: C.muted }} />
-              <YAxis reversed tick={{ fontSize: 10, fill: C.muted }} />
-              <Tooltip contentStyle={{ background: C.paper, border: `1px solid ${C.line}`, fontSize: 11 }} />
-              {subjects.map(sub => <Line key={sub} type="monotone" dataKey={sub} stroke={SUBJECTS[sub].color} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <>
+          <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '16px 12px 12px', margin: '14px 0 18px' }}>
+            <div className="kserif" style={{ fontSize: 10, color: C.muted, letterSpacing: '0.18em', marginBottom: 10, paddingLeft: 4, fontWeight: 600 }}>틀린 개수 추이</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
+                <CartesianGrid stroke={C.lineSoft} strokeDasharray="3 3" />
+                <XAxis dataKey="round" tick={{ fontSize: 10, fill: C.muted }} />
+                <YAxis reversed tick={{ fontSize: 10, fill: C.muted }} />
+                <Tooltip contentStyle={{ background: C.paper, border: `1px solid ${C.line}`, fontSize: 11 }} />
+                {subjects.map(sub => <Line key={sub} type="monotone" dataKey={sub} stroke={SUBJECTS[sub].color} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
+              </LineChart>
+            </ResponsiveContainer>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 6, flexWrap: 'wrap' }}>{subjects.map(sub => <span key={sub} style={{ fontSize: 10, color: C.muted, display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 2, background: SUBJECTS[sub].color, display: 'inline-block' }} /> {sub}</span>)}</div>
+          </div>
+          <SectionTitle>회차 매트릭스</SectionTitle>
+          <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '10px 0', overflowX: 'auto', marginBottom: 18 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead><tr><th style={{ padding: '6px 10px', textAlign: 'left', color: C.muted, fontWeight: 500, borderBottom: `1px solid ${C.lineSoft}` }}>회차</th>{subjects.map(sub => <th key={sub} style={{ padding: '6px 10px', textAlign: 'center', color: SUBJECTS[sub].color, fontWeight: 600, borderBottom: `1px solid ${C.lineSoft}` }}>{SUBJECTS[sub].short}</th>)}</tr></thead>
+              <tbody>{allRounds.map(r => <tr key={r}><td className="mono" style={{ padding: '6px 10px', color: C.ink, borderBottom: `1px dashed ${C.lineSoft}` }}>{r}회</td>{subjects.map(sub => { const s = matrix[sub][r]; return <td key={sub} className="mono" style={{ padding: '6px 10px', textAlign: 'center', color: s ? SUBJECTS[sub].color : C.muted, borderBottom: `1px dashed ${C.lineSoft}`, fontWeight: s ? 600 : 400 }}>{s ? `-${s.wrong}` : '·'}</td>; })}</tr>)}</tbody>
+            </table>
+          </div>
+        </>
       )}
       <SectionTitle>전체 기록</SectionTitle>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
         {['전체', ...subjects].map(s => <button key={s} onClick={() => setFilterSubject(s)} style={{ background: filterSubject === s ? C.ink : C.paper, color: filterSubject === s ? '#fff' : C.muted, border: `1px solid ${filterSubject === s ? C.ink : C.line}`, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>{s}</button>)}
       </div>
-      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '4px 14px' }}>
-        {sortedScores.map(s => (
-          <div key={s.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '8px 0', borderBottom: `1px dashed ${C.lineSoft}`, fontSize: 12 }}>
-            <span className="mono" style={{ color: C.muted, fontSize: 10, minWidth: 60 }}>{s.date.slice(5)}</span><span style={{ color: SUBJECTS[s.subject].color, fontWeight: 600, minWidth: 50 }}>{s.subject}</span><span className="mono" style={{ color: C.muted, minWidth: 30 }}>{s.round}회</span><span className="mono" style={{ color: C.ink, minWidth: 30 }}>-{s.wrong}</span>
-          </div>
-        ))}
-      </div>
+      {sortedScores.length === 0 ? <div style={{ fontSize: 11, color: C.muted, textAlign: 'center', padding: 14 }}>기록이 없습니다</div> : (
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '4px 14px' }}>
+          {sortedScores.map(s => (
+            <div key={s.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '8px 0', borderBottom: `1px dashed ${C.lineSoft}`, fontSize: 12 }}>
+              <span className="mono" style={{ color: C.muted, fontSize: 10, minWidth: 60 }}>{s.date.slice(5)}</span><span style={{ color: SUBJECTS[s.subject].color, fontWeight: 600, minWidth: 50 }}>{s.subject}</span><span className="mono" style={{ color: C.muted, minWidth: 30 }}>{s.round}회</span><span className="mono" style={{ color: C.ink, minWidth: 30 }}>-{s.wrong}</span>{s.note && <span style={{ flex: 1, fontSize: 10, color: C.muted, fontStyle: 'italic' }}>{s.note}</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -917,7 +1016,7 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
   const [tab, setTab] = useState('topics');
   return (
     <div className="fadeIn" style={{ padding: '18px 0 24px' }}>
-      <h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600, marginBottom: 14 }}>회독</h1>
+      <div style={{ marginBottom: 14 }}><h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>회독</h1></div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, borderBottom: `1px solid ${C.line}` }}>
         {[{ key: 'topics', label: '주제', icon: RotateCw }, { key: 'books', label: '문제집', icon: BookOpen }, { key: 'materials', label: '자료', icon: Library }].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{ background: 'none', border: 'none', padding: '8px 12px', cursor: 'pointer', color: tab === t.key ? C.accent : C.muted, borderBottom: tab === t.key ? `2px solid ${C.accent}` : '2px solid transparent', marginBottom: -1, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: tab === t.key ? 600 : 400, fontFamily: "'Noto Serif KR', serif" }}><t.icon size={13} /> {t.label}</button>
@@ -933,104 +1032,263 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
 function TopicsReview({ today, reviews, setReviews }) {
   const [showAdd, setShowAdd] = useState(false);
   const enriched = useMemo(() => reviews.map(r => { const next = addDays(r.lastReviewed, r.intervals[Math.min(r.cycleIndex, r.intervals.length - 1)]); return { ...r, nextDue: next, daysUntilDue: daysDiff(today, next) }; }).sort((a, b) => a.nextDue.localeCompare(b.nextDue)), [reviews, today]);
-  const [title, setTitle] = useState(''); const [subject, setSubject] = useState('민사법');
+  const [title, setTitle] = useState(''); const [subject, setSubject] = useState('민사법'); const [note, setNote] = useState('');
   return (
     <>
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>주제별 5–3–2 망각곡선 회독</div>
       <button onClick={() => setShowAdd(true)} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '10px', cursor: 'pointer', marginBottom: 14, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Plus size={14} /> 주제 추가</button>
       {showAdd && (
         <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 14 }}>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="주제" style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12, marginBottom: 8, outline: 'none' }} />
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>{Object.keys(SUBJECTS).map(s => <button key={s} onClick={() => setSubject(s)} style={{ flex: 1, background: subject === s ? SUBJECTS[s].color : C.bg, color: subject === s ? '#fff' : C.muted, border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`, padding: '6px 4px', fontSize: 10 }}>{SUBJECTS[s].short}</button>)}</div>
-          <div style={{ display: 'flex', gap: 6 }}><button onClick={() => setShowAdd(false)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12 }}>취소</button><button onClick={() => { if(title) { setReviews([...reviews, { id: uid(), title, subject, created: today, lastReviewed: today, cycleIndex: 0, intervals: [5, 3, 2], note: '' }]); setShowAdd(false); setTitle(''); } }} style={{ flex: 1, background: C.ink, color: '#fff', border: 'none', padding: '8px', fontSize: 12 }}>추가</button></div>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="주제 (예: 채권자대위)" style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px 10px', fontSize: 12, marginBottom: 8, outline: 'none' }} />
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>{Object.keys(SUBJECTS).map(s => <button key={s} onClick={() => setSubject(s)} style={{ flex: 1, background: subject === s ? SUBJECTS[s].color : C.bg, color: subject === s ? '#fff' : C.muted, border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`, padding: '6px 4px', fontSize: 10, cursor: 'pointer' }}>{SUBJECTS[s].short}</button>)}</div>
+          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="메모 (선택)" rows={2} style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px 10px', fontSize: 12, marginBottom: 10, outline: 'none', resize: 'vertical', fontFamily: "'Noto Serif KR', serif" }} />
+          <div style={{ display: 'flex', gap: 6 }}><button onClick={() => setShowAdd(false)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, padding: '8px', cursor: 'pointer', fontSize: 12 }}>취소</button><button onClick={() => { if(title) { setReviews([...reviews, { id: uid(), title, subject, created: today, lastReviewed: today, cycleIndex: 0, intervals: [5, 3, 2], note }]); setShowAdd(false); setTitle(''); setNote(''); } }} style={{ flex: 1, background: C.ink, color: '#fff', border: 'none', padding: '8px', cursor: 'pointer', fontSize: 12 }}>추가</button></div>
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {enriched.map(r => (
-          <div key={r.id} style={{ background: C.paper, border: `1px solid ${r.daysUntilDue <= 0 ? C.accent : C.line}`, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 3, alignSelf: 'stretch', background: SUBJECTS[r.subject].color }} />
-            <div style={{ flex: 1 }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><div style={{ fontSize: 13, fontWeight: 600 }}>{r.title}</div><div className="mono" style={{ fontSize: 10, color: r.daysUntilDue <= 0 ? C.accent : C.muted }}>{r.daysUntilDue <= 0 ? '오늘' : `D-${r.daysUntilDue}`}</div></div><div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}><span style={{ color: SUBJECTS[r.subject].color, fontWeight: 600 }}>{r.subject}</span> · 회독 {r.cycleIndex + 1}회차</div></div>
-            <button onClick={() => setReviews(reviews.map(x => x.id === r.id ? { ...x, lastReviewed: today, cycleIndex: Math.min(x.cycleIndex + 1, x.intervals.length - 1) } : x))} style={{ background: C.ink, color: '#fff', border: 'none', padding: '5px 8px' }}><Check size={11} /></button><button onClick={() => setReviews(reviews.filter(x => x.id !== r.id))} style={{ background: 'none', border: 'none', padding: 0 }}><X size={12} color={C.muted} /></button>
-          </div>
-        ))}
-      </div>
+      {enriched.length === 0 ? <div style={{ textAlign: 'center', padding: 30, color: C.muted, fontSize: 12, background: C.paper, border: `1px dashed ${C.line}` }}>회독할 주제를 추가해 보세요</div> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {enriched.map(r => (
+            <div key={r.id} style={{ background: C.paper, border: `1px solid ${r.daysUntilDue <= 0 ? C.accent : C.line}`, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 3, alignSelf: 'stretch', background: SUBJECTS[r.subject].color }} />
+              <div style={{ flex: 1 }}><div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}><div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{r.title}</div><div className="mono" style={{ fontSize: 10, color: r.daysUntilDue <= 0 ? C.accent : C.muted, fontWeight: r.daysUntilDue <= 0 ? 600 : 400 }}>{r.daysUntilDue <= 0 ? '오늘' : `D-${r.daysUntilDue}`}</div></div><div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}><span style={{ color: SUBJECTS[r.subject].color, fontWeight: 600 }}>{r.subject}</span> · 회독 {r.cycleIndex + 1}회차</div>{r.note && <div style={{ fontSize: 10, color: C.muted, marginTop: 4, fontStyle: 'italic' }}>{r.note}</div>}</div>
+              <button onClick={() => setReviews(reviews.map(x => x.id === r.id ? { ...x, lastReviewed: today, cycleIndex: Math.min(x.cycleIndex + 1, x.intervals.length - 1) } : x))} style={{ background: C.ink, color: '#fff', border: 'none', padding: '5px 8px', cursor: 'pointer', fontSize: 10 }}><Check size={11} /></button><button onClick={() => setReviews(reviews.filter(x => x.id !== r.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}><X size={12} color={C.muted} /></button>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
 
 function BooksReview({ today, books, setBooks }) {
-  const [showAdd, setShowAdd] = useState(false); const [title, setTitle] = useState(''); const [subject, setSubject] = useState('민사법'); const [target, setTarget] = useState(3);
+  const [showAdd, setShowAdd] = useState(false); const [title, setTitle] = useState(''); const [subject, setSubject] = useState('민사법'); const [target, setTarget] = useState(3); const [note, setNote] = useState('');
   return (
     <>
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>문제집 / 강의 누적 회독</div>
       <button onClick={() => setShowAdd(true)} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '10px', cursor: 'pointer', marginBottom: 14, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Plus size={14} /> 문제집 추가</button>
       {showAdd && (
         <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 14 }}>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="제목" style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12, marginBottom: 8, outline: 'none' }} />
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>{Object.keys(SUBJECTS).map(s => <button key={s} onClick={() => setSubject(s)} style={{ flex: 1, background: subject === s ? SUBJECTS[s].color : C.bg, color: subject === s ? '#fff' : C.muted, border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`, padding: '6px 4px', fontSize: 10 }}>{SUBJECTS[s].short}</button>)}</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 11, color: C.muted }}>목표 회독:</span><input type="number" value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1} style={{ width: 50, background: C.bg, border: `1px solid ${C.line}`, padding: '5px', fontSize: 12, textAlign: 'center' }} /><span style={{ fontSize: 11, color: C.muted }}>회</span></div>
-          <div style={{ display: 'flex', gap: 6 }}><button onClick={() => setShowAdd(false)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12 }}>취소</button><button onClick={() => { if(title) { setBooks([...books, { id: uid(), title, subject, target, current: 0 }]); setShowAdd(false); setTitle(''); } }} style={{ flex: 1, background: C.ink, color: '#fff', border: 'none', padding: '8px', fontSize: 12 }}>추가</button></div>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="제목" style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px 10px', fontSize: 12, marginBottom: 8, outline: 'none' }} />
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>{Object.keys(SUBJECTS).map(s => <button key={s} onClick={() => setSubject(s)} style={{ flex: 1, background: subject === s ? SUBJECTS[s].color : C.bg, color: subject === s ? '#fff' : C.muted, border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`, padding: '6px 4px', fontSize: 10, cursor: 'pointer' }}>{SUBJECTS[s].short}</button>)}</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 11, color: C.muted }}>목표 회독:</span><input type="number" value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1} style={{ width: 50, background: C.bg, border: `1px solid ${C.line}`, padding: '5px', fontSize: 12, textAlign: 'center', outline: 'none' }} /><span style={{ fontSize: 11, color: C.muted }}>회</span></div>
+          <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="메모 (선택)" rows={2} style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px 10px', fontSize: 12, marginBottom: 10, outline: 'none', resize: 'vertical', fontFamily: "'Noto Serif KR', serif" }} />
+          <div style={{ display: 'flex', gap: 6 }}><button onClick={() => setShowAdd(false)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, padding: '8px', cursor: 'pointer', fontSize: 12 }}>취소</button><button onClick={() => { if(title) { setBooks([...books, { id: uid(), title, subject, target, current: 0, log: [], note }]); setShowAdd(false); setTitle(''); setNote(''); } }} style={{ flex: 1, background: C.ink, color: '#fff', border: 'none', padding: '8px', cursor: 'pointer', fontSize: 12 }}>추가</button></div>
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {books.map(b => {
-          const pct = Math.min(100, (b.current / b.target) * 100);
-          return (
-            <div key={b.id} style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '12px 14px', display: 'flex', gap: 10 }}>
-              <div style={{ width: 3, alignSelf: 'stretch', background: SUBJECTS[b.subject].color }} />
-              <div style={{ flex: 1 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><div style={{ fontSize: 13, fontWeight: 600 }}>{b.title}</div><div className="mono" style={{ fontSize: 11 }}><span style={{ color: b.current >= b.target ? C.good : C.ink, fontWeight: 600 }}>{b.current}</span><span style={{ color: C.muted }}> / {b.target}</span></div></div><div style={{ fontSize: 10, color: SUBJECTS[b.subject].color, fontWeight: 600, marginTop: 2 }}>{b.subject}</div><div style={{ height: 3, background: C.lineSoft, marginTop: 8, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: b.current >= b.target ? C.good : SUBJECTS[b.subject].color }} /></div></div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><button onClick={() => setBooks(books.map(x => x.id === b.id ? { ...x, current: x.current + 1 } : x))} style={{ background: C.ink, color: '#fff', border: 'none', padding: '4px 6px' }}><Plus size={11} /></button><button onClick={() => setBooks(books.map(x => x.id === b.id && x.current > 0 ? { ...x, current: x.current - 1 } : x))} style={{ background: C.bg, color: C.muted, border: `1px solid ${C.line}`, padding: '4px 6px' }}><Minus size={11} /></button><button onClick={() => setBooks(books.filter(x => x.id !== b.id))} style={{ background: 'none', border: 'none', padding: '2px 0' }}><X size={12} color={C.muted} /></button></div>
-            </div>
-          );
-        })}
-      </div>
+      {books.length === 0 ? <div style={{ textAlign: 'center', padding: 30, color: C.muted, fontSize: 12, background: C.paper, border: `1px dashed ${C.line}` }}>문제집을 추가해 보세요</div> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {books.map(b => {
+            const pct = Math.min(100, (b.current / b.target) * 100);
+            return (
+              <div key={b.id} style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '12px 14px', display: 'flex', gap: 10 }}>
+                <div style={{ width: 3, alignSelf: 'stretch', background: SUBJECTS[b.subject].color }} />
+                <div style={{ flex: 1 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><div style={{ fontSize: 13, fontWeight: 600 }}>{b.title}</div><div className="mono" style={{ fontSize: 11, color: C.ink }}><span style={{ color: b.current >= b.target ? C.good : C.ink, fontWeight: 600 }}>{b.current}</span><span style={{ color: C.muted }}> / {b.target}</span></div></div><div style={{ fontSize: 10, color: SUBJECTS[b.subject].color, fontWeight: 600, marginTop: 2 }}>{b.subject}</div><div style={{ height: 3, background: C.lineSoft, marginTop: 8, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: b.current >= b.target ? C.good : SUBJECTS[b.subject].color }} /></div>{b.note && <div style={{ fontSize: 10, color: C.muted, marginTop: 6, fontStyle: 'italic' }}>{b.note}</div>}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><button onClick={() => setBooks(books.map(x => x.id === b.id ? { ...x, current: x.current + 1, log: [...x.log, today] } : x))} style={{ background: C.ink, color: '#fff', border: 'none', padding: '4px 6px', cursor: 'pointer' }}><Plus size={11} /></button><button onClick={() => setBooks(books.map(x => x.id === b.id && x.current > 0 ? { ...x, current: x.current - 1, log: x.log.slice(0, -1) } : x))} style={{ background: C.bg, color: C.muted, border: `1px solid ${C.line}`, padding: '4px 6px', cursor: 'pointer' }}><Minus size={11} /></button><button onClick={() => { if(confirm('삭제하시겠습니까?')) setBooks(books.filter(x => x.id !== b.id)) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0' }}><X size={12} color={C.muted} /></button></div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
 
 function MaterialsReview({ today, materials, setMaterials }) {
-  const [showAdd, setShowAdd] = useState(false); const [name, setName] = useState(''); const [subject, setSubject] = useState('민사법'); const [target, setTarget] = useState(3);
+  const [showAdd, setShowAdd] = useState(false); const [name, setName] = useState(''); const [subject, setSubject] = useState('민사법'); const [target, setTarget] = useState(3); const [filter, setFilter] = useState('전체');
+  const filtered = filter === '전체' ? materials : materials.filter(m => m.subject === filter);
   return (
     <>
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>명명된 자료(청취 / 청원 / 캡슐 / 찌라시 등) 누적 회독</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>{['전체', ...Object.keys(SUBJECTS)].map(s => <button key={s} onClick={() => setFilter(s)} style={{ background: filter === s ? C.ink : C.paper, color: filter === s ? '#fff' : C.muted, border: `1px solid ${filter === s ? C.ink : C.line}`, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>{s}</button>)}</div>
       <button onClick={() => setShowAdd(true)} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '10px', cursor: 'pointer', marginBottom: 14, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Plus size={14} /> 자료 추가</button>
       {showAdd && (
         <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 14 }}>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="자료 이름" style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12, marginBottom: 8, outline: 'none' }} />
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>{Object.keys(SUBJECTS).map(s => <button key={s} onClick={() => setSubject(s)} style={{ flex: 1, background: subject === s ? SUBJECTS[s].color : C.bg, color: subject === s ? '#fff' : C.muted, border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`, padding: '6px 4px', fontSize: 10 }}>{SUBJECTS[s].short}</button>)}</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 11, color: C.muted }}>목표:</span><input type="number" value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1} style={{ width: 50, background: C.bg, border: `1px solid ${C.line}`, padding: '5px', fontSize: 12, textAlign: 'center' }} /><span style={{ fontSize: 11, color: C.muted }}>회</span></div>
-          <div style={{ display: 'flex', gap: 6 }}><button onClick={() => setShowAdd(false)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, padding: '8px', fontSize: 12 }}>취소</button><button onClick={() => { if(name) { setMaterials([...materials, { id: uid(), name, subject, color: SUBJECTS[subject].color, rounds: 0, target }]); setShowAdd(false); setName(''); } }} style={{ flex: 1, background: C.ink, color: '#fff', border: 'none', padding: '8px', fontSize: 12 }}>추가</button></div>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="자료 이름" style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px 10px', fontSize: 12, marginBottom: 8, outline: 'none' }} />
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>{Object.keys(SUBJECTS).map(s => <button key={s} onClick={() => setSubject(s)} style={{ flex: 1, background: subject === s ? SUBJECTS[s].color : C.bg, color: subject === s ? '#fff' : C.muted, border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`, padding: '6px 4px', fontSize: 10, cursor: 'pointer' }}>{SUBJECTS[s].short}</button>)}</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}><span style={{ fontSize: 11, color: C.muted }}>목표:</span><input type="number" value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1} style={{ width: 50, background: C.bg, border: `1px solid ${C.line}`, padding: '5px', fontSize: 12, textAlign: 'center', outline: 'none' }} /><span style={{ fontSize: 11, color: C.muted }}>회</span></div>
+          <div style={{ display: 'flex', gap: 6 }}><button onClick={() => setShowAdd(false)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.line}`, padding: '8px', cursor: 'pointer', fontSize: 12 }}>취소</button><button onClick={() => { if(name) { setMaterials([...materials, { id: uid(), name, subject, color: SUBJECTS[subject].color, rounds: 0, target }]); setShowAdd(false); setName(''); } }} style={{ flex: 1, background: C.ink, color: '#fff', border: 'none', padding: '8px', cursor: 'pointer', fontSize: 12 }}>추가</button></div>
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {materials.map(m => {
-          const pct = Math.min(100, (m.rounds / m.target) * 100); const done = m.rounds >= m.target;
-          return (
-            <div key={m.id} style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'center' }}>
-              <div style={{ width: 3, alignSelf: 'stretch', background: m.color }} />
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}><div style={{ fontSize: 12, fontWeight: 600, color: C.ink }}>{m.name}</div><div className="mono" style={{ fontSize: 11 }}><span style={{ color: done ? C.good : C.ink, fontWeight: 600 }}>{m.rounds}</span><span style={{ color: C.muted }}>/{m.target}</span></div></div><div style={{ height: 2, background: C.lineSoft, marginTop: 5, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: done ? C.good : m.color }} /></div></div>
-              <div style={{ display: 'flex', gap: 3 }}><button onClick={() => setMaterials(materials.map(x => x.id === m.id && x.rounds > 0 ? { ...x, rounds: x.rounds - 1 } : x))} style={{ background: C.bg, color: C.muted, border: `1px solid ${C.line}`, padding: '4px 6px' }}><Minus size={11} /></button><button onClick={() => setMaterials(materials.map(x => x.id === m.id ? { ...x, rounds: x.rounds + 1 } : x))} style={{ background: C.ink, color: '#fff', border: 'none', padding: '4px 6px' }}><Plus size={11} /></button><button onClick={() => setMaterials(materials.filter(x => x.id !== m.id))} style={{ background: 'none', border: 'none', padding: '4px 0' }}><X size={11} color={C.muted} /></button></div>
-            </div>
-          );
-        })}
-      </div>
+      {filtered.length === 0 ? <div style={{ textAlign: 'center', padding: 24, color: C.muted, fontSize: 12, background: C.paper, border: `1px dashed ${C.line}` }}>자료가 없습니다</div> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {filtered.map(m => {
+            const pct = Math.min(100, (m.rounds / m.target) * 100); const done = m.rounds >= m.target;
+            return (
+              <div key={m.id} style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div style={{ width: 3, alignSelf: 'stretch', background: m.color }} />
+                <div style={{ flex: 1, minWidth: 0 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}><div style={{ fontSize: 12, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div><div className="mono" style={{ fontSize: 11, flexShrink: 0 }}><span style={{ color: done ? C.good : C.ink, fontWeight: 600 }}>{m.rounds}</span><span style={{ color: C.muted }}>/{m.target}</span></div></div><div style={{ height: 2, background: C.lineSoft, marginTop: 5, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: done ? C.good : m.color }} /></div></div>
+                <div style={{ display: 'flex', gap: 3 }}><button onClick={() => setMaterials(materials.map(x => x.id === m.id && x.rounds > 0 ? { ...x, rounds: x.rounds - 1 } : x))} style={{ background: C.bg, color: C.muted, border: `1px solid ${C.line}`, padding: '4px 6px', cursor: 'pointer' }}><Minus size={11} /></button><button onClick={() => setMaterials(materials.map(x => x.id === m.id ? { ...x, rounds: x.rounds + 1, lastDate: today } : x))} style={{ background: C.ink, color: '#fff', border: 'none', padding: '4px 6px', cursor: 'pointer' }}><Plus size={11} /></button><button onClick={() => { if(confirm('삭제할까요?')) setMaterials(materials.filter(x => x.id !== m.id)) }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}><X size={11} color={C.muted} /></button></div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
 
 /* ============================================================ REPORT ============================================================ */
-function ReportView({ today, settings, logs }) {
-  const weekStart = weekStartOf(today);
-  const wDates = weekDays(weekStart);
+function ReportView({ today, settings, logs, examScores, materials }) {
+  const weekStart = weekStartOf(today); const wDates = weekDays(weekStart);
   const weeklyBySubject = {}; Object.keys(SUBJECTS).forEach(s => weeklyBySubject[s] = 0);
   wDates.forEach(d => { Object.entries(logs[d] || {}).forEach(([k, v]) => { const [sub] = k.split('::'); if (weeklyBySubject[sub] !== undefined) weeklyBySubject[sub] += v || 0; }); });
   const weeklyData = Object.entries(weeklyBySubject).map(([sub, m]) => ({ name: SUBJECTS[sub].short, fullName: sub, minutes: m, target: settings.weeklyTargets[sub] || 0, color: SUBJECTS[sub].color }));
 
+  const dailyData = useMemo(() => { const arr = []; for (let i = 13; i >= 0; i--) { const d = addDays(today, -i); const total = Object.values(logs[d] || {}).reduce((s, t) => s + (t || 0), 0); arr.push({ date: d.slice(5).replace('-', '/'), minutes: total, hours: Math.round(total/60*10)/10 }); } return arr; }, [today, logs]);
+  const typeBreakdown = useMemo(() => { const out = {}; Object.keys(SUBJECTS).forEach(s => out[s] = {}); Object.values(logs).forEach(dl => { Object.entries(dl).forEach(([k, v]) => { const [sub, type] = k.split('::'); if (out[sub]) out[sub][type] = (out[sub][type] || 0) + (v || 0); }); }); return out; }, [logs]);
+  const allMin = Object.values(logs).reduce((s, dl) => s + Object.values(dl).reduce((a,b) => a+b, 0), 0); const studyDays = Object.keys(logs).length; const avgPerDay = studyDays > 0 ? allMin / studyDays : 0;
+  const mockAvg = useMemo(() => { const out = {}; Object.keys(SUBJECTS).filter(s => s !== '국제거래법').forEach(s => { const subScores = examScores.filter(es => es.subject === s); if (subScores.length === 0) { out[s] = null; return; } const avg = subScores.reduce((a,b) => a + b.wrong, 0) / subScores.length; out[s] = { avg: Math.round(avg * 10) / 10, count: subScores.length }; }); return out; }, [examScores]);
+
   return (
     <div className="fadeIn" style={{ padding: '18px 0 24px' }}>
-      <h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600, marginBottom: 16 }}>리포트</h1>
+      <div style={{ marginBottom: 16 }}><h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>리포트</h1><div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>총 학습일 {studyDays}일 · 누적 {fmtHour(allMin)} · 일평균 {fmtHour(avgPerDay)}</div></div>
       <SectionTitle>주간 목표 (이번 주)</SectionTitle>
-      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '14px', marginBottom: 18 }}>
+      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '14px 14px', marginBottom: 18 }}>
         {weeklyData.map(w => {
           const pct = w.target > 0 ? Math.min(100, (w.minutes / w.target) * 100) : 0;
           return (
             <div key={w.fullName} style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}><span className="kserif" style={{ fontSize: 12, fontWeight: 600, color: w.color }}>{w.fullName}</span><span className="mono" style={{ fontSize: 10, color: C.muted }}>{fmtHour(w.minutes)} / {fmtHour(w.target)}</span></div>
-              <div style={{ height: 4, background: C.lineSoft, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width:
+              <div style={{ height: 4, background: C.lineSoft, position: 'relative' }}><div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: pct >= 100 ? C.good : w.color }} /></div>
+            </div>
+          );
+        })}
+      </div>
+      <SectionTitle>최근 14일 학습 시간</SectionTitle>
+      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '14px 8px 10px', marginBottom: 18 }}>
+        <ResponsiveContainer width="100%" height={160}>
+          <BarChart data={dailyData} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
+            <CartesianGrid stroke={C.lineSoft} strokeDasharray="3 3" />
+            <XAxis dataKey="date" tick={{ fontSize: 9, fill: C.muted }} interval={1} />
+            <YAxis tick={{ fontSize: 9, fill: C.muted }} />
+            <Tooltip contentStyle={{ background: C.paper, border: `1px solid ${C.line}`, fontSize: 11 }} formatter={v => fmtMin(v)} />
+            <Bar dataKey="minutes" fill={C.accent} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      {Object.values(mockAvg).some(v => v) && (
+        <>
+          <SectionTitle>객관식 평균 (전체 기록 기준)</SectionTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 18 }}>
+            {Object.entries(mockAvg).map(([sub, m]) => (
+              <div key={sub} style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '10px 8px', textAlign: 'center' }}>
+                <div className="kserif" style={{ fontSize: 11, fontWeight: 600, color: SUBJECTS[sub].color }}>{sub}</div>
+                {m ? <><div className="serif" style={{ fontSize: 20, fontWeight: 600, marginTop: 3 }}>-{m.avg}</div><div className="mono" style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>{m.count}회 평균</div></> : <div style={{ fontSize: 10, color: C.muted, marginTop: 6 }}>기록 없음</div>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <SectionTitle>과목별 유형 분포 (누적)</SectionTitle>
+      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '8px 14px', marginBottom: 18 }}>
+        {Object.keys(SUBJECTS).map(sub => {
+          const types = typeBreakdown[sub] || {}; const total = Object.values(types).reduce((a,b) => a+b, 0);
+          if (total === 0) return <div key={sub} style={{ padding: '10px 0', borderBottom: `1px dashed ${C.lineSoft}` }}><span className="kserif" style={{ fontSize: 11, fontWeight: 600, color: SUBJECTS[sub].color }}>{sub}</span><span style={{ fontSize: 10, color: C.muted, marginLeft: 8 }}>기록 없음</span></div>;
+          return (
+            <div key={sub} style={{ padding: '10px 0', borderBottom: `1px dashed ${C.lineSoft}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}><span className="kserif" style={{ fontSize: 11, fontWeight: 600, color: SUBJECTS[sub].color }}>{sub}</span><span className="mono" style={{ fontSize: 10, color: C.muted }}>{fmtHour(total)}</span></div>
+              <div style={{ display: 'flex', height: 6, background: C.lineSoft, overflow: 'hidden' }}>
+                {SUBJECTS[sub].types.map((t, i) => { const v = types[t.key] || 0; const pct = (v / total) * 100; if (pct === 0) return null; return <div key={t.key} style={{ width: `${pct}%`, background: SUBJECTS[sub].color, opacity: 0.4 + (i / SUBJECTS[sub].types.length) * 0.6, transition: 'all .3s' }} title={`${t.label} ${fmtMin(v)}`} />; })}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 5, fontSize: 9, color: C.muted }}>
+                {SUBJECTS[sub].types.map(t => { const v = types[t.key] || 0; if (v === 0) return null; return <span key={t.key}>{t.label} <span className="mono" style={{ color: C.ink }}>{fmtMin(v)}</span></span>; })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {materials.length > 0 && (
+        <>
+          <SectionTitle>자료 회독 현황</SectionTitle>
+          <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '8px 14px', marginBottom: 18 }}>
+            {Object.keys(SUBJECTS).map(sub => {
+              const ms = materials.filter(m => m.subject === sub); if (ms.length === 0) return null;
+              const totalRounds = ms.reduce((s,m) => s + m.rounds, 0); const totalTarget = ms.reduce((s,m) => s + m.target, 0); const completed = ms.filter(m => m.rounds >= m.target).length;
+              return (
+                <div key={sub} style={{ padding: '8px 0', borderBottom: `1px dashed ${C.lineSoft}`, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span className="kserif" style={{ fontSize: 12, fontWeight: 600, color: SUBJECTS[sub].color }}>{sub}</span><span className="mono" style={{ fontSize: 10, color: C.muted }}>완료 {completed}/{ms.length} · 누적 {totalRounds}/{totalTarget}회</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================ SETTINGS ============================================================ */
+function SettingsView({ settings, setSettings, onLogout }) {
+  const [examDate, setExamDate] = useState(settings.examDate); const [examLabel, setExamLabel] = useState(settings.examLabel);
+  const [targets, setTargets] = useState(settings.weeklyTargets); const [cycleDefs, setCycleDefs] = useState(settings.cycleDefs);
+  const [mockExams, setMockExams] = useState(settings.mockExams || []); const [d30Mode, setD30Mode] = useState(settings.d30Mode); const [autoGen, setAutoGen] = useState(settings.autoGenMockReview);
+
+  function save() { setSettings({ ...settings, examDate, examLabel, weeklyTargets: targets, cycleDefs, mockExams, d30Mode, autoGenMockReview: autoGen }); alert('저장되었습니다'); }
+  function updCycleBlock(cycleId, blockIdx, days) { setCycleDefs(cycleDefs.map(c => c.id === cycleId ? { ...c, blocks: c.blocks.map((b, i) => i === blockIdx ? { ...b, days: parseInt(days) || 1 } : b) } : c)); }
+  function addMock() { setMockExams([...mockExams, { id: uid(), label: `모의고사 ${mockExams.length + 1}`, start: examDate, end: examDate }]); }
+  function updMock(id, field, val) { setMockExams(mockExams.map(m => m.id === id ? { ...m, [field]: val } : m)); }
+
+  return (
+    <div className="fadeIn" style={{ padding: '18px 0 24px' }}>
+      <div style={{ marginBottom: 14 }}><h1 className="serif" style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>설정</h1></div>
+      <SectionTitle>시험</SectionTitle>
+      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 18 }}>
+        <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>시험 이름</label>
+        <input value={examLabel} onChange={e => setExamLabel(e.target.value)} style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px 10px', fontSize: 12, marginBottom: 10, outline: 'none' }} />
+        <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>시험 날짜</label>
+        <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} style={{ width: '100%', background: C.bg, border: `1px solid ${C.line}`, padding: '8px 10px', fontSize: 12, outline: 'none' }} />
+      </div>
+      <SectionTitle>모의고사 일정</SectionTitle>
+      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 18 }}>
+        {mockExams.map(m => (
+          <div key={m.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: `1px dashed ${C.lineSoft}` }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 5 }}><input value={m.label} onChange={e => updMock(m.id, 'label', e.target.value)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '6px 8px', fontSize: 11, outline: 'none' }} /><button onClick={() => setMockExams(mockExams.filter(x => x.id !== m.id))} style={{ background: 'none', border: `1px solid ${C.lineSoft}`, padding: '6px 8px', cursor: 'pointer', color: C.muted }}><Trash2 size={12} /></button></div>
+            <div style={{ display: 'flex', gap: 6 }}><input type="date" value={m.start} onChange={e => updMock(m.id, 'start', e.target.value)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '5px 8px', fontSize: 11, outline: 'none' }} /><span style={{ alignSelf: 'center', color: C.muted, fontSize: 11 }}>~</span><input type="date" value={m.end} onChange={e => updMock(m.id, 'end', e.target.value)} style={{ flex: 1, background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '5px 8px', fontSize: 11, outline: 'none' }} /></div>
+          </div>
+        ))}
+        <button onClick={addMock} style={{ width: '100%', background: C.bg, border: `1px dashed ${C.line}`, padding: '8px', cursor: 'pointer', fontSize: 11, color: C.muted }}>+ 모의고사 추가</button>
+      </div>
+      <SectionTitle>사이클 (블록 일수)</SectionTitle>
+      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 18 }}>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>순서: 민사법(+국제거래법) → 형사법 → 공법<br/>각 모의고사 / 본시험 직전부터 거꾸로 깔립니다.</div>
+        {cycleDefs.map(c => (
+          <div key={c.id} style={{ marginBottom: 12 }}>
+            <div className="kserif" style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{c.label}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {c.blocks.map((b, i) => (
+                <div key={i} style={{ background: C.bg, border: `1px solid ${C.lineSoft}`, padding: '6px 8px' }}>
+                  <div style={{ fontSize: 10, color: SUBJECTS[b.subject].color, fontWeight: 600, marginBottom: 3 }}>{b.subject}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><input type="number" value={b.days} onChange={e => updCycleBlock(c.id, i, e.target.value)} min={1} style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, fontWeight: 600, color: C.ink, outline: 'none', fontFamily: "'JetBrains Mono', monospace" }} /><span style={{ fontSize: 10, color: C.muted }}>일</span></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <SectionTitle>주간 학습 시간 목표 (분)</SectionTitle>
+      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: 14, marginBottom: 18 }}>
+        {Object.keys(SUBJECTS).map(sub => (
+          <div key={sub} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span className="kserif" style={{ fontSize: 12, fontWeight: 600, color: SUBJECTS[sub].color }}>{sub}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><input type="number" value={targets[sub] || 0} onChange={e => setTargets({ ...targets, [sub]: parseInt(e.target.value) || 0 })} style={{ width: 80, background: C.bg, border: `1px solid ${C.line}`, padding: '5px 8px', fontSize: 12, textAlign: 'right', outline: 'none', fontFamily: "'JetBrains Mono', monospace" }} /><span style={{ fontSize: 11, color: C.muted, minWidth: 36 }}>{fmtHour(targets[sub] || 0)}</span></div>
+          </div>
+        ))}
+      </div>
+      <SectionTitle>자동화</SectionTitle>
+      <div style={{ background: C.paper, border: `1px solid ${C.line}`, padding: '4px 0', marginBottom: 18 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', borderBottom: `1px dashed ${C.lineSoft}` }}>
+          <input type="checkbox" checked={d30Mode} onChange={e => setD30Mode(e.target.checked)} />
+          <div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600 }}>D-30/D-7 모드 배너</div><div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>시험 30/7일 전 압축/벼락치기 모드 알림</div></div>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={autoGen} onChange={e => setAutoGen(e.target.checked)} />
+          <div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 600 }}>모의고사 리뷰 자동 생성</div><div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>모의고사 종료 후 1~7일 동안 리뷰 할 일 자동 추가</div></div>
+        </label>
+      </div>
+      <button onClick={save} style={{ width: '100%', background: C.ink, color: '#fff', border: 'none', padding: '12px', cursor: 'pointer', fontSize: 13, marginBottom: 14, fontWeight: 600 }}>저장하기</button>
+      <SectionTitle>계정</SectionTitle>
+      <button onClick={onLogout} style={{ width: '100%', background: C.paper, border: `1px solid ${C.accent}`, color: C.accent, padding: '10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>로그아웃 (클라우드 동기화 중지)</button>
+      <div style={{ textAlign: 'center', fontSize: 10, color: C.muted, marginTop: 30, fontStyle: 'italic' }}>Bar Exam Journal · 임현준 · 16회 변시</div>
+    </div>
+  );
+}
