@@ -13,7 +13,7 @@ import {
   Settings as SettingsIcon, ChevronLeft, ChevronRight, ChevronDown,
   Home, Target, Clock, Download, RefreshCw, Minus, BookMarked,
   Calendar as CalendarIcon, Square, CheckSquare, Repeat,
-  Layers, FileText, TrendingUp, Smile, Library, LogOut, Cloud, CloudOff,
+  Layers, FileText, TrendingUp, Smile, Library, LogOut, Cloud, CloudOff, Sheet,
 } from 'lucide-react';
 
 /* ============================================================ FIREBASE CONFIG ============================================================ */
@@ -282,6 +282,165 @@ function downloadICS(content, filename = '변시일정.ics') {
   a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 200);
 }
+
+/* SheetJS(XLSX) 동적 로드 */
+let _xlsxPromise = null;
+function loadXLSX() {
+  if (typeof window !== 'undefined' && window.XLSX) return Promise.resolve(window.XLSX);
+  if (_xlsxPromise) return _xlsxPromise;
+  _xlsxPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = () => reject(new Error('XLSX 로드 실패'));
+    document.head.appendChild(s);
+  });
+  return _xlsxPromise;
+}
+
+async function exportXLSX(state, filename) {
+  const XLSX = await loadXLSX();
+  const wb = XLSX.utils.book_new();
+  const {
+    settings = {}, logs = {}, tracks = {}, todos = {}, examScores = [],
+    materials = [], reviews = [], books = [], schedules = [], moods = {},
+  } = state;
+
+  // [1] 요약
+  const totalMin = Object.values(logs).reduce((s, dl) => s + Object.values(dl).reduce((a,b)=>a+(b||0),0), 0);
+  const studyDays = Object.keys(logs).length;
+  const summary = [
+    ['Bar Exam Journal — 데이터 내보내기'],
+    ['생성일', new Date().toISOString().slice(0,19).replace('T',' ')],
+    [],
+    ['시험 정보'],
+    ['시험명', settings.examLabel || ''],
+    ['시험일', settings.examDate || ''],
+    ['D-day', settings.examDate ? daysDiff(todayISO(), settings.examDate) : ''],
+    [],
+    ['누적 학습'],
+    ['총 학습 시간(분)', totalMin],
+    ['총 학습 시간(시간)', Math.round(totalMin/60*10)/10],
+    ['학습 일수', studyDays],
+    ['일평균(분)', studyDays > 0 ? Math.round(totalMin/studyDays) : 0],
+    [],
+    ['주간 목표 (분)'],
+    ...Object.entries(settings.weeklyTargets || {}).map(([k,v]) => [k, v]),
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), '요약');
+
+  // [2] 일별 학습시간 (날짜 × 과목·유형)
+  const allKeys = new Set();
+  Object.values(logs).forEach(dl => Object.keys(dl).forEach(k => allKeys.add(k)));
+  const sortedKeys = [...allKeys].sort();
+  const dateRows = Object.keys(logs).sort();
+  const logHeader = ['날짜', '요일', ...sortedKeys, '합계(분)', '한줄메모'];
+  const logRows = [logHeader];
+  const dows = ['일','월','화','수','목','금','토'];
+  dateRows.forEach(d => {
+    const dl = logs[d] || {};
+    const dt = new Date(d + 'T00:00:00');
+    const sum = Object.values(dl).reduce((a,b) => a+(b||0), 0);
+    const row = [d, dows[dt.getDay()]];
+    sortedKeys.forEach(k => row.push(dl[k] || 0));
+    row.push(sum);
+    row.push(moods[d] || '');
+    logRows.push(row);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(logRows), '학습시간');
+
+  // [3] 5트랙 일지
+  const trackRows = [['날짜', '요일', ...TRACK_TYPES.map(t => t.label), '한줄메모']];
+  Object.keys(tracks).sort().forEach(d => {
+    const dt = new Date(d + 'T00:00:00');
+    const t = tracks[d] || {};
+    const row = [d, dows[dt.getDay()]];
+    TRACK_TYPES.forEach(tt => {
+      const v = t[tt.key] || {};
+      let cell = '';
+      if (v.done) cell = '✓';
+      if (v.text) cell = (cell ? cell + ' ' : '') + v.text;
+      row.push(cell);
+    });
+    row.push(moods[d] || '');
+    trackRows.push(row);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trackRows), '5트랙');
+
+  // [4] 객관식 회차 점수
+  const scoreRows = [['날짜', '회차', '과목', '유형', '틀림', '총문항', '메모']];
+  [...examScores].sort((a,b) => a.date.localeCompare(b.date) || a.subject.localeCompare(b.subject)).forEach(s => {
+    scoreRows.push([s.date, s.round, s.subject, s.type || '선택형', s.wrong, s.total || '', s.note || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreRows), '회차점수');
+
+  // [5] 자료 회독
+  const matRows = [['자료명', '과목', '현재 회독', '목표 회독', '진행률(%)']];
+  materials.forEach(m => {
+    const pct = m.target > 0 ? Math.round((m.rounds / m.target) * 100) : 0;
+    matRows.push([m.name, m.subject, m.rounds, m.target, pct]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matRows), '자료회독');
+
+  // [6] 주제 회독
+  const reviewRows = [['주제', '과목', '생성일', '마지막 회독', '회독차', '메모']];
+  reviews.forEach(r => {
+    reviewRows.push([r.title, r.subject, r.created, r.lastReviewed, r.cycleIndex + 1, r.note || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(reviewRows), '주제회독');
+
+  // [7] 문제집
+  const bookRows = [['제목', '과목', '현재', '목표', '진행률(%)', '메모']];
+  books.forEach(b => {
+    const pct = b.target > 0 ? Math.round((b.current / b.target) * 100) : 0;
+    bookRows.push([b.title, b.subject, b.current, b.target, pct, b.note || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bookRows), '문제집');
+
+  // [8] 일정 (모의 + 본시험 + 사용자)
+  const schedRows = [['종류', '제목', '시작일', '종료일', '기간(일)', '색상']];
+  if (settings.examDate) {
+    schedRows.push(['본시험', settings.examLabel || '', settings.examDate, settings.examDate, 1, '']);
+  }
+  (settings.mockExams || []).forEach(m => {
+    schedRows.push(['모의고사', m.label, m.start, m.end, daysDiff(m.start, m.end) + 1, '']);
+  });
+  schedules.forEach(s => {
+    schedRows.push(['일정', s.title, s.start, s.end, daysDiff(s.start, s.end) + 1, s.color || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(schedRows), '일정');
+
+  // [9] 할 일
+  const todoRows = [['날짜', '제목', '완료', '비고']];
+  Object.keys(todos).sort().forEach(d => {
+    (todos[d] || []).filter(t => !t.hidden).forEach(t => {
+      todoRows.push([d, t.title, t.done ? '✓' : '', t.fromMock ? '모의고사 자동생성' : '']);
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(todoRows), '할일');
+
+  // 컬럼 너비 자동 조정 (대략)
+  wb.SheetNames.forEach(name => {
+    const ws = wb.Sheets[name];
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    const cols = [];
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      let max = 8;
+      for (let R = range.s.r; R <= range.e.r; R++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+        if (cell && cell.v != null) {
+          const len = String(cell.v).length;
+          if (len > max) max = Math.min(40, len + 2);
+        }
+      }
+      cols.push({ wch: max });
+    }
+    ws['!cols'] = cols;
+  });
+
+  XLSX.writeFile(wb, filename);
+}
+
 function weekStartOf(iso) {
   const d = new Date(iso + 'T00:00:00');
   const day = d.getDay();
@@ -663,6 +822,17 @@ VITE_FIREBASE_APP_ID`}</pre>
               const a = document.createElement('a');
               a.href = url; a.download = `변시기록_${today}.json`; a.click();
               URL.revokeObjectURL(url);
+            }}
+            onExportXLSX={async () => {
+              try {
+                await exportXLSX({
+                  settings, logs, tracks, todos, examScores,
+                  materials, reviews, books, schedules, moods,
+                }, `변시기록_${today.replaceAll('-','')}.xlsx`);
+              } catch (e) {
+                console.error(e);
+                alert('엑셀 내보내기 실패: ' + (e.message || e));
+              }
             }}
           />
         )}
@@ -2906,7 +3076,7 @@ function ReportView({ today, settings, logs, examScores, materials }) {
 
 /* ============================================================ SETTINGS ============================================================ */
 
-function SettingsView({ settings, setSettings, schedules = [], setSchedules, user, onLogout, onReset, onExport }) {
+function SettingsView({ settings, setSettings, schedules = [], setSchedules, user, onLogout, onReset, onExport, onExportXLSX }) {
   const [examDate, setExamDate] = useState(settings.examDate);
   const [examLabel, setExamLabel] = useState(settings.examLabel);
   const [targets, setTargets] = useState(settings.weeklyTargets);
@@ -3153,13 +3323,22 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, use
       </div>
 
       <SectionTitle>데이터</SectionTitle>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:18 }}>
-        <button onClick={onExport} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'10px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
-          <Download size={13} /> 내보내기
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        <button onClick={onExportXLSX}
+          style={{ width:'100%', background:'#1F6B3F', color:'#fff', border:'none', padding:'12px', cursor:'pointer', fontSize:13, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', gap:6, marginBottom:8 }}>
+          <Sheet size={14} /> 엑셀(.xlsx)로 내보내기
         </button>
-        <button onClick={onReset} style={{ background:C.paper, border:`1px solid ${C.accent}`, color:C.accent, padding:'10px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
-          <RefreshCw size={13} /> 전체 초기화
-        </button>
+        <div style={{ fontSize:10, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
+          요약 / 학습시간 / 5트랙 / 회차점수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 — 9개 시트로 정리됩니다.
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+          <button onClick={onExport} style={{ background:C.bg, border:`1px solid ${C.line}`, padding:'10px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+            <Download size={13} /> JSON 백업
+          </button>
+          <button onClick={onReset} style={{ background:C.bg, border:`1px solid ${C.accent}`, color:C.accent, padding:'10px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+            <RefreshCw size={13} /> 전체 초기화
+          </button>
+        </div>
       </div>
 
       {user && (
