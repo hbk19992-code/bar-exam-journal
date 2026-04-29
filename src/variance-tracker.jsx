@@ -214,7 +214,7 @@ return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${p
 })();
 const dateOnly = iso => iso.replaceAll('-', '');
 // ICS 줄바꿈은 CRLF, 텍스트 안 콤마/세미콜론은 백슬래시 이스케이프
-const esc = s => String(s || '').replace(/\/g, '\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+const esc = s => String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 
 const events = [];
 // 본시험
