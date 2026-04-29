@@ -853,9 +853,10 @@ export default function App() {
         input, textarea, button, select { font-family: inherit; color: inherit; }
         input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
-        .serif { font-family: `Fraunces`, `Noto Serif KR`, serif; }
-        .kserif { font-family: `Noto Serif KR`, serif; }
-        .mono { font-family: `JetBrains Mono`, monospace; font-variant-numeric: tabular-nums; }
+        .serif { font-family: 'Fraunces', 'Noto Serif KR', serif; }
+        .kserif { font-family: 'Noto Serif KR', serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+
         .fadeIn { animation: fade .35s ease both; }
         @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
         .lift:active { transform: scale(0.98); }
