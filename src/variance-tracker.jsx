@@ -17,7 +17,7 @@ Layers, FileText, TrendingUp, Smile, Library, LogOut, Cloud, CloudOff, Sheet,
 } from 'lucide-react';
 
 /* ============================================================ FIREBASE CONFIG ============================================================ */
-/* 본인 Firebase 콘솔 → 프로젝트 설정 → 일반 → 내 앱에서 복사한 값으로 교체하세요 */
+/* 본인 Firebase 콘솔 -> 프로젝트 설정 -> 일반 -> 내 앱에서 복사한 값으로 교체하세요 */
 const firebaseConfig = {
 apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
 authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -88,14 +88,14 @@ const TRACK_TYPES = [
 { key: 'aux',      label: '최판/보조자료', short: '보', color: '#8B6914', placeholder: '예: 캡슐, 로만, 찌라시' },
 ];
 
-/* 일정(장기 계획) 전용 팔레트 — 과목 색(남색/빨강/녹색/금색)과 겹치지 않는 보조 톤 */
+/* 일정(장기 계획) 전용 팔레트 - 과목 색(남색/빨강/녹색/금색)과 겹치지 않는 보조 톤 */
 const SCHEDULE_PALETTE = [
-'#E08A6E', // coral · 산호
-'#4A9DA0', // teal · 청록
-'#9985B5', // lavender · 라벤더
-'#C9A24A', // mustard · 머스타드
-'#7E9B6C', // moss · 모스
-'#6E8AAB', // slate-blue · 슬레이트
+'#E08A6E', // coral - 산호
+'#4A9DA0', // teal - 청록
+'#9985B5', // lavender - 라벤더
+'#C9A24A', // mustard - 머스타드
+'#7E9B6C', // moss - 모스
+'#6E8AAB', // slate-blue - 슬레이트
 ];
 
 /* 본인 Google 이메일을 아래 배열에 추가하세요. 이 이메일로 로그인했을 때만 15회 변시 점수가 표시됩니다. */
@@ -150,11 +150,11 @@ const DEFAULT_MATERIALS = [
 const MOCK_REVIEW_TEMPLATES = [
 { offset: 1, title: '휴식' },
 { offset: 2, title: '휴식' },
-{ offset: 3, title: '공사례 리뷰 — 목차 / 쟁점 / 분량' },
+{ offset: 3, title: '공사례 리뷰 - 목차 / 쟁점 / 분량' },
 { offset: 3, title: '공기록 리뷰' },
-{ offset: 4, title: '형사례 리뷰 — 최판 보완' },
+{ offset: 4, title: '형사례 리뷰 - 최판 보완' },
 { offset: 4, title: '형기록 리뷰' },
-{ offset: 5, title: '민기록 리뷰 — 청구원인 / 작성요령' },
+{ offset: 5, title: '민기록 리뷰 - 청구원인 / 작성요령' },
 { offset: 5, title: '민사례 리뷰' },
 { offset: 6, title: '공객 오답 정리' },
 { offset: 6, title: '형객 오답 정리' },
@@ -205,7 +205,7 @@ return `${m}분`;
 function fmtHour(n) { return `${Math.round((n / 60) * 10) / 10}h`; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
-/* ICS (Apple/Google Calendar) 내보내기 — 모든 일정·모의고사·본시험을 .ics 한 파일로 */
+/* ICS (Apple/Google Calendar) 내보내기 - 모든 일정·모의고사·본시험을 .ics 한 파일로 */
 function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
 const pad = n => String(n).padStart(2, '0');
 const stamp = (() => {
@@ -214,7 +214,7 @@ return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${p
 })();
 const dateOnly = iso => iso.replaceAll('-', '');
 // ICS 줄바꿈은 CRLF, 텍스트 안 콤마/세미콜론은 백슬래시 이스케이프
-const esc = s => String(s || '').replace(/\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+const esc = s => String(s || '').replace(/\/g, '\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 
 const events = [];
 // 본시험
@@ -235,7 +235,7 @@ uid: `mock-${m.id}@bar-journal`,
 start: dateOnly(m.start),
 end: dateOnly(addDays(m.end, 1)),
 summary: m.label,
-desc: 'Bar Exam Journal · 모의고사',
+desc: 'Bar Exam Journal - 모의고사',
 });
 });
 // 사용자 일정
@@ -245,7 +245,7 @@ uid: `sched-${s.id}@bar-journal`,
 start: dateOnly(s.start),
 end: dateOnly(addDays(s.end, 1)),
 summary: s.title || '일정',
-desc: 'Bar Exam Journal · 일정',
+desc: 'Bar Exam Journal - 일정',
 });
 });
 
@@ -310,7 +310,7 @@ materials = [], reviews = [], books = [], schedules = [], moods = {},
 const totalMin = Object.values(logs).reduce((s, dl) => s + Object.values(dl).reduce((a,b)=>a+(b||0),0), 0);
 const studyDays = Object.keys(logs).length;
 const summary = [
-['Bar Exam Journal — 데이터 내보내기'],
+['Bar Exam Journal - 데이터 내보내기'],
 ['생성일', new Date().toISOString().slice(0,19).replace('T',' ')],
 [],
 ['시험 정보'],
@@ -659,7 +659,7 @@ setLoaded(true);
 return () => clearTimeout(fallback);
 }, [user]);
 
-// Save (debounced) — single doc per user
+// Save (debounced) - single doc per user
 const saveTimerRef = useRef(null);
 useEffect(() => {
 if (!loaded || !user) return;
@@ -672,7 +672,7 @@ materials, materialLog, examScores, moods, schedules,
 updatedAt: new Date().toISOString(),
 });
 setSyncStatus(ok ? 'saved' : 'error');
-}, 800);
+}, 2500);
 return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
 }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules]);
 
@@ -721,9 +721,9 @@ return (
 <div className="kserif" style={{ fontSize:11, letterSpacing:'0.22em', color:C.accent, fontWeight:600, marginBottom:8 }}>SETUP REQUIRED</div>
 <div className="serif" style={{ fontSize:18, fontWeight:600, color:C.ink, marginBottom:10 }}>Firebase 환경변수가 설정되지 않았습니다</div>
 <div style={{ fontSize:12, color:C.muted, lineHeight:1.7 }}>
-Vercel → Settings → Environment Variables 에 아래 6개를 등록한 뒤 재배포하세요:
+Vercel -> Settings -> Environment Variables 에 아래 6개를 등록한 뒤 재배포하세요:
 <pre style={{ background:C.bg, padding:'10px 12px', marginTop:10, fontSize:10, fontFamily:"'JetBrains Mono', monospace", overflow:'auto' }}>{`VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID`}</pre>
-등록 후 반드시 Deployments → Redeploy 눌러주세요. 환경변수는 새 빌드에만 반영됩니다.
+등록 후 반드시 Deployments -> Redeploy 눌러주세요. 환경변수는 새 빌드에만 반영됩니다.
 </div>
 </div>
 </div>
@@ -752,7 +752,7 @@ return (
 <div style={{ minHeight:'100vh', background:C.bg, display:'grid', placeItems:'center', color:C.muted, fontFamily:"'Noto Serif KR', serif" }}>
 {globalStyles}
 <div style={{ textAlign:'center' }}>
-<div className="kserif" style={{ fontSize:13, letterSpacing:'0.1em' }}>데이터 동기화 중…</div>
+<div className="kserif" style={{ fontSize:13, letterSpacing:'0.1em' }}>데이터 동기화 중...</div>
 <div className="mono" style={{ fontSize:10, marginTop:8, opacity:0.6 }}>{user.email}</div>
 </div>
 </div>
@@ -786,7 +786,7 @@ return (
         user={user}
         onLogout={async () => { await signOut(fbAuth); }}
         onReset={() => {
-          if (confirm('모든 데이터를 지울까요? (설정 포함)\n클라우드의 본인 데이터도 함께 초기화됩니다.')) {
+          if (confirm('모든 데이터를 지울까요? (설정 포함)\\n클라우드의 본인 데이터도 함께 초기화됩니다.')) {
             setLogs({}); setReviews([]); setBooks([]); setTodos({});
             setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
             setExamScores([]); setMoods({}); setSchedules([]); setSettings(DEFAULT_SETTINGS);
@@ -837,7 +837,7 @@ await signInWithPopup(fbAuth, googleProvider);
 } catch (e) {
 console.error(e);
 if (e.code === 'auth/unauthorized-domain') {
-setError('이 도메인은 Firebase에 등록되어 있지 않습니다. Firebase 콘솔 → Authentication → Settings → 승인된 도메인에 현재 주소를 추가해주세요.');
+setError('이 도메인은 Firebase에 등록되어 있지 않습니다. Firebase 콘솔 -> Authentication -> Settings -> 승인된 도메인에 현재 주소를 추가해주세요.');
 } else if (e.code === 'auth/popup-blocked') {
 setError('팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.');
 } else if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') {
@@ -873,7 +873,7 @@ return (
         <path fill="#fff" d="M6.27 13.43c-.21-.64-.33-1.31-.33-2 0-.69.13-1.36.33-2v-2.74H2.74C1.99 8.18 1.5 9.78 1.5 11.43c0 1.65.49 3.25 1.24 4.74l3.53-2.74z"/>
         <path fill="#fff" d="M12.18 5.07c1.55 0 2.93.53 4.03 1.58l3.02-3.02C17.42 1.84 15.03 1 12.18 1 8.05 1 4.49 3.47 2.74 7.69l3.53 2.74c.83-2.5 3.16-4.36 5.91-4.36z"/>
       </svg>
-      {signing ? '로그인 중…' : 'Google로 로그인'}
+      {signing ? '로그인 중...' : 'Google로 로그인'}
     </button>
 
     {error && (
@@ -901,7 +901,7 @@ return (
 <div style={{ maxWidth:720, margin:'0 auto', display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:12 }}>
 <div style={{ minWidth:0, flex:1 }}>
 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-<div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', color:C.muted, textTransform:'uppercase' }}>BAR EXAM JOURNAL · {displayName}</div>
+<div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', color:C.muted, textTransform:'uppercase' }}>BAR EXAM JOURNAL - {displayName}</div>
 {syncStatus === 'saving' && <Cloud size={11} color={C.muted} />}
 {syncStatus === 'saved' && <Cloud size={11} color={C.good} />}
 {syncStatus === 'error' && <CloudOff size={11} color={C.accent} />}
@@ -910,7 +910,7 @@ return (
 </div>
 <div style={{ textAlign:'right', flexShrink:0 }}>
 <div className="serif" style={{ fontSize:32, fontWeight:600, lineHeight:1, color: overdue ? C.muted : C.accent }}>
-D{overdue ? '+' : '−'}{Math.abs(dday)}
+D{overdue ? '+' : '-'}{Math.abs(dday)}
 </div>
 <div className="mono" style={{ fontSize:10, color:C.muted, marginTop:3, letterSpacing:'0.05em' }}>{examDate.replaceAll('-','.')}</div>
 </div>
@@ -975,7 +975,7 @@ return (
 <h2 className="kserif" style={{ margin:0, fontSize:11, letterSpacing:'0.24em', color:C.muted, textTransform:'uppercase', fontWeight:600 }}>{children}</h2>
 {action && (
 <button onClick={action.onClick} style={{ background:'none', border:'none', color:C.accent, fontSize:11, cursor:'pointer', letterSpacing:'0.05em' }}>
-{action.label} ›
+{action.label} >
 </button>
 )}
 </div>
@@ -1155,8 +1155,8 @@ return (
 {Math.abs(dday)}<span style={{ fontSize:28, color:C.muted, marginLeft:6 }}>일</span>
 </div>
 <div className="kserif" style={{ marginTop:14, fontSize:13, color:C.muted, lineHeight:1.6 }}>
-{fmtKDate(settings.examDate)} · {settings.examLabel}<br />
-누적 <span style={{ color:C.ink, fontWeight:600 }}>{daysStudied}일</span> · 연속 <span style={{ color:C.accent, fontWeight:600 }}>{streak}일</span> · 이번 주 <span style={{ color:C.ink, fontWeight:600 }}>{fmtMin(weekTotalMin)}</span>
+{fmtKDate(settings.examDate)} - {settings.examLabel}<br />
+누적 <span style={{ color:C.ink, fontWeight:600 }}>{daysStudied}일</span> - 연속 <span style={{ color:C.accent, fontWeight:600 }}>{streak}일</span> - 이번 주 <span style={{ color:C.ink, fontWeight:600 }}>{fmtMin(weekTotalMin)}</span>
 </div>
 <div style={{ position:'absolute', right:18, top:22, display:'flex', flexDirection:'column', gap:4 }}>
 {[...Array(8)].map((_, i) => <span key={i} style={{ width:10, height:1, background: i < 3 ? C.accent : C.line }} />)}
@@ -1166,19 +1166,19 @@ return (
   {inD7 && (
     <div style={{ background:C.accent, color:'#fff', padding:'12px 16px', marginBottom:14, fontSize:12, lineHeight:1.5 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
-        <span className="kserif" style={{ fontWeight:600, fontSize:13 }}>벼락치기 모드 · D-{dday}</span>
+        <span className="kserif" style={{ fontWeight:600, fontSize:13 }}>벼락치기 모드 - D-{dday}</span>
         <span className="mono" style={{ fontSize:10, opacity:0.85 }}>D-7 진입</span>
       </div>
-      <div style={{ marginTop:6, opacity:0.9 }}>핸드북·찌라시·빈출쟁점·요사 위주 · 새 자료 No</div>
+      <div style={{ marginTop:6, opacity:0.9 }}>핸드북·찌라시·빈출쟁점·요사 위주 - 새 자료 No</div>
     </div>
   )}
   {!inD7 && inD30 && (
     <div style={{ background:'#1A1915', color:'#fff', padding:'12px 16px', marginBottom:14, fontSize:12, lineHeight:1.5 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
-        <span className="kserif" style={{ fontWeight:600, fontSize:13 }}>회독 압축 모드 · D-{dday}</span>
+        <span className="kserif" style={{ fontWeight:600, fontSize:13 }}>회독 압축 모드 - D-{dday}</span>
         <span className="mono" style={{ fontSize:10, opacity:0.7 }}>D-30 진입</span>
       </div>
-      <div style={{ marginTop:6, opacity:0.85 }}>회차 회독 위주로 · 객관식 복수 회차/일</div>
+      <div style={{ marginTop:6, opacity:0.85 }}>회차 회독 위주로 - 객관식 복수 회차/일</div>
     </div>
   )}
 
@@ -1191,7 +1191,7 @@ return (
           <div className="serif" style={{ fontSize:26, fontWeight:600, letterSpacing:'-0.01em', marginTop:6 }}>{todayMock.label}</div>
           <div style={{ marginTop:8, fontSize:12 }}>
             <span className="mono" style={{ opacity:0.9 }}>
-              {todayMock.dayNum}/{todayMock.totalDays}일차 · {todayMock.start.slice(5)} ~ {todayMock.end.slice(5)}
+              {todayMock.dayNum}/{todayMock.totalDays}일차 - {todayMock.start.slice(5)} ~ {todayMock.end.slice(5)}
             </span>
           </div>
           <div style={{ marginTop:10, height:3, background:'rgba(255,255,255,0.2)' }}>
@@ -1205,11 +1205,11 @@ return (
       <CycleCard info={cycleInfo} today={today} />
       {tomorrowInfo && tomorrowInfo.subject !== cycleInfo.subject && (
         <div style={{ background:C.paper, border:`1px solid ${C.line}`, borderTop:'none', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12 }}>
-          <span style={{ color:C.muted, letterSpacing:'0.05em' }}>내일부터 →</span>
+          <span style={{ color:C.muted, letterSpacing:'0.05em' }}>내일부터 -></span>
           <span className="kserif" style={{ color: SUBJECTS[tomorrowInfo.subject].color, fontWeight:600 }}>
             {tomorrowInfo.subject}{tomorrowInfo.subject === '민사법' && ' + 선택법'}
             <span className="mono" style={{ color:C.muted, fontWeight:400, marginLeft:6, fontSize:10 }}>
-              {tomorrowInfo.cycleLabel} · {tomorrowInfo.blockDays}일
+              {tomorrowInfo.cycleLabel} - {tomorrowInfo.blockDays}일
             </span>
           </span>
         </div>
@@ -1220,7 +1220,7 @@ return (
           <span className="kserif" style={{ color: C.accent, fontWeight:600 }}>
             {upcomingMock.label}
             <span className="mono" style={{ color:C.muted, fontWeight:400, marginLeft:6, fontSize:10 }}>
-              D-{daysDiff(today, upcomingMock.start)} · {upcomingMock.start.slice(5)}
+              D-{daysDiff(today, upcomingMock.start)} - {upcomingMock.start.slice(5)}
             </span>
           </span>
         </div>
@@ -1234,7 +1234,7 @@ return (
     </div>
   )}
 
-  <SectionTitle action={{ label:'기록', onClick: () => onGoTo('log') }}>오늘 트랙 · {tracksDone}/5</SectionTitle>
+  <SectionTitle action={{ label:'기록', onClick: () => onGoTo('log') }}>오늘 트랙 - {tracksDone}/5</SectionTitle>
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'10px 12px', marginBottom:18 }}>
     {TRACK_TYPES.map(tt => {
       const slot = todayTracks[tt.key] || {};
@@ -1252,7 +1252,7 @@ return (
             color: slot.done ? C.ink : C.muted, fontWeight: slot.done ? 500 : 400,
             fontStyle: slot.text ? 'normal' : 'italic',
           }}>
-            {slot.text || <span style={{ opacity:0.5 }}>—</span>}
+            {slot.text || <span style={{ opacity:0.5 }}>-</span>}
           </span>
           {slot.done && <Check size={12} color={C.good} strokeWidth={2.5} />}
         </div>
@@ -1285,7 +1285,7 @@ return (
     }}
   />
 
-  <SectionTitle action={{ label:'리포트', onClick: () => onGoTo('report') }}>이번 주 목표 · {weekPct}%</SectionTitle>
+  <SectionTitle action={{ label:'리포트', onClick: () => onGoTo('report') }}>이번 주 목표 - {weekPct}%</SectionTitle>
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'14px 16px', marginBottom:22 }}>
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:10 }}>
       <span className="mono" style={{ fontSize:11, color:C.muted }}>{weekStart.slice(5)} ~ {addDays(weekStart, 6).slice(5)}</span>
@@ -1325,7 +1325,7 @@ return (
             </span>
             <span className="mono" style={{ color: C.ink }}>
               <span style={{ color: C.accent, fontWeight:600 }}>{s.wrong}</span>
-              <span style={{ color: C.muted }}> 틀림 · {s.date.slice(5)}</span>
+              <span style={{ color: C.muted }}> 틀림 - {s.date.slice(5)}</span>
             </span>
           </div>
         ))}
@@ -1367,7 +1367,7 @@ return (
               <span style={{ width:3, alignSelf:'stretch', background:SUBJECTS[r.subject]?.color || C.muted }} />
               <div style={{ minWidth:0 }}>
                 <div className="kserif" style={{ fontSize:14, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title}</div>
-                <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{r.subject} · {r.roundNum}회독</div>
+                <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{r.subject} - {r.roundNum}회독</div>
               </div>
             </div>
             <span className="serif" style={{ fontSize:13, color:C.accent, fontWeight:600 }}>
@@ -1395,6 +1395,28 @@ return { y: d.getFullYear(), m: d.getMonth() };
 });
 const [selected, setSelected] = useState(today);
 const cells = useMemo(() => monthGrid(cursor.y, cursor.m), [cursor]);
+
+/* 셀별로 매 렌더마다 getCycleInfo / getMockExam / dayMinutes를 호출하면
+비싼 사이클 계산이 42번씩 돌아 캘린더가 끊깁니다. cursor/settings/logs 변경 시에만 한 번 계산. */
+const cellMeta = useMemo(() => {
+const meta = {};
+cells.forEach(d => {
+meta[d] = {
+cycle: getCycleInfo(d, settings),
+mock: getMockExam(d, settings),
+};
+});
+return meta;
+}, [cells, settings]);
+
+const dayMinutesMap = useMemo(() => {
+const out = {};
+cells.forEach(d => {
+const lg = logs[d] || {};
+out[d] = Object.values(lg).reduce((s, v) => s + (v || 0), 0);
+});
+return out;
+}, [cells, logs]);
 
 // 일정 추가 모드: null | 'start' | 'end' | 'form'
 const [addMode, setAddMode] = useState(null);
@@ -1437,7 +1459,7 @@ return d >= s && d <= e;
 }
 const palette = SCHEDULE_PALETTE;
 
-// schedules: assign vertical lanes (0/1/2) so multiple overlapping schedules don’t collide visually
+// schedules: assign vertical lanes (0/1/2) so multiple overlapping schedules don't collide visually
 const scheduleLanes = useMemo(() => {
 const lanes = []; // each lane: list of { start, end }
 const out = {};   // id -> lane idx
@@ -1540,7 +1562,7 @@ style={{ background:'transparent', border:`1px solid ${C.line}`, color:C.muted, 
   ) : addMode === 'form' ? (
     <div style={{ background:C.ink, color:'#fff', padding:'12px 14px', marginBottom:8 }}>
       <div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', opacity:0.7, marginBottom:8, fontWeight:600 }}>
-        새 일정 · {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace('-','/')} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace('-','/')}
+        새 일정 - {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace('-','/')} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace('-','/')}
       </div>
       <input value={draftTitle} onChange={e => setDraftTitle(e.target.value)} autoFocus
         placeholder="일정 제목 (예: 김영환 헌법 인강)"
@@ -1561,7 +1583,7 @@ style={{ background:'transparent', border:`1px solid ${C.line}`, color:C.muted, 
   ) : (
     <div style={{ background:C.accent, color:'#fff', padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
       <div className="kserif" style={{ fontSize:12, fontWeight:600 }}>
-        {addMode === 'start' ? '시작일을 탭하세요' : `종료일을 탭하세요 · 시작 ${pendingStart.slice(5).replace('-','/')}`}
+        {addMode === 'start' ? '시작일을 탭하세요' : `종료일을 탭하세요 - 시작 ${pendingStart.slice(5).replace('-','/')}`}
       </div>
       <button onClick={cancelAddMode} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', padding:'4px 10px', fontSize:11, cursor:'pointer' }}>취소</button>
     </div>
@@ -1584,15 +1606,15 @@ style={{ background:'transparent', border:`1px solid ${C.line}`, color:C.muted, 
         const isToday = d === today;
         const isSelected = d === selected;
         const dow = dt.getDay();
-        const mins = dayMinutes(d);
+        const mins = dayMinutesMap[d] || 0;
         const intLevel = intensity(mins);
         const reviewsOnDay = reviewsByDate[d] || [];
         const todosOnDay = (todos[d] || []).filter(t => !t.hidden);
         const todoOpen = todosOnDay.filter(t => !t.done).length;
-        const cInfo = getCycleInfo(d, settings);
+        const cInfo = cellMeta[d]?.cycle;
         const cycleColor = cInfo ? SUBJECTS[cInfo.subject].color : null;
         const isBlockFirst = cInfo?.dayInBlock === 1;
-        const mock = getMockExam(d, settings);
+        const mock = cellMeta[d]?.mock;
         const isMockFirst = mock && d === mock.start;
         const inPending = addMode && isInPending(d);
         const isPendingStart = pendingStart === d;
@@ -1752,7 +1774,7 @@ return (
       </div>
       <div style={{ flex:1, minWidth:0 }}>
         <div className="kserif" style={{ fontSize:14, fontWeight:600 }}>{mock.label}</div>
-        <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{mock.dayNum}/{mock.totalDays}일차 · {mock.start.slice(5)} ~ {mock.end.slice(5)}</div>
+        <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{mock.dayNum}/{mock.totalDays}일차 - {mock.start.slice(5)} ~ {mock.end.slice(5)}</div>
       </div>
     </div>
   )}
@@ -1766,7 +1788,7 @@ return (
         <div className="kserif" style={{ fontSize:14, fontWeight:600 }}>
           {cycleInfo.subject}{cycleInfo.subject === '민사법' && ' + 선택법'}
         </div>
-        <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{cycleInfo.cycleLabel} · 블록 {cycleInfo.dayInBlock}/{cycleInfo.blockDays}일</div>
+        <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{cycleInfo.cycleLabel} - 블록 {cycleInfo.dayInBlock}/{cycleInfo.blockDays}일</div>
       </div>
       {cycleInfo.isBlockLast && (
         <div style={{ fontSize:10, padding:'3px 8px', background:'rgba(255,255,255,0.2)', fontFamily:"'Noto Serif KR', serif", fontWeight:600, letterSpacing:'0.05em' }}>블록 마지막날</div>
@@ -1897,7 +1919,7 @@ return (
     {isToday && (
       <button onClick={onGoToLog}
         style={{ width:'100%', marginTop:10, background:'transparent', border:`1px solid ${C.line}`, color:C.ink, padding:'8px', fontSize:11, cursor:'pointer', fontFamily:"'Noto Serif KR', serif", letterSpacing:'0.05em' }}>
-        오늘 공부 기록하러 가기 →
+        오늘 공부 기록하러 가기 ->
       </button>
     )}
   </div>
@@ -1946,7 +1968,7 @@ style={{ flex:1, background:C.paper, border:`1px solid ${C.line}`, padding:'8px 
 </div>
 
   {date !== today && (
-    <button onClick={() => setDate(today)} style={{ background:'none', border:'none', color:C.accent, fontSize:11, cursor:'pointer', marginBottom:12 }}>오늘로 돌아가기 →</button>
+    <button onClick={() => setDate(today)} style={{ background:'none', border:'none', color:C.accent, fontSize:11, cursor:'pointer', marginBottom:12 }}>오늘로 돌아가기 -></button>
   )}
 
   <TimerSection today={today} logs={logs} setLogs={setLogs} />
@@ -2016,15 +2038,37 @@ setRunning(true);
 }
 function stop(saveIt = true) {
 if (saveIt && startedAt) {
-const mins = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
+const startISO = new Date(startedAt - new Date(startedAt).getTimezoneOffset() * 60000).toISOString().slice(0,10);
+const endISO = todayISO();
 const key = `${subject}::${type}`;
-const dl = logs[today] || {};
-const next = { ...dl, [key]: (dl[key] || 0) + mins };
-setLogs({ ...logs, [today]: next });
+const totalMin = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
+
+  let nextLogs;
+  if (startISO === endISO) {
+    // 같은 날짜에 끝남 - 평소대로
+    const dl = logs[startISO] || {};
+    nextLogs = { ...logs, [startISO]: { ...dl, [key]: (dl[key] || 0) + totalMin } };
+  } else {
+    // 자정 넘김 - 시작일 자정까지 / 자정 이후로 분할
+    const midnight = new Date(endISO + 'T00:00:00').getTime();
+    const startMin = Math.max(0, Math.round((midnight - startedAt) / 60000));
+    const endMin = Math.max(0, totalMin - startMin);
+    nextLogs = { ...logs };
+    if (startMin > 0) {
+      const dl = nextLogs[startISO] || {};
+      nextLogs[startISO] = { ...dl, [key]: (dl[key] || 0) + startMin };
+    }
+    if (endMin > 0) {
+      const dl = nextLogs[endISO] || {};
+      nextLogs[endISO] = { ...dl, [key]: (dl[key] || 0) + endMin };
+    }
+  }
+  setLogs(nextLogs);
 }
 setRunning(false);
 setStartedAt(null);
 setTick(0);
+
 }
 function pauseOrResume() {
 if (running) {
@@ -2115,7 +2159,7 @@ transition:'background .3s, color .3s',
             flex:2, background:'#fff', color: subjectColor,
             border:'none', padding:'10px', cursor:'pointer', fontSize:13, fontWeight:600,
           }}>
-          ■ 정지 · 저장 ({elapsedMin}분)
+          ■ 정지 - 저장 ({elapsedMin}분)
         </button>
       </div>
     )}
@@ -2535,7 +2579,7 @@ function delReview(id) { setReviews(reviews.filter(r => r.id !== id)); }
 return (
 <>
 <div style={{ fontSize:11, color:C.muted, marginBottom:14, lineHeight:1.6 }}>
-주제별 5–3–2 망각곡선 회독
+주제별 5-3-2 망각곡선 회독
 </div>
 <button onClick={() => setShowAdd(true)} style={{ width:'100%', background:C.ink, color:'#fff', border:'none', padding:'10px', cursor:'pointer', marginBottom:14, fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
 <Plus size={14} /> 주제 추가
@@ -2602,7 +2646,7 @@ return (
 </div>
 </div>
 <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
-<span style={{ color:subColor, fontWeight:600 }}>{review.subject}</span> · 회독 {review.cycleIndex + 1}회차
+<span style={{ color:subColor, fontWeight:600 }}>{review.subject}</span> - 회독 {review.cycleIndex + 1}회차
 </div>
 {review.note && <div style={{ fontSize:10, color:C.muted, marginTop:4, fontStyle:'italic' }}>{review.note}</div>}
 </div>
@@ -2938,7 +2982,7 @@ return (
 <div style={{ marginBottom:16 }}>
 <h1 className="serif" style={{ margin:0, fontSize:22, fontWeight:600 }}>리포트</h1>
 <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
-총 학습일 {studyDays}일 · 누적 {fmtHour(allMin)} · 일평균 {fmtHour(avgPerDay)}
+총 학습일 {studyDays}일 - 누적 {fmtHour(allMin)} - 일평균 {fmtHour(avgPerDay)}
 </div>
 </div>
 
@@ -3054,7 +3098,7 @@ return (
             <div key={sub} style={{ padding:'8px 0', borderBottom:`1px dashed ${C.lineSoft}`, display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
               <span className="kserif" style={{ fontSize:12, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
               <span className="mono" style={{ fontSize:10, color:C.muted }}>
-                완료 {completed}/{ms.length} · 누적 {totalRounds}/{totalTarget}회
+                완료 {completed}/{ms.length} - 누적 {totalRounds}/{totalTarget}회
               </span>
             </div>
           );
@@ -3207,7 +3251,7 @@ return (
   <SectionTitle>사이클 (블록 일수)</SectionTitle>
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
     <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
-      순서: 민사법(+선택법) → 형사법 → 공법<br/>
+      순서: 민사법(+선택법) -> 형사법 -> 공법<br/>
       각 모의고사 / 본시험 직전부터 거꾸로 깔립니다.
     </div>
     {cycleDefs.map(c => (
@@ -3300,7 +3344,7 @@ return (
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'14px 14px', marginBottom:18 }}>
     <div style={{ fontSize:11, color:C.muted, lineHeight:1.7, marginBottom:10 }}>
       본시험·모의고사·내가 추가한 모든 일정을 .ics 파일로 받아서 애플 캘린더에 추가할 수 있습니다.
-      <br />아이폰: 다운로드된 파일 탭 → "캘린더에 추가". 구글 캘린더에도 같은 방식으로 가져오기 가능합니다.
+      <br />아이폰: 다운로드된 파일 탭 -> "캘린더에 추가". 구글 캘린더에도 같은 방식으로 가져오기 가능합니다.
     </div>
     <button onClick={() => {
       const ics = buildICS({
@@ -3322,7 +3366,7 @@ return (
       <Sheet size={14} /> 엑셀(.xlsx)로 내보내기
     </button>
     <div style={{ fontSize:10, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
-      요약 / 학습시간 / 5트랙 / 회차점수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 — 9개 시트로 정리됩니다.
+      요약 / 학습시간 / 5트랙 / 회차점수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 - 9개 시트로 정리됩니다.
     </div>
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
       <button onClick={onExport} style={{ background:C.bg, border:`1px solid ${C.line}`, padding:'10px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
@@ -3352,7 +3396,7 @@ return (
   )}
 
   <div style={{ textAlign:'center', fontSize:10, color:C.muted, marginTop:30, fontStyle:'italic' }}>
-    Bar Exam Journal · 16회 변시
+    Bar Exam Journal - 16회 변시
   </div>
 </div>
 
