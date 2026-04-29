@@ -1,23 +1,23 @@
-import { useState, useEffect, useMemo, useRef } from ‘react’;
-import { initializeApp } from ‘firebase/app’;
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
 import {
 getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
-} from ‘firebase/auth’;
-import { getFirestore, doc, getDoc, setDoc } from ‘firebase/firestore’;
+} from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import {
 BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip,
 PieChart, Pie, Cell, CartesianGrid,
-} from ‘recharts’;
+} from 'recharts';
 import {
 Plus, X, Check, Trash2, BookOpen, RotateCw, BarChart3,
 Settings as SettingsIcon, ChevronLeft, ChevronRight, ChevronDown,
 Home, Target, Clock, Download, RefreshCw, Minus, BookMarked,
 Calendar as CalendarIcon, Square, CheckSquare, Repeat,
 Layers, FileText, TrendingUp, Smile, Library, LogOut, Cloud, CloudOff, Sheet,
-} from ‘lucide-react’;
+} from 'lucide-react';
 
 /* ============================================================ FIREBASE CONFIG ============================================================ */
-/* 본인 Firebase 콘솔 → 프로젝트 설정 → 일반 → 내 앱에서 복사한 값으로 교체하세요 */
+/* 본인 Firebase 콘솔 -> 프로젝트 설정 -> 일반 -> 내 앱에서 복사한 값으로 교체하세요 */
 const firebaseConfig = {
 apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
 authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -37,7 +37,7 @@ fbAuth = getAuth(fbApp);
 fbDB = getFirestore(fbApp);
 googleProvider = new GoogleAuthProvider();
 } catch (e) {
-console.error(’[Firebase init failed]’, e);
+console.error('[Firebase init failed]', e);
 }
 }
 
@@ -46,199 +46,131 @@ console.error(’[Firebase init failed]’, e);
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');`;
 
 const C = {
-bg: ‘#F4EEE1’, paper: ‘#FBF7EC’, ink: ‘#1A1915’, muted: ‘#6B6558’,
-line: ‘#CFC7B4’, lineSoft: ‘#E5DFCE’,
-accent: ‘#7A1E1E’, accentSoft: ‘#A84040’,
-good: ‘#3C5A3A’, warn: ‘#B86A1E’, book: ‘#5B4A33’,
-trackTint: ‘#F0E8D2’,
+bg: '#F4EEE1', paper: '#FBF7EC', ink: '#1A1915', muted: '#6B6558',
+line: '#CFC7B4', lineSoft: '#E5DFCE',
+accent: '#7A1E1E', accentSoft: '#A84040',
+good: '#3C5A3A', warn: '#B86A1E', book: '#5B4A33',
+trackTint: '#F0E8D2',
 };
 
 const SUBJECTS = {
-공법: { color: ‘#1E3A5F’, short: ‘공’, types: [
-{ key: ‘선택형’, label: ‘선택형’ },
-{ key: ‘사례형_1문’, label: ‘사례형 1문’ },
-{ key: ‘사례형_2문’, label: ‘사례형 2문’ },
-{ key: ‘기록형’, label: ‘기록형’ },
+공법: { color: '#1E3A5F', short: '공', types: [
+{ key: '선택형', label: '선택형' },
+{ key: '사례형_1문', label: '사례형 1문' },
+{ key: '사례형_2문', label: '사례형 2문' },
+{ key: '기록형', label: '기록형' },
 ]},
-형사법: { color: ‘#7A2828’, short: ‘형’, types: [
-{ key: ‘선택형’, label: ‘선택형’ },
-{ key: ‘사례형_1문’, label: ‘사례형 1문’ },
-{ key: ‘사례형_2문’, label: ‘사례형 2문’ },
-{ key: ‘기록형’, label: ‘기록형’ },
+형사법: { color: '#7A2828', short: '형', types: [
+{ key: '선택형', label: '선택형' },
+{ key: '사례형_1문', label: '사례형 1문' },
+{ key: '사례형_2문', label: '사례형 2문' },
+{ key: '기록형', label: '기록형' },
 ]},
-민사법: { color: ‘#2D5A3D’, short: ‘민’, types: [
-{ key: ‘선택형’, label: ‘선택형’ },
-{ key: ‘사례형_1문’, label: ‘사례형 1문’ },
-{ key: ‘사례형_2문’, label: ‘사례형 2문’ },
-{ key: ‘사례형_3문’, label: ‘사례형 3문’ },
-{ key: ‘기록형’, label: ‘기록형’ },
+민사법: { color: '#2D5A3D', short: '민', types: [
+{ key: '선택형', label: '선택형' },
+{ key: '사례형_1문', label: '사례형 1문' },
+{ key: '사례형_2문', label: '사례형 2문' },
+{ key: '사례형_3문', label: '사례형 3문' },
+{ key: '기록형', label: '기록형' },
 ]},
-선택법: { color: ‘#8B6914’, short: ‘선’, types: [
-{ key: ‘1문’, label: ‘1문’ },
-{ key: ‘2문’, label: ‘2문’ },
+선택법: { color: '#8B6914', short: '선', types: [
+{ key: '1문', label: '1문' },
+{ key: '2문', label: '2문' },
 ]},
 };
 
 // Track types (5 daily slots)
 const TRACK_TYPES = [
-{ key: ‘audio’,    label: ‘청취/청원’,  short: ‘청’, color: ‘#5B4A33’, placeholder: ‘예: 청취, 청원, 요사’ },
-{ key: ‘case’,     label: ‘사례’,      short: ‘사’, color: ‘#7A2828’, placeholder: ‘예: 민 사례, 공 사례 핸드북’ },
-{ key: ‘mcq’,      label: ‘객관식 회차’, short: ‘객’, color: ‘#1E3A5F’, placeholder: ‘예: 14회 공객, 13회 민객’ },
-{ key: ‘memo’,     label: ‘암기장/핸드북’, short: ‘암’, color: ‘#2D5A3D’, placeholder: ‘예: 민 암기장 100p’ },
-{ key: ‘aux’,      label: ‘최판/보조자료’, short: ‘보’, color: ‘#8B6914’, placeholder: ‘예: 캡슐, 로만, 찌라시’ },
+{ key: 'audio',    label: '청취/청원',  short: '청', color: '#5B4A33', placeholder: '예: 청취, 청원, 요사' },
+{ key: 'case',     label: '사례',      short: '사', color: '#7A2828', placeholder: '예: 민 사례, 공 사례 핸드북' },
+{ key: 'mcq',      label: '객관식 회차', short: '객', color: '#1E3A5F', placeholder: '예: 14회 공객, 13회 민객' },
+{ key: 'memo',     label: '암기장/핸드북', short: '암', color: '#2D5A3D', placeholder: '예: 민 암기장 100p' },
+{ key: 'aux',      label: '최판/보조자료', short: '보', color: '#8B6914', placeholder: '예: 캡슐, 로만, 찌라시' },
 ];
 
-/* 일정(장기 계획) 전용 팔레트 — 과목 색(남색/빨강/녹색/금색)과 겹치지 않는 보조 톤 */
+/* 일정(장기 계획) 전용 팔레트 - 과목 색(남색/빨강/녹색/금색)과 겹치지 않는 보조 톤 */
 const SCHEDULE_PALETTE = [
-‘#E08A6E’, // coral · 산호
-‘#4A9DA0’, // teal · 청록
-‘#9985B5’, // lavender · 라벤더
-‘#C9A24A’, // mustard · 머스타드
-‘#7E9B6C’, // moss · 모스
-‘#6E8AAB’, // slate-blue · 슬레이트
+'#E08A6E', // coral - 산호
+'#4A9DA0', // teal - 청록
+'#9985B5', // lavender - 라벤더
+'#C9A24A', // mustard - 머스타드
+'#7E9B6C', // moss - 모스
+'#6E8AAB', // slate-blue - 슬레이트
 ];
 
 /* 본인 Google 이메일을 아래 배열에 추가하세요. 이 이메일로 로그인했을 때만 15회 변시 점수가 표시됩니다. */
 const OWNER_EMAILS = [
-‘hbk19992@gmail.com’,
+'hbk19992@gmail.com',
 ];
 
 const PREV_SCORES = {
 공법: { 선택형: 52.5, 사례형_1문: 48.25, 사례형_2문: 37.45, 기록형: 40.42, total: 178.62, max: 400 },
 형사법: { 선택형: 62.5, 사례형_1문: 50.46, 사례형_2문: 31.99, 기록형: 28.28, total: 173.23, max: 400 },
 민사법: { 선택형: 87.5, 사례형_1문: 79.09, 사례형_2문: 37.36, 사례형_3문: 53.06, 기록형: 85.93, total: 342.94, max: 700 },
-선택법: { ‘1문’: 43.59, ‘2문’: 26.09, total: 69.68, max: 160 },
+선택법: { '1문': 43.59, '2문': 26.09, total: 69.68, max: 160 },
 grandTotal: 764.47, grandMax: 1660,
 };
 
 const CYCLE_DEFS = [
-{ id: 1, label: ‘사이클 1’, blocks: [
-{ subject: ‘민사법’, days: 8 },
-{ subject: ‘형사법’, days: 6 },
-{ subject: ‘공법’, days: 5 },
+{ id: 1, label: '사이클 1', blocks: [
+{ subject: '민사법', days: 8 },
+{ subject: '형사법', days: 6 },
+{ subject: '공법', days: 5 },
 ]},
-{ id: 2, label: ‘사이클 2’, blocks: [
-{ subject: ‘민사법’, days: 5 },
-{ subject: ‘형사법’, days: 3 },
-{ subject: ‘공법’, days: 2 },
+{ id: 2, label: '사이클 2', blocks: [
+{ subject: '민사법', days: 5 },
+{ subject: '형사법', days: 3 },
+{ subject: '공법', days: 2 },
 ]},
 ];
 
 // Default named materials (from real data analysis)
 const DEFAULT_MATERIALS = [
-{ id: ‘mat-1’, name: ‘청취’, subject: ‘민사법’, color: ‘#2D5A3D’, rounds: 0, target: 5 },
-{ id: ‘mat-2’, name: ‘요사’, subject: ‘민사법’, color: ‘#2D5A3D’, rounds: 0, target: 5 },
-{ id: ‘mat-3’, name: ‘청원’, subject: ‘공법’, color: ‘#1E3A5F’, rounds: 0, target: 3 },
-{ id: ‘mat-4’, name: ‘캡슐(형법)’, subject: ‘형사법’, color: ‘#7A2828’, rounds: 0, target: 3 },
-{ id: ‘mat-5’, name: ‘로만(형소)’, subject: ‘형사법’, color: ‘#7A2828’, rounds: 0, target: 3 },
-{ id: ‘mat-6’, name: ‘민 암기장’, subject: ‘민사법’, color: ‘#2D5A3D’, rounds: 0, target: 5 },
-{ id: ‘mat-7’, name: ‘민소 암기장’, subject: ‘민사법’, color: ‘#2D5A3D’, rounds: 0, target: 4 },
-{ id: ‘mat-8’, name: ‘형소 암기장’, subject: ‘형사법’, color: ‘#7A2828’, rounds: 0, target: 4 },
-{ id: ‘mat-9’, name: ‘상 암기장’, subject: ‘민사법’, color: ‘#2D5A3D’, rounds: 0, target: 3 },
-{ id: ‘mat-10’, name: ‘공기록 찌라시’, subject: ‘공법’, color: ‘#1E3A5F’, rounds: 0, target: 3 },
-{ id: ‘mat-11’, name: ‘민기록 찌라시’, subject: ‘민사법’, color: ‘#2D5A3D’, rounds: 0, target: 3 },
-{ id: ‘mat-12’, name: ‘형기록 찌라시’, subject: ‘형사법’, color: ‘#7A2828’, rounds: 0, target: 3 },
-{ id: ‘mat-13’, name: ‘헌 핸드북’, subject: ‘공법’, color: ‘#1E3A5F’, rounds: 0, target: 3 },
-{ id: ‘mat-14’, name: ‘행 핸드북’, subject: ‘공법’, color: ‘#1E3A5F’, rounds: 0, target: 3 },
-{ id: ‘mat-15’, name: ‘민 최판’, subject: ‘민사법’, color: ‘#2D5A3D’, rounds: 0, target: 2 },
-{ id: ‘mat-16’, name: ‘형 최판’, subject: ‘형사법’, color: ‘#7A2828’, rounds: 0, target: 2 },
-{ id: ‘mat-17’, name: ‘헌 최판’, subject: ‘공법’, color: ‘#1E3A5F’, rounds: 0, target: 2 },
-{ id: ‘mat-18’, name: ‘행 최판’, subject: ‘공법’, color: ‘#1E3A5F’, rounds: 0, target: 2 },
+{ id: 'mat-1', name: '청취', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 },
+{ id: 'mat-2', name: '요사', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 },
+{ id: 'mat-3', name: '청원', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 },
+{ id: 'mat-4', name: '캡슐(형법)', subject: '형사법', color: '#7A2828', rounds: 0, target: 3 },
+{ id: 'mat-5', name: '로만(형소)', subject: '형사법', color: '#7A2828', rounds: 0, target: 3 },
+{ id: 'mat-6', name: '민 암기장', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 5 },
+{ id: 'mat-7', name: '민소 암기장', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 4 },
+{ id: 'mat-8', name: '형소 암기장', subject: '형사법', color: '#7A2828', rounds: 0, target: 4 },
+{ id: 'mat-9', name: '상 암기장', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 3 },
+{ id: 'mat-10', name: '공기록 찌라시', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 },
+{ id: 'mat-11', name: '민기록 찌라시', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 3 },
+{ id: 'mat-12', name: '형기록 찌라시', subject: '형사법', color: '#7A2828', rounds: 0, target: 3 },
+{ id: 'mat-13', name: '헌 핸드북', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 },
+{ id: 'mat-14', name: '행 핸드북', subject: '공법', color: '#1E3A5F', rounds: 0, target: 3 },
+{ id: 'mat-15', name: '민 최판', subject: '민사법', color: '#2D5A3D', rounds: 0, target: 2 },
+{ id: 'mat-16', name: '형 최판', subject: '형사법', color: '#7A2828', rounds: 0, target: 2 },
+{ id: 'mat-17', name: '헌 최판', subject: '공법', color: '#1E3A5F', rounds: 0, target: 2 },
+{ id: 'mat-18', name: '행 최판', subject: '공법', color: '#1E3A5F', rounds: 0, target: 2 },
 ];
 
 // Mock review templates: when a mock ends, these todos are auto-generated for the next 7 days
 const MOCK_REVIEW_TEMPLATES = [
-{ offset: 1, title: ‘휴식’ },
-{ offset: 2, title: ‘휴식’ },
-{ offset: 3, title: ‘공사례 리뷰 — 목차 / 쟁점 / 분량’ },
-{ offset: 3, title: ‘공기록 리뷰’ },
-{ offset: 4, title: ‘형사례 리뷰 — 최판 보완’ },
-{ offset: 4, title: ‘형기록 리뷰’ },
-{ offset: 5, title: ‘민기록 리뷰 — 청구원인 / 작성요령’ },
-{ offset: 5, title: ‘민사례 리뷰’ },
-{ offset: 6, title: ‘공객 오답 정리’ },
-{ offset: 6, title: ‘형객 오답 정리’ },
-{ offset: 7, title: ‘민객 오답 정리’ },
-{ offset: 7, title: ‘경제법 리뷰’ },
-];
-
-/* 체크리스트 — 시험 직전·답안 작성 직후 점검용 항목 모음 (Seokw 합격수기 기반 시드) */
-const DEFAULT_CHECKLISTS = [
-{
-id: ‘cl-min-rec’, name: ‘민기록’, subject: ‘민사법’, color: ‘#2D5A3D’,
-items: [
-{ id: ‘cl-mr-1’, text: ‘청구원인 근거 조문 누락 주의 (제214조 등)’, stars: 3 },
-{ id: ‘cl-mr-2’, text: ‘등기 경료 사실 누락 주의’, stars: 3 },
-{ id: ‘cl-mr-3’, text: ‘상속의 경우 피상속인 소유권 취득 및 사망 사실 기재’, stars: 2 },
-{ id: ‘cl-mr-4’, text: ‘양수금 청구 — 채권양도 통지 사실 누락 주의’, stars: 2 },
-{ id: ‘cl-mr-5’, text: ‘청구취지 등기 청구 시 목적 부동산 및 등기번호 누락 주의’, stars: 3 },
-{ id: ‘cl-mr-6’, text: ‘대위청구 + 피보전채권 병합 시 피보전채권 청구를 먼저’, stars: 2 },
-{ id: ‘cl-mr-7’, text: ‘확인의 소 — 확인의 이익, 장래이행 — 미리 청구할 필요 누락 주의’, stars: 2 },
-{ id: ‘cl-mr-8’, text: ‘당사자 법인인 경우 법/주/대 기재’, stars: 1 },
-{ id: ‘cl-mr-9’, text: ‘갱신/해지/대여금 — 표시한 날짜·도달일 모두 기재’, stars: 2 },
-{ id: ‘cl-mr-10’, text: ‘권리취득 원인사실 누락 주의 (ex. 매매를 원인으로…)’, stars: 3 },
-{ id: ‘cl-mr-11’, text: ‘결론 누락 주의’, stars: 3 },
-{ id: ‘cl-mr-12’, text: ‘채무자 여럿인 경우 연대 관계 등 유의’, stars: 2 },
-{ id: ‘cl-mr-13’, text: ‘동시이행·소멸시효 등 항변 의식적으로 검토’, stars: 3 },
-{ id: ‘cl-mr-14’, text: ‘재항변으로 상계 주장 시 상계 요건사실 검토’, stars: 1 },
-{ id: ‘cl-mr-15’, text: ‘근저당권 말소는 동시이행관계 X (cf. 전세권 설정등기 말소)’, stars: 2 },
-{ id: ‘cl-mr-16’, text: ‘사해행위 — 신탁자–제3자 법률행위 대상, 원상회복은 제3자 → 수탁자’, stars: 2 },
-{ id: ‘cl-mr-17’, text: ‘예상 항변 배척 — 주장 자체의 요건사실 서술 必’, stars: 2 },
-{ id: ‘cl-mr-18’, text: ‘소장 부본 송달로 취소/해지 의사표시’, stars: 2 },
-{ id: ‘cl-mr-19’, text: ‘상임법·주임법 — 인도 등으로 대항력 갖추었음 서술 누락 주의’, stars: 2 },
-{ id: ‘cl-mr-20’, text: ‘돈의 성격 특정 (지연손해금 / 이자 / 전부금 등)’, stars: 2 },
-],
-},
-{
-id: ‘cl-cri-rec’, name: ‘형기록’, subject: ‘형사법’, color: ‘#7A2828’,
-items: [
-{ id: ‘cl-cr-1’, text: ‘면소·공소기각·전단무죄 우선 빠르게 기재’, stars: 3 },
-{ id: ‘cl-cr-2’, text: ‘공범 아닌 공동피고인 — 피고인 지위 진술은 증거능력 X’, stars: 3 },
-{ id: ‘cl-cr-3’, text: ‘위수증 나오면 파생증거는 무조건 기재 (인과관계 희석·단절 X)’, stars: 3 },
-{ id: ‘cl-cr-4’, text: ‘증명력 판단 — 일관성/상식·경험칙/객관적 증거/추측 4개 이상’, stars: 2 },
-{ id: ‘cl-cr-5’, text: ‘공소제기일 확인 (공소제기 후 고소 → 제327조 2호 공소기각)’, stars: 2 },
-{ id: ‘cl-cr-6’, text: ‘범행일은 공소시효 쟁점 아니어도 기재’, stars: 1 },
-{ id: ‘cl-cr-7’, text: ‘피고인 제출 증거는 무조건 유리한 정상에 활용’, stars: 2 },
-{ id: ‘cl-cr-8’, text: ‘공동정범↔단독정범, 직접↔간접 — 공소장 변경 없이 직권 인정’, stars: 2 },
-{ id: ‘cl-cr-9’, text: ‘축소사실 — 자백 및 보강증거 기재’, stars: 2 },
-{ id: ‘cl-cr-10’, text: ‘제314조 필요성 — “상당한 수단을 다해도 출석 불가” 기재’, stars: 1 },
-{ id: ‘cl-cr-11’, text: ‘증거능력 없는 증거 검토하면서 피고인 증거부동의 사실 서술’, stars: 2 },
-{ id: ‘cl-cr-12’, text: ‘관습법상 법정지상권 등기 청구 — 목적/범위/존속기간 특정’, stars: 1 },
-{ id: ‘cl-cr-13’, text: ‘위수증 누락 여부 재확인 (사후영장·관련성·참여권·압수목록)’, stars: 3 },
-],
-},
-{
-id: ‘cl-pub-rec’, name: ‘공기록’, subject: ‘공법’, color: ‘#1E3A5F’,
-items: [
-{ id: ‘cl-pr-1’, text: ‘취소소송 외 다른 유형 (무효확인·국가배상·가처분) 검토’, stars: 3 },
-{ id: ‘cl-pr-2’, text: ‘취소소송 피고는 행정청, 국가배상은 국가·지자체’, stars: 3 },
-{ id: ‘cl-pr-3’, text: ‘집행정지/가처분 출제 가능성 대비’, stars: 2 },
-{ id: ‘cl-pr-4’, text: ‘헌법소원·위헌법률심판 청구서 기본 형식’, stars: 2 },
-{ id: ‘cl-pr-5’, text: ‘청구취지 — 처분 특정 (일자·번호 누락 주의)’, stars: 3 },
-],
-},
-{
-id: ‘cl-prelaunch’, name: ‘시험 직전 (D-3 ~ 당일)’, subject: ‘공법’, color: ‘#7A1E1E’,
-items: [
-{ id: ‘cl-pl-1’, text: ‘D-3 ~ D-1: 헌법 최판 3회독’, stars: 3 },
-{ id: ‘cl-pl-2’, text: ‘D-1 저녁: 위헌 판례 키워드 정리’, stars: 3 },
-{ id: ‘cl-pl-3’, text: ‘공법 당일 아침 30분: 위헌 판례 재확인’, stars: 3 },
-{ id: ‘cl-pl-4’, text: ‘형사 당일 아침: 형소 최판 일독’, stars: 3 },
-{ id: ‘cl-pl-5’, text: ‘민사 전날: 민기록 체크리스트 일독’, stars: 3 },
-{ id: ‘cl-pl-6’, text: ‘점심: 다음 교시 핵심 1~2개만, 새 자료 금지’, stars: 2 },
-],
-},
+{ offset: 1, title: '휴식' },
+{ offset: 2, title: '휴식' },
+{ offset: 3, title: '공사례 리뷰 - 목차 / 쟁점 / 분량' },
+{ offset: 3, title: '공기록 리뷰' },
+{ offset: 4, title: '형사례 리뷰 - 최판 보완' },
+{ offset: 4, title: '형기록 리뷰' },
+{ offset: 5, title: '민기록 리뷰 - 청구원인 / 작성요령' },
+{ offset: 5, title: '민사례 리뷰' },
+{ offset: 6, title: '공객 오답 정리' },
+{ offset: 6, title: '형객 오답 정리' },
+{ offset: 7, title: '민객 오답 정리' },
+{ offset: 7, title: '경제법 리뷰' },
 ];
 
 const DEFAULT_SETTINGS = {
-examDate: ‘2027-01-07’,
-examLabel: ‘제16회 변호사시험’,
+examDate: '2027-01-07',
+examLabel: '제16회 변호사시험',
 weeklyTargets: { 공법: 600, 형사법: 600, 민사법: 900, 선택법: 300 },
 cycleDefs: CYCLE_DEFS,
 mockExams: [
-{ id: ‘mock-1’, label: ‘모의고사 1차’, start: ‘2026-06-22’, end: ‘2026-06-26’ },
-{ id: ‘mock-2’, label: ‘모의고사 2차’, start: ‘2026-08-03’, end: ‘2026-08-07’ },
-{ id: ‘mock-3’, label: ‘모의고사 3차’, start: ‘2026-10-16’, end: ‘2026-10-20’ },
+{ id: 'mock-1', label: '모의고사 1차', start: '2026-06-22', end: '2026-06-26' },
+{ id: 'mock-2', label: '모의고사 2차', start: '2026-08-03', end: '2026-08-07' },
+{ id: 'mock-3', label: '모의고사 3차', start: '2026-10-16', end: '2026-10-20' },
 ],
 d30Mode: true, // D-30부터 사이클 대신 회차 회독 모드 권장 알림
 autoGenMockReview: true, // 모의고사 끝나면 리뷰 todo 자동 생성
@@ -250,44 +182,21 @@ function todayISO() {
 const d = new Date();
 return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
-
-/* 새벽 5시를 학습일 경계로 사용 — 새벽 4:59에 측정 정지하면 “어제 날짜”로 저장 */
-const STUDY_DAY_PIVOT_HOUR = 5;
-function studyDayISOFromTimestamp(ts) {
-const d = new Date(ts);
-if (d.getHours() < STUDY_DAY_PIVOT_HOUR) {
-d.setDate(d.getDate() - 1);
-}
-return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-}
-/* 해당 학습일의 다음 5시(=경계)의 timestamp */
-function nextStudyDayBoundary(ts) {
-const d = new Date(ts);
-if (d.getHours() < STUDY_DAY_PIVOT_HOUR) {
-// 같은 날짜의 5시
-d.setHours(STUDY_DAY_PIVOT_HOUR, 0, 0, 0);
-} else {
-// 다음 날 5시
-d.setDate(d.getDate() + 1);
-d.setHours(STUDY_DAY_PIVOT_HOUR, 0, 0, 0);
-}
-return d.getTime();
-}
 function addDays(iso, n) {
-const d = new Date(iso + ‘T00:00:00’);
+const d = new Date(iso + 'T00:00:00');
 d.setDate(d.getDate() + n);
 return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 function daysDiff(fromISO, toISO) {
-return Math.round((new Date(toISO + ‘T00:00:00’) - new Date(fromISO + ‘T00:00:00’)) / 86400000);
+return Math.round((new Date(toISO + 'T00:00:00') - new Date(fromISO + 'T00:00:00')) / 86400000);
 }
 function fmtKDate(iso) {
-const d = new Date(iso + ‘T00:00:00’);
-const days = [‘일’, ‘월’, ‘화’, ‘수’, ‘목’, ‘금’, ‘토’];
+const d = new Date(iso + 'T00:00:00');
+const days = ['일', '월', '화', '수', '목', '금', '토'];
 return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${days[d.getDay()]})`;
 }
 function fmtMin(n) {
-if (!n) return ‘0분’;
+if (!n) return '0분';
 const h = Math.floor(n / 60), m = n % 60;
 if (h && m) return `${h}시간 ${m}분`;
 if (h) return `${h}시간`;
@@ -296,16 +205,16 @@ return `${m}분`;
 function fmtHour(n) { return `${Math.round((n / 60) * 10) / 10}h`; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
-/* ICS (Apple/Google Calendar) 내보내기 — 모든 일정·모의고사·본시험을 .ics 한 파일로 */
+/* ICS (Apple/Google Calendar) 내보내기 - 모든 일정·모의고사·본시험을 .ics 한 파일로 */
 function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
-const pad = n => String(n).padStart(2, ‘0’);
+const pad = n => String(n).padStart(2, '0');
 const stamp = (() => {
 const d = new Date();
 return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
 })();
-const dateOnly = iso => iso.replaceAll(’-’, ‘’);
+const dateOnly = iso => iso.replaceAll('-', '');
 // ICS 줄바꿈은 CRLF, 텍스트 안 콤마/세미콜론은 백슬래시 이스케이프
-const esc = s => String(s || ‘’).replace(/\/g, ‘\\’).replace(/\n/g, ‘\n’).replace(/,/g, ‘\,’).replace(/;/g, ‘\;’);
+const esc = s => String(s || '').replace(/\/g, '\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 
 const events = [];
 // 본시험
@@ -315,8 +224,8 @@ events.push({
 uid: `exam-${examDate}@bar-journal`,
 start: dateOnly(examDate),
 end: dateOnly(endExclusive),
-summary: examLabel || ‘변호사시험’,
-desc: ‘Bar Exam Journal’,
+summary: examLabel || '변호사시험',
+desc: 'Bar Exam Journal',
 });
 }
 // 모의고사
@@ -326,7 +235,7 @@ uid: `mock-${m.id}@bar-journal`,
 start: dateOnly(m.start),
 end: dateOnly(addDays(m.end, 1)),
 summary: m.label,
-desc: ‘Bar Exam Journal · 모의고사’,
+desc: 'Bar Exam Journal - 모의고사',
 });
 });
 // 사용자 일정
@@ -335,41 +244,41 @@ events.push({
 uid: `sched-${s.id}@bar-journal`,
 start: dateOnly(s.start),
 end: dateOnly(addDays(s.end, 1)),
-summary: s.title || ‘일정’,
-desc: ‘Bar Exam Journal · 일정’,
+summary: s.title || '일정',
+desc: 'Bar Exam Journal - 일정',
 });
 });
 
 const lines = [
-‘BEGIN:VCALENDAR’,
-‘VERSION:2.0’,
-‘PRODID:-//Bar Exam Journal//KR’,
-‘CALSCALE:GREGORIAN’,
-‘METHOD:PUBLISH’,
-‘X-WR-CALNAME:변호사시험 일정’,
-‘X-WR-TIMEZONE:Asia/Seoul’,
+'BEGIN:VCALENDAR',
+'VERSION:2.0',
+'PRODID:-//Bar Exam Journal//KR',
+'CALSCALE:GREGORIAN',
+'METHOD:PUBLISH',
+'X-WR-CALNAME:변호사시험 일정',
+'X-WR-TIMEZONE:Asia/Seoul',
 ];
 events.forEach(ev => {
 lines.push(
-‘BEGIN:VEVENT’,
+'BEGIN:VEVENT',
 `UID:${ev.uid}`,
 `DTSTAMP:${stamp}`,
 `DTSTART;VALUE=DATE:${ev.start}`,
 `DTEND;VALUE=DATE:${ev.end}`,
 `SUMMARY:${esc(ev.summary)}`,
 `DESCRIPTION:${esc(ev.desc)}`,
-‘TRANSP:TRANSPARENT’,
-‘END:VEVENT’,
+'TRANSP:TRANSPARENT',
+'END:VEVENT',
 );
 });
-lines.push(‘END:VCALENDAR’);
-return lines.join(’\r\n’);
+lines.push('END:VCALENDAR');
+return lines.join('\r\n');
 }
 
-function downloadICS(content, filename = ‘변시일정.ics’) {
-const blob = new Blob([content], { type: ‘text/calendar;charset=utf-8’ });
+function downloadICS(content, filename = '변시일정.ics') {
+const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
 const url = URL.createObjectURL(blob);
-const a = document.createElement(‘a’);
+const a = document.createElement('a');
 a.href = url; a.download = filename; a.click();
 setTimeout(() => URL.revokeObjectURL(url), 200);
 }
@@ -377,13 +286,13 @@ setTimeout(() => URL.revokeObjectURL(url), 200);
 /* SheetJS(XLSX) 동적 로드 */
 let _xlsxPromise = null;
 function loadXLSX() {
-if (typeof window !== ‘undefined’ && window.XLSX) return Promise.resolve(window.XLSX);
+if (typeof window !== 'undefined' && window.XLSX) return Promise.resolve(window.XLSX);
 if (_xlsxPromise) return _xlsxPromise;
 _xlsxPromise = new Promise((resolve, reject) => {
-const s = document.createElement(‘script’);
-s.src = ‘https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js’;
+const s = document.createElement('script');
+s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
 s.onload = () => resolve(window.XLSX);
-s.onerror = () => reject(new Error(‘XLSX 로드 실패’));
+s.onerror = () => reject(new Error('XLSX 로드 실패'));
 document.head.appendChild(s);
 });
 return _xlsxPromise;
@@ -401,132 +310,119 @@ materials = [], reviews = [], books = [], schedules = [], moods = {},
 const totalMin = Object.values(logs).reduce((s, dl) => s + Object.values(dl).reduce((a,b)=>a+(b||0),0), 0);
 const studyDays = Object.keys(logs).length;
 const summary = [
-[‘Bar Exam Journal — 데이터 내보내기’],
-[‘생성일’, new Date().toISOString().slice(0,19).replace(‘T’,’ ’)],
+['Bar Exam Journal - 데이터 내보내기'],
+['생성일', new Date().toISOString().slice(0,19).replace('T',' ')],
 [],
-[‘시험 정보’],
-[‘시험명’, settings.examLabel || ‘’],
-[‘시험일’, settings.examDate || ‘’],
-[‘D-day’, settings.examDate ? daysDiff(todayISO(), settings.examDate) : ‘’],
+['시험 정보'],
+['시험명', settings.examLabel || ''],
+['시험일', settings.examDate || ''],
+['D-day', settings.examDate ? daysDiff(todayISO(), settings.examDate) : ''],
 [],
-[‘누적 학습’],
-[‘총 학습 시간(분)’, totalMin],
-[‘총 학습 시간(시간)’, Math.round(totalMin/60*10)/10],
-[‘학습 일수’, studyDays],
-[‘일평균(분)’, studyDays > 0 ? Math.round(totalMin/studyDays) : 0],
+['누적 학습'],
+['총 학습 시간(분)', totalMin],
+['총 학습 시간(시간)', Math.round(totalMin/60*10)/10],
+['학습 일수', studyDays],
+['일평균(분)', studyDays > 0 ? Math.round(totalMin/studyDays) : 0],
 [],
-[‘주간 목표 (분)’],
-…Object.entries(settings.weeklyTargets || {}).map(([k,v]) => [k, v]),
+['주간 목표 (분)'],
+...Object.entries(settings.weeklyTargets || {}).map(([k,v]) => [k, v]),
 ];
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), ‘요약’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), '요약');
 
 // [2] 일별 학습시간 (날짜 × 과목·유형)
 const allKeys = new Set();
 Object.values(logs).forEach(dl => Object.keys(dl).forEach(k => allKeys.add(k)));
-const sortedKeys = […allKeys].sort();
+const sortedKeys = [...allKeys].sort();
 const dateRows = Object.keys(logs).sort();
-const logHeader = [‘날짜’, ‘요일’, …sortedKeys, ‘합계(분)’, ‘한줄메모’];
+const logHeader = ['날짜', '요일', ...sortedKeys, '합계(분)', '한줄메모'];
 const logRows = [logHeader];
-const dows = [‘일’,‘월’,‘화’,‘수’,‘목’,‘금’,‘토’];
+const dows = ['일','월','화','수','목','금','토'];
 dateRows.forEach(d => {
 const dl = logs[d] || {};
-const dt = new Date(d + ‘T00:00:00’);
+const dt = new Date(d + 'T00:00:00');
 const sum = Object.values(dl).reduce((a,b) => a+(b||0), 0);
 const row = [d, dows[dt.getDay()]];
 sortedKeys.forEach(k => row.push(dl[k] || 0));
 row.push(sum);
-row.push(moods[d] || ‘’);
+row.push(moods[d] || '');
 logRows.push(row);
 });
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(logRows), ‘학습시간’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(logRows), '학습시간');
 
 // [3] 5트랙 일지
-const trackRows = [[‘날짜’, ‘요일’, …TRACK_TYPES.map(t => t.label), ‘한줄메모’]];
+const trackRows = [['날짜', '요일', ...TRACK_TYPES.map(t => t.label), '한줄메모']];
 Object.keys(tracks).sort().forEach(d => {
-const dt = new Date(d + ‘T00:00:00’);
+const dt = new Date(d + 'T00:00:00');
 const t = tracks[d] || {};
 const row = [d, dows[dt.getDay()]];
 TRACK_TYPES.forEach(tt => {
 const v = t[tt.key] || {};
-let cell = ‘’;
-if (v.done) cell = ‘✓’;
-if (v.text) cell = (cell ? cell + ’ ’ : ‘’) + v.text;
+let cell = '';
+if (v.done) cell = '✓';
+if (v.text) cell = (cell ? cell + ' ' : '') + v.text;
 row.push(cell);
 });
-row.push(moods[d] || ‘’);
+row.push(moods[d] || '');
 trackRows.push(row);
 });
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trackRows), ‘5트랙’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trackRows), '5트랙');
 
 // [4] 객관식 회차 점수
-const scoreRows = [[‘날짜’, ‘회차’, ‘과목’, ‘유형’, ‘틀림’, ‘총문항’, ‘메모’]];
-[…examScores].sort((a,b) => a.date.localeCompare(b.date) || a.subject.localeCompare(b.subject)).forEach(s => {
-scoreRows.push([s.date, s.round, s.subject, s.type || ‘선택형’, s.wrong, s.total || ‘’, s.note || ‘’]);
+const scoreRows = [['날짜', '회차', '과목', '유형', '틀림', '총문항', '메모']];
+[...examScores].sort((a,b) => a.date.localeCompare(b.date) || a.subject.localeCompare(b.subject)).forEach(s => {
+scoreRows.push([s.date, s.round, s.subject, s.type || '선택형', s.wrong, s.total || '', s.note || '']);
 });
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreRows), ‘회차점수’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreRows), '회차점수');
 
 // [5] 자료 회독
-const matRows = [[‘자료명’, ‘과목’, ‘현재 회독’, ‘목표 회독’, ‘진행률(%)’]];
+const matRows = [['자료명', '과목', '현재 회독', '목표 회독', '진행률(%)']];
 materials.forEach(m => {
 const pct = m.target > 0 ? Math.round((m.rounds / m.target) * 100) : 0;
 matRows.push([m.name, m.subject, m.rounds, m.target, pct]);
 });
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matRows), ‘자료회독’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matRows), '자료회독');
 
 // [6] 주제 회독
-const reviewRows = [[‘주제’, ‘과목’, ‘생성일’, ‘마지막 회독’, ‘회독차’, ‘메모’]];
+const reviewRows = [['주제', '과목', '생성일', '마지막 회독', '회독차', '메모']];
 reviews.forEach(r => {
-reviewRows.push([r.title, r.subject, r.created, r.lastReviewed, r.cycleIndex + 1, r.note || ‘’]);
+reviewRows.push([r.title, r.subject, r.created, r.lastReviewed, r.cycleIndex + 1, r.note || '']);
 });
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(reviewRows), ‘주제회독’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(reviewRows), '주제회독');
 
 // [7] 문제집
-const bookRows = [[‘제목’, ‘과목’, ‘현재’, ‘목표’, ‘진행률(%)’, ‘메모’]];
+const bookRows = [['제목', '과목', '현재', '목표', '진행률(%)', '메모']];
 books.forEach(b => {
 const pct = b.target > 0 ? Math.round((b.current / b.target) * 100) : 0;
-bookRows.push([b.title, b.subject, b.current, b.target, pct, b.note || ‘’]);
+bookRows.push([b.title, b.subject, b.current, b.target, pct, b.note || '']);
 });
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bookRows), ‘문제집’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bookRows), '문제집');
 
 // [8] 일정 (모의 + 본시험 + 사용자)
-const schedRows = [[‘종류’, ‘제목’, ‘시작일’, ‘종료일’, ‘기간(일)’, ‘색상’]];
+const schedRows = [['종류', '제목', '시작일', '종료일', '기간(일)', '색상']];
 if (settings.examDate) {
-schedRows.push([‘본시험’, settings.examLabel || ‘’, settings.examDate, settings.examDate, 1, ‘’]);
+schedRows.push(['본시험', settings.examLabel || '', settings.examDate, settings.examDate, 1, '']);
 }
 (settings.mockExams || []).forEach(m => {
-schedRows.push([‘모의고사’, m.label, m.start, m.end, daysDiff(m.start, m.end) + 1, ‘’]);
+schedRows.push(['모의고사', m.label, m.start, m.end, daysDiff(m.start, m.end) + 1, '']);
 });
 schedules.forEach(s => {
-schedRows.push([‘일정’, s.title, s.start, s.end, daysDiff(s.start, s.end) + 1, s.color || ‘’]);
+schedRows.push(['일정', s.title, s.start, s.end, daysDiff(s.start, s.end) + 1, s.color || '']);
 });
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(schedRows), ‘일정’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(schedRows), '일정');
 
 // [9] 할 일
-const todoRows = [[‘날짜’, ‘제목’, ‘완료’, ‘비고’]];
+const todoRows = [['날짜', '제목', '완료', '비고']];
 Object.keys(todos).sort().forEach(d => {
 (todos[d] || []).filter(t => !t.hidden).forEach(t => {
-todoRows.push([d, t.title, t.done ? ‘✓’ : ‘’, t.fromMock ? ‘모의고사 자동생성’ : ‘’]);
+todoRows.push([d, t.title, t.done ? '✓' : '', t.fromMock ? '모의고사 자동생성' : '']);
 });
 });
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(todoRows), ‘할일’);
-
-// [10] 체크리스트
-const clRows = [[‘카테고리’, ‘과목’, ‘마지막 회독일’, ‘★’, ‘항목’]];
-(state.checklists || []).forEach(c => {
-if (c.items.length === 0) {
-clRows.push([c.name, c.subject, c.lastReviewed || ‘미회독’, ‘’, ‘(빈 카테고리)’]);
-} else {
-c.items.forEach(it => {
-clRows.push([c.name, c.subject, c.lastReviewed || ‘미회독’, ‘★’.repeat(it.stars || 1), it.text]);
-});
-}
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clRows), ‘체크리스트’);
+XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(todoRows), '할일');
 
 // 컬럼 너비 자동 조정 (대략)
 wb.SheetNames.forEach(name => {
 const ws = wb.Sheets[name];
-const range = XLSX.utils.decode_range(ws[’!ref’] || ‘A1’);
+const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
 const cols = [];
 for (let C = range.s.c; C <= range.e.c; C++) {
 let max = 8;
@@ -539,25 +435,25 @@ if (len > max) max = Math.min(40, len + 2);
 }
 cols.push({ wch: max });
 }
-ws[’!cols’] = cols;
+ws['!cols'] = cols;
 });
 
 XLSX.writeFile(wb, filename);
 }
 
 function weekStartOf(iso) {
-const d = new Date(iso + ‘T00:00:00’);
+const d = new Date(iso + 'T00:00:00');
 const day = d.getDay();
 d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
 return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
-function weekDays(startISO) { return […Array(7)].map((_, i) => addDays(startISO, i)); }
+function weekDays(startISO) { return [...Array(7)].map((_, i) => addDays(startISO, i)); }
 
 function monthGrid(year, month0) {
 const first = new Date(year, month0, 1);
 const startDow = first.getDay();
 const start = new Date(year, month0, 1 - startDow);
-return […Array(42)].map((_, i) => {
+return [...Array(42)].map((_, i) => {
 const d = new Date(start);
 d.setDate(start.getDate() + i);
 const tz = d.getTimezoneOffset() * 60000;
@@ -571,7 +467,7 @@ for (const m of settings.mockExams) {
 if (dateISO >= m.start && dateISO <= m.end) {
 const dayNum = daysDiff(m.start, dateISO) + 1;
 const totalDays = daysDiff(m.start, m.end) + 1;
-return { …m, dayNum, totalDays };
+return { ...m, dayNum, totalDays };
 }
 }
 return null;
@@ -591,19 +487,19 @@ const { cycleDefs, examDate, mockExams = [] } = settings;
 if (examDate && dateISO >= examDate) return null;
 
 const anchors = [
-…mockExams.map(m => ({ start: m.start, end: m.end, kind: ‘mock’, label: m.label })),
-…(examDate ? [{ start: examDate, end: examDate, kind: ‘exam’, label: ‘본시험’ }] : []),
+...mockExams.map(m => ({ start: m.start, end: m.end, kind: 'mock', label: m.label })),
+...(examDate ? [{ start: examDate, end: examDate, kind: 'exam', label: '본시험' }] : []),
 ].sort((a, b) => a.start.localeCompare(b.start));
 
 if (anchors.length === 0) return null;
 for (const a of anchors) {
-if (a.kind === ‘mock’ && dateISO >= a.start && dateISO <= a.end) return null;
+if (a.kind === 'mock' && dateISO >= a.start && dateISO <= a.end) return null;
 }
 
 const targetAnchor = anchors.find(a => a.start > dateISO);
 if (!targetAnchor) return null;
 
-const prevAnchor = […anchors].reverse().find(a => a.end < dateISO);
+const prevAnchor = [...anchors].reverse().find(a => a.end < dateISO);
 const windowStart = prevAnchor ? addDays(prevAnchor.end, 1) : null;
 const windowEnd = addDays(targetAnchor.start, -1);
 if (dateISO > windowEnd) return null;
@@ -611,7 +507,7 @@ if (dateISO > windowEnd) return null;
 const distFromEnd = daysDiff(dateISO, windowEnd);
 if (distFromEnd < 0) return null;
 
-const reversedCycles = […cycleDefs].reverse();
+const reversedCycles = [...cycleDefs].reverse();
 const cycleDayLengths = reversedCycles.map(c => c.blocks.reduce((s, b) => s + b.days, 0));
 const fullRotation = cycleDayLengths.reduce((a, b) => a + b, 0);
 if (fullRotation === 0) return null;
@@ -624,7 +520,7 @@ for (let rci = 0; rci < reversedCycles.length; rci++) {
 const cycle = reversedCycles[rci];
 const cLen = cycleDayLengths[rci];
 if (rem < cLen) {
-const reversedBlocks = […cycle.blocks].reverse();
+const reversedBlocks = [...cycle.blocks].reverse();
 let r = rem;
 for (let rbi = 0; rbi < reversedBlocks.length; rbi++) {
 const block = reversedBlocks[rbi];
@@ -671,19 +567,18 @@ materialLog: {},
 examScores: [],
 moods: {},
 schedules: [], // [{ id, title, color, start, end, note }]
-checklists: DEFAULT_CHECKLISTS, // [{ id, name, subject, color, items: [{ id, text, stars }], lastReviewed }]
 };
 
 async function loadStateFromFirestore(uid) {
 try {
-const ref = doc(fbDB, ‘users’, uid);
+const ref = doc(fbDB, 'users', uid);
 const snap = await getDoc(ref);
-if (!snap.exists()) return { …DEFAULT_STATE };
+if (!snap.exists()) return { ...DEFAULT_STATE };
 const d = snap.data() || {};
 return {
 settings: {
-…DEFAULT_SETTINGS, …(d.settings || {}),
-weeklyTargets: { …DEFAULT_SETTINGS.weeklyTargets, …((d.settings && d.settings.weeklyTargets) || {}) },
+...DEFAULT_SETTINGS, ...(d.settings || {}),
+weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
 cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
 mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
 },
@@ -697,20 +592,19 @@ materialLog: d.materialLog || {},
 examScores: d.examScores || [],
 moods: d.moods || {},
 schedules: d.schedules || [],
-checklists: (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS,
 };
 } catch (e) {
-console.error(’[loadState]’, e);
-return { …DEFAULT_STATE };
+console.error('[loadState]', e);
+return { ...DEFAULT_STATE };
 }
 }
 
 async function saveStateToFirestore(uid, partial) {
 try {
-await setDoc(doc(fbDB, ‘users’, uid), partial, { merge: true });
+await setDoc(doc(fbDB, 'users', uid), partial, { merge: true });
 return true;
 } catch (e) {
-console.error(’[saveState]’, e);
+console.error('[saveState]', e);
 return false;
 }
 }
@@ -720,7 +614,7 @@ return false;
 export default function App() {
 const [user, setUser] = useState(null);
 const [authChecked, setAuthChecked] = useState(false);
-const [view, setView] = useState(‘home’);
+const [view, setView] = useState('home');
 const [settings, setSettings] = useState(DEFAULT_SETTINGS);
 const [logs, setLogs] = useState({});
 const [reviews, setReviews] = useState([]);
@@ -732,10 +626,9 @@ const [materialLog, setMaterialLog] = useState({});
 const [examScores, setExamScores] = useState([]);
 const [moods, setMoods] = useState({});
 const [schedules, setSchedules] = useState([]);
-const [checklists, setChecklists] = useState(DEFAULT_CHECKLISTS);
 const [loaded, setLoaded] = useState(false);
 const [today, setToday] = useState(todayISO());
-const [syncStatus, setSyncStatus] = useState(‘idle’); // idle | saving | saved | error
+const [syncStatus, setSyncStatus] = useState('idle'); // idle | saving | saved | error
 
 // Auth listener
 useEffect(() => {
@@ -752,7 +645,7 @@ useEffect(() => {
 if (!user) { setLoaded(false); return; }
 setLoaded(false);
 const fallback = setTimeout(() => {
-console.warn(’[sync] timeout fallback’);
+console.warn('[sync] timeout fallback');
 setLoaded(true);
 }, 5000);
 loadStateFromFirestore(user.uid).then(s => {
@@ -760,35 +653,34 @@ setSettings(s.settings); setLogs(s.logs); setReviews(s.reviews); setBooks(s.book
 setTodos(s.todos); setTracks(s.tracks); setMaterials(s.materials);
 setMaterialLog(s.materialLog); setExamScores(s.examScores); setMoods(s.moods);
 setSchedules(s.schedules);
-setChecklists(s.checklists || DEFAULT_CHECKLISTS);
 clearTimeout(fallback);
 setLoaded(true);
 });
 return () => clearTimeout(fallback);
 }, [user]);
 
-// Save (debounced) — single doc per user
+// Save (debounced) - single doc per user
 const saveTimerRef = useRef(null);
 useEffect(() => {
 if (!loaded || !user) return;
-setSyncStatus(‘saving’);
+setSyncStatus('saving');
 if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 saveTimerRef.current = setTimeout(async () => {
 const ok = await saveStateToFirestore(user.uid, {
 settings, logs, reviews, books, todos, tracks,
-materials, materialLog, examScores, moods, schedules, checklists,
+materials, materialLog, examScores, moods, schedules,
 updatedAt: new Date().toISOString(),
 });
-setSyncStatus(ok ? ‘saved’ : ‘error’);
+setSyncStatus(ok ? 'saved' : 'error');
 }, 2500);
 return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-}, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists]);
+}, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules]);
 
 // Auto-generate mock review todos
 useEffect(() => {
 if (!loaded || !settings.autoGenMockReview) return;
 setTodos(prev => {
-let next = { …prev };
+let next = { ...prev };
 let changed = false;
 (settings.mockExams || []).forEach(m => {
 const sentinelDate = m.end;
@@ -801,49 +693,16 @@ const targetDate = addDays(m.end, tmpl.offset);
 const list = next[targetDate] || [];
 if (!list.some(t => t.title === tmpl.title && t.fromMock === m.id)) {
 list.push({ id: uid(), title: tmpl.title, done: false, fromMock: m.id });
-next = { …next, [targetDate]: list };
+next = { ...next, [targetDate]: list };
 changed = true;
 }
 });
-next = { …next, [sentinelDate]: […existing, { id: uid(), title: sentinelMark, done: true, hidden: true }] };
+next = { ...next, [sentinelDate]: [...existing, { id: uid(), title: sentinelMark, done: true, hidden: true }] };
 changed = true;
 });
 return changed ? next : prev;
 });
 }, [loaded, settings.mockExams, settings.autoGenMockReview, today]);
-
-// 시험 직전 (D-3, D-1, D-day) — 체크리스트 점검 todo 자동 생성
-useEffect(() => {
-if (!loaded || !settings.examDate || !checklists?.length) return;
-setTodos(prev => {
-const sentinelMark = `__checklist_premium__${settings.examDate}`;
-let next = { …prev };
-let changed = false;
-const sentinelDate = settings.examDate;
-const existing = next[sentinelDate] || [];
-if (existing.some(t => t.title === sentinelMark)) return prev;
-
-```
-  [3, 1, 0].forEach(offset => {
-    const targetDate = addDays(settings.examDate, -offset);
-    const list = next[targetDate] || [];
-    const title = offset === 0
-      ? '체크리스트 일독 (시험 당일 아침)'
-      : offset === 1
-      ? '체크리스트 전체 회독 (D-1)'
-      : '체크리스트 회독 + 우선순위 ★★★만 별도 정리 (D-3)';
-    if (!list.some(t => t.title === title)) {
-      next = { ...next, [targetDate]: [...list, { id: uid(), title, done: false, fromChecklist: true }] };
-      changed = true;
-    }
-  });
-  next = { ...next, [sentinelDate]: [...(next[sentinelDate] || []), { id: uid(), title: sentinelMark, done: true, hidden: true }] };
-  changed = true;
-  return changed ? next : prev;
-});
-```
-
-}, [loaded, settings.examDate, checklists?.length]);
 
 const dday = useMemo(() => daysDiff(today, settings.examDate), [today, settings.examDate]);
 
@@ -856,15 +715,15 @@ const globalStyles = (
 
 if (!FIREBASE_OK) {
 return (
-<div style={{ minHeight:‘100vh’, background:C.bg, display:‘grid’, placeItems:‘center’, padding:24, fontFamily:”‘Noto Sans KR’, sans-serif” }}>
+<div style={{ minHeight:'100vh', background:C.bg, display:'grid', placeItems:'center', padding:24, fontFamily:"'Noto Sans KR', sans-serif" }}>
 {globalStyles}
-<div style={{ maxWidth:420, background:C.paper, border:`1px solid ${C.accent}`, padding:‘20px 22px’ }}>
-<div className=“kserif” style={{ fontSize:11, letterSpacing:‘0.22em’, color:C.accent, fontWeight:600, marginBottom:8 }}>SETUP REQUIRED</div>
-<div className=“serif” style={{ fontSize:18, fontWeight:600, color:C.ink, marginBottom:10 }}>Firebase 환경변수가 설정되지 않았습니다</div>
+<div style={{ maxWidth:420, background:C.paper, border:`1px solid ${C.accent}`, padding:'20px 22px' }}>
+<div className="kserif" style={{ fontSize:11, letterSpacing:'0.22em', color:C.accent, fontWeight:600, marginBottom:8 }}>SETUP REQUIRED</div>
+<div className="serif" style={{ fontSize:18, fontWeight:600, color:C.ink, marginBottom:10 }}>Firebase 환경변수가 설정되지 않았습니다</div>
 <div style={{ fontSize:12, color:C.muted, lineHeight:1.7 }}>
-Vercel → Settings → Environment Variables 에 아래 6개를 등록한 뒤 재배포하세요:
-<pre style={{ background:C.bg, padding:‘10px 12px’, marginTop:10, fontSize:10, fontFamily:”‘JetBrains Mono’, monospace”, overflow:‘auto’ }}>{`VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID`}</pre>
-등록 후 반드시 Deployments → Redeploy 눌러주세요. 환경변수는 새 빌드에만 반영됩니다.
+Vercel -> Settings -> Environment Variables 에 아래 6개를 등록한 뒤 재배포하세요:
+<pre style={{ background:C.bg, padding:'10px 12px', marginTop:10, fontSize:10, fontFamily:"'JetBrains Mono', monospace", overflow:'auto' }}>{`VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID`}</pre>
+등록 후 반드시 Deployments -> Redeploy 눌러주세요. 환경변수는 새 빌드에만 반영됩니다.
 </div>
 </div>
 </div>
@@ -873,7 +732,7 @@ Vercel → Settings → Environment Variables 에 아래 6개를 등록한 뒤 �
 
 if (!authChecked) {
 return (
-<div style={{ minHeight:‘100vh’, background:C.bg, display:‘grid’, placeItems:‘center’ }}>
+<div style={{ minHeight:'100vh', background:C.bg, display:'grid', placeItems:'center' }}>
 {globalStyles}
 </div>
 );
@@ -890,11 +749,11 @@ return (
 
 if (!loaded) {
 return (
-<div style={{ minHeight:‘100vh’, background:C.bg, display:‘grid’, placeItems:‘center’, color:C.muted, fontFamily:”‘Noto Serif KR’, serif” }}>
+<div style={{ minHeight:'100vh', background:C.bg, display:'grid', placeItems:'center', color:C.muted, fontFamily:"'Noto Serif KR', serif" }}>
 {globalStyles}
-<div style={{ textAlign:‘center’ }}>
-<div className=“kserif” style={{ fontSize:13, letterSpacing:‘0.1em’ }}>데이터 동기화 중…</div>
-<div className=“mono” style={{ fontSize:10, marginTop:8, opacity:0.6 }}>{user.email}</div>
+<div style={{ textAlign:'center' }}>
+<div className="kserif" style={{ fontSize:13, letterSpacing:'0.1em' }}>데이터 동기화 중...</div>
+<div className="mono" style={{ fontSize:10, marginTop:8, opacity:0.6 }}>{user.email}</div>
 </div>
 </div>
 );
@@ -907,14 +766,12 @@ todos, setTodos, tracks, setTracks,
 materials, setMaterials, materialLog, setMaterialLog,
 examScores, setExamScores, moods, setMoods,
 schedules, setSchedules,
-checklists, setChecklists,
 };
 
 return (
-<div style={{ minHeight:‘100vh’, background:C.bg, color:C.ink, paddingBottom:84, fontFamily:”‘Noto Sans KR’, sans-serif” }}>
+<div style={{ minHeight:'100vh', background:C.bg, color:C.ink, paddingBottom:84, fontFamily:"'Noto Sans KR', sans-serif" }}>
 {globalStyles}
 
-```
   <TopBar dday={dday} examLabel={settings.examLabel} examDate={settings.examDate} user={user} syncStatus={syncStatus} />
 
   <main style={{ maxWidth:720, margin:'0 auto', padding:'0 18px' }}>
@@ -923,23 +780,22 @@ return (
     {view === 'calendar' && <CalendarView {...sharedProps} onGoToLog={() => setView('log')} />}
     {view === 'review' && <ReviewView {...sharedProps} />}
     {view === 'exams' && <ExamsView {...sharedProps} />}
-    {view === 'check' && <ChecklistView {...sharedProps} />}
     {view === 'report' && <ReportView {...sharedProps} />}
     {view === 'settings' && (
       <SettingsView {...sharedProps}
         user={user}
         onLogout={async () => { await signOut(fbAuth); }}
         onReset={() => {
-          if (confirm('모든 데이터를 지울까요? (설정 포함)\n클라우드의 본인 데이터도 함께 초기화됩니다.')) {
+          if (confirm('모든 데이터를 지울까요? (설정 포함)\\n클라우드의 본인 데이터도 함께 초기화됩니다.')) {
             setLogs({}); setReviews([]); setBooks([]); setTodos({});
             setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
-            setExamScores([]); setMoods({}); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
+            setExamScores([]); setMoods({}); setSchedules([]); setSettings(DEFAULT_SETTINGS);
           }
         }}
         onExport={() => {
           const data = JSON.stringify({
             settings, logs, reviews, books, todos,
-            tracks, materials, materialLog, examScores, moods, schedules, checklists,
+            tracks, materials, materialLog, examScores, moods, schedules,
           }, null, 2);
           const blob = new Blob([data], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
@@ -951,7 +807,7 @@ return (
           try {
             await exportXLSX({
               settings, logs, tracks, todos, examScores,
-              materials, reviews, books, schedules, moods, checklists,
+              materials, reviews, books, schedules, moods,
             }, `변시기록_${today.replaceAll('-','')}.xlsx`);
           } catch (e) {
             console.error(e);
@@ -964,7 +820,6 @@ return (
 
   <BottomNav view={view} setView={setView} />
 </div>
-```
 
 );
 }
@@ -972,21 +827,21 @@ return (
 /* ============================================================ LOGIN ============================================================ */
 
 function LoginView() {
-const [error, setError] = useState(’’);
+const [error, setError] = useState('');
 const [signing, setSigning] = useState(false);
 
 async function loginGoogle() {
-setError(’’); setSigning(true);
+setError(''); setSigning(true);
 try {
 await signInWithPopup(fbAuth, googleProvider);
 } catch (e) {
 console.error(e);
-if (e.code === ‘auth/unauthorized-domain’) {
-setError(‘이 도메인은 Firebase에 등록되어 있지 않습니다. Firebase 콘솔 → Authentication → Settings → 승인된 도메인에 현재 주소를 추가해주세요.’);
-} else if (e.code === ‘auth/popup-blocked’) {
-setError(‘팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.’);
-} else if (e.code === ‘auth/popup-closed-by-user’ || e.code === ‘auth/cancelled-popup-request’) {
-setError(’’);
+if (e.code === 'auth/unauthorized-domain') {
+setError('이 도메인은 Firebase에 등록되어 있지 않습니다. Firebase 콘솔 -> Authentication -> Settings -> 승인된 도메인에 현재 주소를 추가해주세요.');
+} else if (e.code === 'auth/popup-blocked') {
+setError('팝업이 차단되었습니다. 브라우저 설정을 확인해주세요.');
+} else if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') {
+setError('');
 } else {
 setError(`로그인 실패: ${e.code || e.message}`);
 }
@@ -996,16 +851,15 @@ setSigning(false);
 }
 
 return (
-<div style={{ minHeight:‘100vh’, background:C.bg, display:‘grid’, placeItems:‘center’, padding:‘30px 24px’, fontFamily:”‘Noto Sans KR’, sans-serif” }}>
-<div style={{ maxWidth:380, width:‘100%’, textAlign:‘center’ }}>
-<div className=“kserif” style={{ fontSize:11, letterSpacing:‘0.28em’, color:C.muted, textTransform:‘uppercase’, marginBottom:14 }}>BAR EXAM JOURNAL</div>
-<h1 className=“serif” style={{ fontSize:34, fontWeight:600, color:C.ink, margin:‘0 0 10px’, letterSpacing:’-0.01em’ }}>변호사시험 학습 기록장</h1>
-<p style={{ fontSize:13, color:C.muted, lineHeight:1.7, margin:‘0 0 36px’ }}>
+<div style={{ minHeight:'100vh', background:C.bg, display:'grid', placeItems:'center', padding:'30px 24px', fontFamily:"'Noto Sans KR', sans-serif" }}>
+<div style={{ maxWidth:380, width:'100%', textAlign:'center' }}>
+<div className="kserif" style={{ fontSize:11, letterSpacing:'0.28em', color:C.muted, textTransform:'uppercase', marginBottom:14 }}>BAR EXAM JOURNAL</div>
+<h1 className="serif" style={{ fontSize:34, fontWeight:600, color:C.ink, margin:'0 0 10px', letterSpacing:'-0.01em' }}>변호사시험 학습 기록장</h1>
+<p style={{ fontSize:13, color:C.muted, lineHeight:1.7, margin:'0 0 36px' }}>
 시간 / 회독 / 사이클 / 모의고사를 한 곳에서.<br/>
 기록은 본인 Google 계정으로 클라우드에 저장됩니다.
 </p>
 
-```
     <button onClick={loginGoogle} disabled={signing}
       style={{
         width:'100%', background:C.ink, color:'#fff', border:'none',
@@ -1019,7 +873,7 @@ return (
         <path fill="#fff" d="M6.27 13.43c-.21-.64-.33-1.31-.33-2 0-.69.13-1.36.33-2v-2.74H2.74C1.99 8.18 1.5 9.78 1.5 11.43c0 1.65.49 3.25 1.24 4.74l3.53-2.74z"/>
         <path fill="#fff" d="M12.18 5.07c1.55 0 2.93.53 4.03 1.58l3.02-3.02C17.42 1.84 15.03 1 12.18 1 8.05 1 4.49 3.47 2.74 7.69l3.53 2.74c.83-2.5 3.16-4.36 5.91-4.36z"/>
       </svg>
-      {signing ? '로그인 중…' : 'Google로 로그인'}
+      {signing ? '로그인 중...' : 'Google로 로그인'}
     </button>
 
     {error && (
@@ -1033,7 +887,6 @@ return (
     </div>
   </div>
 </div>
-```
 
 );
 }
@@ -1042,24 +895,24 @@ return (
 
 function TopBar({ dday, examLabel, examDate, user, syncStatus }) {
 const overdue = dday < 0;
-const displayName = user?.displayName || user?.email?.split(’@’)[0] || ‘사용자’;
+const displayName = user?.displayName || user?.email?.split('@')[0] || '사용자';
 return (
-<header style={{ borderBottom:`1px solid ${C.line}`, background:C.paper, padding:‘14px 18px 12px’ }}>
-<div style={{ maxWidth:720, margin:‘0 auto’, display:‘flex’, alignItems:‘baseline’, justifyContent:‘space-between’, gap:12 }}>
+<header style={{ borderBottom:`1px solid ${C.line}`, background:C.paper, padding:'14px 18px 12px' }}>
+<div style={{ maxWidth:720, margin:'0 auto', display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:12 }}>
 <div style={{ minWidth:0, flex:1 }}>
-<div style={{ display:‘flex’, alignItems:‘center’, gap:8 }}>
-<div className=“kserif” style={{ fontSize:10, letterSpacing:‘0.22em’, color:C.muted, textTransform:‘uppercase’ }}>BAR EXAM JOURNAL · {displayName}</div>
-{syncStatus === ‘saving’ && <Cloud size={11} color={C.muted} />}
-{syncStatus === ‘saved’ && <Cloud size={11} color={C.good} />}
-{syncStatus === ‘error’ && <CloudOff size={11} color={C.accent} />}
+<div style={{ display:'flex', alignItems:'center', gap:8 }}>
+<div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', color:C.muted, textTransform:'uppercase' }}>BAR EXAM JOURNAL - {displayName}</div>
+{syncStatus === 'saving' && <Cloud size={11} color={C.muted} />}
+{syncStatus === 'saved' && <Cloud size={11} color={C.good} />}
+{syncStatus === 'error' && <CloudOff size={11} color={C.accent} />}
 </div>
-<div className=“kserif” style={{ fontSize:16, fontWeight:600, marginTop:3, color:C.ink, overflow:‘hidden’, textOverflow:‘ellipsis’, whiteSpace:‘nowrap’ }}>{examLabel}</div>
+<div className="kserif" style={{ fontSize:16, fontWeight:600, marginTop:3, color:C.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{examLabel}</div>
 </div>
-<div style={{ textAlign:‘right’, flexShrink:0 }}>
-<div className=“serif” style={{ fontSize:32, fontWeight:600, lineHeight:1, color: overdue ? C.muted : C.accent }}>
-D{overdue ? ‘+’ : ‘−’}{Math.abs(dday)}
+<div style={{ textAlign:'right', flexShrink:0 }}>
+<div className="serif" style={{ fontSize:32, fontWeight:600, lineHeight:1, color: overdue ? C.muted : C.accent }}>
+D{overdue ? '+' : '-'}{Math.abs(dday)}
 </div>
-<div className=“mono” style={{ fontSize:10, color:C.muted, marginTop:3, letterSpacing:‘0.05em’ }}>{examDate.replaceAll(’-’,’.’)}</div>
+<div className="mono" style={{ fontSize:10, color:C.muted, marginTop:3, letterSpacing:'0.05em' }}>{examDate.replaceAll('-','.')}</div>
 </div>
 </div>
 </header>
@@ -1068,21 +921,20 @@ D{overdue ? ‘+’ : ‘−’}{Math.abs(dday)}
 
 function BottomNav({ view, setView }) {
 const items = [
-{ key:‘home’, icon:Home, label:‘홈’ },
-{ key:‘log’, icon:BookOpen, label:‘기록’ },
-{ key:‘calendar’, icon:CalendarIcon, label:‘캘린더’ },
-{ key:‘exams’, icon:TrendingUp, label:‘기출’ },
-{ key:‘review’, icon:RotateCw, label:‘회독’ },
-{ key:‘check’, icon:CheckSquare, label:‘체크’ },
-{ key:‘report’, icon:BarChart3, label:‘리포트’ },
-{ key:‘settings’, icon:SettingsIcon, label:‘설정’ },
+{ key:'home', icon:Home, label:'홈' },
+{ key:'log', icon:BookOpen, label:'기록' },
+{ key:'calendar', icon:CalendarIcon, label:'캘린더' },
+{ key:'exams', icon:TrendingUp, label:'기출' },
+{ key:'review', icon:RotateCw, label:'회독' },
+{ key:'report', icon:BarChart3, label:'리포트' },
+{ key:'settings', icon:SettingsIcon, label:'설정' },
 ];
 return (
 <nav style={{
-position:‘fixed’, left:0, right:0, bottom:0,
+position:'fixed', left:0, right:0, bottom:0,
 background:C.paper, borderTop:`1px solid ${C.line}`,
-display:‘grid’, gridTemplateColumns:`repeat(${items.length}, 1fr)`,
-paddingBottom:‘env(safe-area-inset-bottom)’, zIndex:10,
+display:'grid', gridTemplateColumns:`repeat(${items.length}, 1fr)`,
+paddingBottom:'env(safe-area-inset-bottom)', zIndex:10,
 }}>
 {items.map(it => {
 const active = view === it.key;
@@ -1090,14 +942,14 @@ const Icon = it.icon;
 return (
 <button key={it.key} onClick={() => setView(it.key)}
 style={{
-background:‘transparent’, border:‘none’, padding:‘10px 0 10px’,
+background:'transparent', border:'none', padding:'10px 0 10px',
 color: active ? C.accent : C.muted,
-display:‘flex’, flexDirection:‘column’, alignItems:‘center’, gap:2,
-cursor:‘pointer’, position:‘relative’,
+display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+cursor:'pointer', position:'relative',
 }}>
-{active && <span style={{ position:‘absolute’, top:0, left:‘50%’, transform:‘translateX(-50%)’, width:18, height:2, background:C.accent }} />}
+{active && <span style={{ position:'absolute', top:0, left:'50%', transform:'translateX(-50%)', width:18, height:2, background:C.accent }} />}
 <Icon size={17} strokeWidth={active ? 2.2 : 1.6} />
-<span className=“kserif” style={{ fontSize:9, letterSpacing:0, fontWeight: active ? 600 : 400 }}>{it.label}</span>
+<span className="kserif" style={{ fontSize:9, letterSpacing:0, fontWeight: active ? 600 : 400 }}>{it.label}</span>
 </button>
 );
 })}
@@ -1109,9 +961,9 @@ cursor:‘pointer’, position:‘relative’,
 
 function Stat({ icon: Icon, label, value, color }) {
 return (
-<div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:‘12px 12px 14px’, display:‘flex’, flexDirection:‘column’, gap:6 }}>
+<div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'12px 12px 14px', display:'flex', flexDirection:'column', gap:6 }}>
 <Icon size={14} color={color || C.muted} strokeWidth={1.5} />
-<div className=“serif” style={{ fontSize:20, fontWeight:600, color:C.ink, lineHeight:1 }}>{value}</div>
+<div className="serif" style={{ fontSize:20, fontWeight:600, color:C.ink, lineHeight:1 }}>{value}</div>
 <div style={{ fontSize:10, color:C.muted }}>{label}</div>
 </div>
 );
@@ -1119,11 +971,11 @@ return (
 
 function SectionTitle({ children, action }) {
 return (
-<div style={{ display:‘flex’, alignItems:‘baseline’, justifyContent:‘space-between’, marginBottom:10 }}>
-<h2 className=“kserif” style={{ margin:0, fontSize:11, letterSpacing:‘0.24em’, color:C.muted, textTransform:‘uppercase’, fontWeight:600 }}>{children}</h2>
+<div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:10 }}>
+<h2 className="kserif" style={{ margin:0, fontSize:11, letterSpacing:'0.24em', color:C.muted, textTransform:'uppercase', fontWeight:600 }}>{children}</h2>
 {action && (
-<button onClick={action.onClick} style={{ background:‘none’, border:‘none’, color:C.accent, fontSize:11, cursor:‘pointer’, letterSpacing:‘0.05em’ }}>
-{action.label} ›
+<button onClick={action.onClick} style={{ background:'none', border:'none', color:C.accent, fontSize:11, cursor:'pointer', letterSpacing:'0.05em' }}>
+{action.label} >
 </button>
 )}
 </div>
@@ -1133,38 +985,38 @@ return (
 function CycleCard({ info, today, withMinor = true }) {
 if (!info) return null;
 const subColor = SUBJECTS[info.subject].color;
-const isMinSubj = info.subject === ‘민사법’;
+const isMinSubj = info.subject === '민사법';
 return (
 <div style={{
-background: subColor, color: ‘#fff’,
-padding: ‘16px 18px’, position: ‘relative’, overflow:‘hidden’,
+background: subColor, color: '#fff',
+padding: '16px 18px', position: 'relative', overflow:'hidden',
 border: `1px solid ${subColor}`,
 }}>
-<div style={{ position:‘absolute’, right: -20, top: -10, opacity:0.12, fontSize:120, fontWeight:700, fontFamily:”‘Fraunces’, serif”, lineHeight:1 }}>
+<div style={{ position:'absolute', right: -20, top: -10, opacity:0.12, fontSize:120, fontWeight:700, fontFamily:"'Fraunces', serif", lineHeight:1 }}>
 {SUBJECTS[info.subject].short}
 </div>
-<div style={{ position:‘relative’ }}>
-<div style={{ display:‘flex’, justifyContent:‘space-between’, alignItems:‘flex-start’, gap:8 }}>
-<div className=“kserif” style={{ fontSize:10, letterSpacing:‘0.22em’, opacity:0.85, fontWeight:500 }}>오늘의 사이클</div>
+<div style={{ position:'relative' }}>
+<div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+<div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', opacity:0.85, fontWeight:500 }}>오늘의 사이클</div>
 {info.anchorLabel && (
-<div className=“mono” style={{ fontSize:10, opacity:0.85, letterSpacing:‘0.03em’ }}>
+<div className="mono" style={{ fontSize:10, opacity:0.85, letterSpacing:'0.03em' }}>
 {info.anchorLabel} D-{info.daysToAnchor}
 </div>
 )}
 </div>
-<div style={{ display:‘flex’, alignItems:‘baseline’, gap:10, marginTop:6 }}>
-<div className=“serif” style={{ fontSize:26, fontWeight:600, letterSpacing:’-0.01em’ }}>
+<div style={{ display:'flex', alignItems:'baseline', gap:10, marginTop:6 }}>
+<div className="serif" style={{ fontSize:26, fontWeight:600, letterSpacing:'-0.01em' }}>
 {info.subject}{isMinSubj && withMinor && <span style={{ fontSize:13, opacity:0.85, marginLeft:6 }}>+ 선택법</span>}
 </div>
 </div>
-<div style={{ marginTop:8, display:‘flex’, alignItems:‘center’, gap:8, fontSize:12, flexWrap:‘wrap’ }}>
-<span style={{ background:‘rgba(255,255,255,0.18)’, padding:‘2px 7px’, fontFamily:”‘Noto Serif KR’, serif”, fontWeight:600, letterSpacing:‘0.05em’ }}>
+<div style={{ marginTop:8, display:'flex', alignItems:'center', gap:8, fontSize:12, flexWrap:'wrap' }}>
+<span style={{ background:'rgba(255,255,255,0.18)', padding:'2px 7px', fontFamily:"'Noto Serif KR', serif", fontWeight:600, letterSpacing:'0.05em' }}>
 {info.cycleLabel}
 </span>
-<span className=“mono” style={{ opacity:0.9 }}>블록 {info.dayInBlock}/{info.blockDays}일</span>
+<span className="mono" style={{ opacity:0.9 }}>블록 {info.dayInBlock}/{info.blockDays}일</span>
 </div>
-<div style={{ marginTop:10, height:3, background:‘rgba(255,255,255,0.2)’, position:‘relative’ }}>
-<div style={{ position:‘absolute’, left:0, top:0, bottom:0, width: `${(info.dayInBlock / info.blockDays) * 100}%`, background:’#fff’ }} />
+<div style={{ marginTop:10, height:3, background:'rgba(255,255,255,0.2)', position:'relative' }}>
+<div style={{ position:'absolute', left:0, top:0, bottom:0, width: `${(info.dayInBlock / info.blockDays) * 100}%`, background:'#fff' }} />
 </div>
 </div>
 </div>
@@ -1178,31 +1030,31 @@ if (!user?.email || !OWNER_EMAILS.includes(user.email)) return null;
 return (
 <div style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:16 }}>
 <button onClick={() => setOpen(o => !o)}
-style={{ width:‘100%’, background:‘none’, border:‘none’, padding:‘14px 16px’, display:‘flex’, justifyContent:‘space-between’, alignItems:‘center’, cursor:‘pointer’ }}>
-<div style={{ textAlign:‘left’ }}>
-<div className=“kserif” style={{ fontSize:11, letterSpacing:‘0.22em’, color:C.muted, fontWeight:600 }}>15회 변시 기준점</div>
-<div className=“serif” style={{ fontSize:22, fontWeight:600, color:C.ink, marginTop:4 }}>
+style={{ width:'100%', background:'none', border:'none', padding:'14px 16px', display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer' }}>
+<div style={{ textAlign:'left' }}>
+<div className="kserif" style={{ fontSize:11, letterSpacing:'0.22em', color:C.muted, fontWeight:600 }}>15회 변시 기준점</div>
+<div className="serif" style={{ fontSize:22, fontWeight:600, color:C.ink, marginTop:4 }}>
 {PREV_SCORES.grandTotal.toFixed(2)}
 <span style={{ fontSize:12, color:C.muted, marginLeft:6, fontWeight:400 }}>/ {PREV_SCORES.grandMax}</span>
 </div>
 </div>
-<ChevronDown size={18} color={C.muted} style={{ transform: open ? ‘rotate(180deg)’ : ‘none’, transition:‘transform .2s’ }} />
+<ChevronDown size={18} color={C.muted} style={{ transform: open ? 'rotate(180deg)' : 'none', transition:'transform .2s' }} />
 </button>
 {open && (
-<div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:‘14px 16px 18px’, fontSize:12 }}>
+<div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:'14px 16px 18px', fontSize:12 }}>
 {Object.keys(SUBJECTS).map(sub => {
 const s = PREV_SCORES[sub];
 const pct = Math.round((s.total / s.max) * 100);
 return (
 <div key={sub} style={{ marginBottom:12 }}>
-<div style={{ display:‘flex’, justifyContent:‘space-between’, alignItems:‘baseline’, marginBottom:4 }}>
-<span className=“kserif” style={{ fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
-<span className=“mono” style={{ color:C.muted, fontSize:11 }}>{s.total.toFixed(2)} / {s.max} ({pct}%)</span>
+<div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:4 }}>
+<span className="kserif" style={{ fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+<span className="mono" style={{ color:C.muted, fontSize:11 }}>{s.total.toFixed(2)} / {s.max} ({pct}%)</span>
 </div>
-<div style={{ height:3, background:C.lineSoft, position:‘relative’, marginBottom:6 }}>
-<div style={{ position:‘absolute’, left:0, top:0, bottom:0, width:`${pct}%`, background:SUBJECTS[sub].color }} />
+<div style={{ height:3, background:C.lineSoft, position:'relative', marginBottom:6 }}>
+<div style={{ position:'absolute', left:0, top:0, bottom:0, width:`${pct}%`, background:SUBJECTS[sub].color }} />
 </div>
-<div style={{ display:‘flex’, flexWrap:‘wrap’, gap:10, fontSize:10, color:C.muted }}>
+<div style={{ display:'flex', flexWrap:'wrap', gap:10, fontSize:10, color:C.muted }}>
 {SUBJECTS[sub].types.map(t => {
 const v = s[t.key]; if (v === undefined) return null;
 return <span key={t.key} className="mono"><span style={{ color:C.muted }}>{t.label}</span> <span style={{ color:C.ink }}>{v.toFixed(2)}</span></span>;
@@ -1219,7 +1071,7 @@ return <span key={t.key} className="mono"><span style={{ color:C.muted }}>{t.lab
 
 /* ============================================================ HOME ============================================================ */
 
-function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examScores, moods, setMoods, checklists = [], user, onGoTo }) {
+function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examScores, moods, setMoods, user, onGoTo }) {
 const todayLog = logs[today] || {};
 const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
 const todayTodos = todos[today] || [];
@@ -1234,10 +1086,10 @@ const upcomingMock = useMemo(() => nextMockExam(today, settings), [today, settin
 const weekStart = weekStartOf(today);
 const weekData = useMemo(() => {
 const arr = [];
-for (let i = 6; i >= 0; i–) {
+for (let i = 6; i >= 0; i--) {
 const d = addDays(today, -i);
 const lg = logs[d] || {};
-const row = { date: d, day: new Date(d + ‘T00:00:00’).getDate() };
+const row = { date: d, day: new Date(d + 'T00:00:00').getDate() };
 Object.keys(SUBJECTS).forEach(sub => {
 let sum = 0;
 SUBJECTS[sub].types.forEach(t => { sum += lg[`${sub}::${t.key}`] || 0; });
@@ -1269,7 +1121,7 @@ const list = [];
 reviews.forEach(r => {
 const interval = r.intervals[Math.min(r.cycleIndex, r.intervals.length - 1)];
 const dueDate = addDays(r.lastReviewed, interval);
-if (dueDate <= today) list.push({ …r, dueDate, roundNum: r.cycleIndex + 1 });
+if (dueDate <= today) list.push({ ...r, dueDate, roundNum: r.cycleIndex + 1 });
 });
 return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }, [reviews, today]);
@@ -1293,41 +1145,40 @@ const inD30 = dday > 0 && dday <= 30;
 const inD7 = dday > 0 && dday <= 7;
 
 return (
-<div className=“fadeIn” style={{ paddingTop:20 }}>
-<section style={{ background:C.paper, border:`1px solid ${C.line}`, padding:‘28px 22px’, marginBottom:14, position:‘relative’, overflow:‘hidden’ }}>
-<div style={{ display:‘flex’, alignItems:‘center’, gap:8, marginBottom:6 }}>
+<div className="fadeIn" style={{ paddingTop:20 }}>
+<section style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'28px 22px', marginBottom:14, position:'relative', overflow:'hidden' }}>
+<div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
 <span style={{ width:18, height:1, background:C.accent }} />
-<span className=“kserif” style={{ fontSize:10, letterSpacing:‘0.25em’, color:C.accent, fontWeight:600 }}>시험까지</span>
+<span className="kserif" style={{ fontSize:10, letterSpacing:'0.25em', color:C.accent, fontWeight:600 }}>시험까지</span>
 </div>
-<div className=“serif” style={{ fontSize:72, fontWeight:500, lineHeight:0.95, color:C.ink, letterSpacing:’-0.03em’ }}>
+<div className="serif" style={{ fontSize:72, fontWeight:500, lineHeight:0.95, color:C.ink, letterSpacing:'-0.03em' }}>
 {Math.abs(dday)}<span style={{ fontSize:28, color:C.muted, marginLeft:6 }}>일</span>
 </div>
-<div className=“kserif” style={{ marginTop:14, fontSize:13, color:C.muted, lineHeight:1.6 }}>
-{fmtKDate(settings.examDate)} · {settings.examLabel}<br />
-누적 <span style={{ color:C.ink, fontWeight:600 }}>{daysStudied}일</span> · 연속 <span style={{ color:C.accent, fontWeight:600 }}>{streak}일</span> · 이번 주 <span style={{ color:C.ink, fontWeight:600 }}>{fmtMin(weekTotalMin)}</span>
+<div className="kserif" style={{ marginTop:14, fontSize:13, color:C.muted, lineHeight:1.6 }}>
+{fmtKDate(settings.examDate)} - {settings.examLabel}<br />
+누적 <span style={{ color:C.ink, fontWeight:600 }}>{daysStudied}일</span> - 연속 <span style={{ color:C.accent, fontWeight:600 }}>{streak}일</span> - 이번 주 <span style={{ color:C.ink, fontWeight:600 }}>{fmtMin(weekTotalMin)}</span>
 </div>
-<div style={{ position:‘absolute’, right:18, top:22, display:‘flex’, flexDirection:‘column’, gap:4 }}>
-{[…Array(8)].map((_, i) => <span key={i} style={{ width:10, height:1, background: i < 3 ? C.accent : C.line }} />)}
+<div style={{ position:'absolute', right:18, top:22, display:'flex', flexDirection:'column', gap:4 }}>
+{[...Array(8)].map((_, i) => <span key={i} style={{ width:10, height:1, background: i < 3 ? C.accent : C.line }} />)}
 </div>
 </section>
 
-```
   {inD7 && (
     <div style={{ background:C.accent, color:'#fff', padding:'12px 16px', marginBottom:14, fontSize:12, lineHeight:1.5 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
-        <span className="kserif" style={{ fontWeight:600, fontSize:13 }}>벼락치기 모드 · D-{dday}</span>
+        <span className="kserif" style={{ fontWeight:600, fontSize:13 }}>벼락치기 모드 - D-{dday}</span>
         <span className="mono" style={{ fontSize:10, opacity:0.85 }}>D-7 진입</span>
       </div>
-      <div style={{ marginTop:6, opacity:0.9 }}>핸드북·찌라시·빈출쟁점·요사 위주 · 새 자료 No</div>
+      <div style={{ marginTop:6, opacity:0.9 }}>핸드북·찌라시·빈출쟁점·요사 위주 - 새 자료 No</div>
     </div>
   )}
   {!inD7 && inD30 && (
     <div style={{ background:'#1A1915', color:'#fff', padding:'12px 16px', marginBottom:14, fontSize:12, lineHeight:1.5 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
-        <span className="kserif" style={{ fontWeight:600, fontSize:13 }}>회독 압축 모드 · D-{dday}</span>
+        <span className="kserif" style={{ fontWeight:600, fontSize:13 }}>회독 압축 모드 - D-{dday}</span>
         <span className="mono" style={{ fontSize:10, opacity:0.7 }}>D-30 진입</span>
       </div>
-      <div style={{ marginTop:6, opacity:0.85 }}>회차 회독 위주로 · 객관식 복수 회차/일</div>
+      <div style={{ marginTop:6, opacity:0.85 }}>회차 회독 위주로 - 객관식 복수 회차/일</div>
     </div>
   )}
 
@@ -1340,7 +1191,7 @@ return (
           <div className="serif" style={{ fontSize:26, fontWeight:600, letterSpacing:'-0.01em', marginTop:6 }}>{todayMock.label}</div>
           <div style={{ marginTop:8, fontSize:12 }}>
             <span className="mono" style={{ opacity:0.9 }}>
-              {todayMock.dayNum}/{todayMock.totalDays}일차 · {todayMock.start.slice(5)} ~ {todayMock.end.slice(5)}
+              {todayMock.dayNum}/{todayMock.totalDays}일차 - {todayMock.start.slice(5)} ~ {todayMock.end.slice(5)}
             </span>
           </div>
           <div style={{ marginTop:10, height:3, background:'rgba(255,255,255,0.2)' }}>
@@ -1354,11 +1205,11 @@ return (
       <CycleCard info={cycleInfo} today={today} />
       {tomorrowInfo && tomorrowInfo.subject !== cycleInfo.subject && (
         <div style={{ background:C.paper, border:`1px solid ${C.line}`, borderTop:'none', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12 }}>
-          <span style={{ color:C.muted, letterSpacing:'0.05em' }}>내일부터 →</span>
+          <span style={{ color:C.muted, letterSpacing:'0.05em' }}>내일부터 -></span>
           <span className="kserif" style={{ color: SUBJECTS[tomorrowInfo.subject].color, fontWeight:600 }}>
             {tomorrowInfo.subject}{tomorrowInfo.subject === '민사법' && ' + 선택법'}
             <span className="mono" style={{ color:C.muted, fontWeight:400, marginLeft:6, fontSize:10 }}>
-              {tomorrowInfo.cycleLabel} · {tomorrowInfo.blockDays}일
+              {tomorrowInfo.cycleLabel} - {tomorrowInfo.blockDays}일
             </span>
           </span>
         </div>
@@ -1369,7 +1220,7 @@ return (
           <span className="kserif" style={{ color: C.accent, fontWeight:600 }}>
             {upcomingMock.label}
             <span className="mono" style={{ color:C.muted, fontWeight:400, marginLeft:6, fontSize:10 }}>
-              D-{daysDiff(today, upcomingMock.start)} · {upcomingMock.start.slice(5)}
+              D-{daysDiff(today, upcomingMock.start)} - {upcomingMock.start.slice(5)}
             </span>
           </span>
         </div>
@@ -1383,7 +1234,7 @@ return (
     </div>
   )}
 
-  <SectionTitle action={{ label:'기록', onClick: () => onGoTo('log') }}>오늘 트랙 · {tracksDone}/5</SectionTitle>
+  <SectionTitle action={{ label:'기록', onClick: () => onGoTo('log') }}>오늘 트랙 - {tracksDone}/5</SectionTitle>
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'10px 12px', marginBottom:18 }}>
     {TRACK_TYPES.map(tt => {
       const slot = todayTracks[tt.key] || {};
@@ -1401,7 +1252,7 @@ return (
             color: slot.done ? C.ink : C.muted, fontWeight: slot.done ? 500 : 400,
             fontStyle: slot.text ? 'normal' : 'italic',
           }}>
-            {slot.text || <span style={{ opacity:0.5 }}>—</span>}
+            {slot.text || <span style={{ opacity:0.5 }}>-</span>}
           </span>
           {slot.done && <Check size={12} color={C.good} strokeWidth={2.5} />}
         </div>
@@ -1434,7 +1285,7 @@ return (
     }}
   />
 
-  <SectionTitle action={{ label:'리포트', onClick: () => onGoTo('report') }}>이번 주 목표 · {weekPct}%</SectionTitle>
+  <SectionTitle action={{ label:'리포트', onClick: () => onGoTo('report') }}>이번 주 목표 - {weekPct}%</SectionTitle>
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'14px 16px', marginBottom:22 }}>
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:10 }}>
       <span className="mono" style={{ fontSize:11, color:C.muted }}>{weekStart.slice(5)} ~ {addDays(weekStart, 6).slice(5)}</span>
@@ -1474,7 +1325,7 @@ return (
             </span>
             <span className="mono" style={{ color: C.ink }}>
               <span style={{ color: C.accent, fontWeight:600 }}>{s.wrong}</span>
-              <span style={{ color: C.muted }}> 틀림 · {s.date.slice(5)}</span>
+              <span style={{ color: C.muted }}> 틀림 - {s.date.slice(5)}</span>
             </span>
           </div>
         ))}
@@ -1516,7 +1367,7 @@ return (
               <span style={{ width:3, alignSelf:'stretch', background:SUBJECTS[r.subject]?.color || C.muted }} />
               <div style={{ minWidth:0 }}>
                 <div className="kserif" style={{ fontSize:14, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title}</div>
-                <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{r.subject} · {r.roundNum}회독</div>
+                <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{r.subject} - {r.roundNum}회독</div>
               </div>
             </div>
             <span className="serif" style={{ fontSize:13, color:C.accent, fontWeight:600 }}>
@@ -1528,41 +1379,9 @@ return (
     </>
   )}
 
-  {/* 14일 이상 안 본 체크리스트 카테고리 경고 */}
-  {(() => {
-    const stale = checklists.filter(c => {
-      if (!c.lastReviewed) return c.items.length > 0;
-      return daysDiff(c.lastReviewed, today) >= 14;
-    });
-    if (stale.length === 0) return null;
-    return (
-      <>
-        <SectionTitle action={{ label:'체크', onClick: () => onGoTo('check') }}>점검 필요한 체크리스트</SectionTitle>
-        <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:22 }}>
-          {stale.slice(0, 4).map(c => {
-            const since = c.lastReviewed ? daysDiff(c.lastReviewed, today) : null;
-            return (
-              <button key={c.id} onClick={() => onGoTo('check')} className="lift"
-                style={{ background:C.paper, border:`1px solid ${C.line}`, borderLeft:`3px solid ${c.color}`, padding:'10px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, cursor:'pointer', textAlign:'left' }}>
-                <div style={{ minWidth:0 }}>
-                  <div className="kserif" style={{ fontSize:13, fontWeight:600, color:C.ink }}>{c.name}</div>
-                  <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>{c.items.length}개 항목</div>
-                </div>
-                <span className="mono" style={{ fontSize:11, color:C.accent, fontWeight:600 }}>
-                  {since === null ? '미회독' : `${since}일 전`}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </>
-    );
-  })()}
-
   <PrevScoreCard user={user} />
   <div style={{ height:20 }} />
 </div>
-```
 
 );
 }
@@ -1571,7 +1390,7 @@ return (
 
 function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks, moods, setMoods, schedules = [], setSchedules, onGoToLog }) {
 const [cursor, setCursor] = useState(() => {
-const d = new Date(today + ‘T00:00:00’);
+const d = new Date(today + 'T00:00:00');
 return { y: d.getFullYear(), m: d.getMonth() };
 });
 const [selected, setSelected] = useState(today);
@@ -1599,17 +1418,17 @@ out[d] = Object.values(lg).reduce((s, v) => s + (v || 0), 0);
 return out;
 }, [cells, logs]);
 
-// 일정 추가 모드: null | ‘start’ | ‘end’ | ‘form’
+// 일정 추가 모드: null | 'start' | 'end' | 'form'
 const [addMode, setAddMode] = useState(null);
 const [pendingStart, setPendingStart] = useState(null);
 const [pendingEnd, setPendingEnd] = useState(null);
-const [draftTitle, setDraftTitle] = useState(’’);
+const [draftTitle, setDraftTitle] = useState('');
 const [draftColor, setDraftColor] = useState(SCHEDULE_PALETTE[0]);
 
 function startAddMode() {
-setAddMode(‘start’);
+setAddMode('start');
 setPendingStart(null); setPendingEnd(null);
-setDraftTitle(’’); setDraftColor(SCHEDULE_PALETTE[0]);
+setDraftTitle(''); setDraftColor(SCHEDULE_PALETTE[0]);
 }
 function cancelAddMode() {
 setAddMode(null);
@@ -1618,16 +1437,16 @@ setPendingStart(null); setPendingEnd(null);
 function commitSchedule() {
 if (!setSchedules || !pendingStart || !pendingEnd || !draftTitle.trim()) return;
 const [s, e] = pendingStart <= pendingEnd ? [pendingStart, pendingEnd] : [pendingEnd, pendingStart];
-setSchedules([…(schedules || []), {
+setSchedules([...(schedules || []), {
 id: uid(), title: draftTitle.trim(), color: draftColor, start: s, end: e,
 }]);
 cancelAddMode();
 }
 function handleDayTap(d) {
-if (addMode === ‘start’) {
-setPendingStart(d); setPendingEnd(d); setAddMode(‘end’);
-} else if (addMode === ‘end’) {
-setPendingEnd(d); setAddMode(‘form’);
+if (addMode === 'start') {
+setPendingStart(d); setPendingEnd(d); setAddMode('end');
+} else if (addMode === 'end') {
+setPendingEnd(d); setAddMode('form');
 } else {
 setSelected(d);
 }
@@ -1640,11 +1459,11 @@ return d >= s && d <= e;
 }
 const palette = SCHEDULE_PALETTE;
 
-// schedules: assign vertical lanes (0/1/2) so multiple overlapping schedules don’t collide visually
+// schedules: assign vertical lanes (0/1/2) so multiple overlapping schedules don't collide visually
 const scheduleLanes = useMemo(() => {
 const lanes = []; // each lane: list of { start, end }
 const out = {};   // id -> lane idx
-[…schedules].sort((a, b) => a.start.localeCompare(b.start)).forEach(s => {
+[...schedules].sort((a, b) => a.start.localeCompare(b.start)).forEach(s => {
 let placed = -1;
 for (let li = 0; li < lanes.length; li++) {
 if (lanes[li].every(x => x.end < s.start || x.start > s.end)) {
@@ -1684,12 +1503,12 @@ if (mins < 180) return 2;
 if (mins < 360) return 3;
 return 4;
 }
-const intensityBg = [‘transparent’, ‘#EDE5D2’, ‘#DFD3B5’, ‘#C9B98E’, ‘#A88E55’];
+const intensityBg = ['transparent', '#EDE5D2', '#DFD3B5', '#C9B98E', '#A88E55'];
 
 function prevMonth() { setCursor(c => c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 }); }
 function nextMonth() { setCursor(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 }); }
 function jumpToday() {
-const d = new Date(today + ‘T00:00:00’);
+const d = new Date(today + 'T00:00:00');
 setCursor({ y: d.getFullYear(), m: d.getMonth() });
 setSelected(today);
 }
@@ -1706,35 +1525,34 @@ const selTracks = tracks[selDate] || {};
 
 function addTodo(title) {
 const t = title.trim(); if (!t) return;
-setTodos(prev => ({ …prev, [selDate]: […(prev[selDate] || []), { id: uid(), title: t, done: false }] }));
+setTodos(prev => ({ ...prev, [selDate]: [...(prev[selDate] || []), { id: uid(), title: t, done: false }] }));
 }
 function toggleTodo(id) {
-setTodos(prev => ({ …prev, [selDate]: (prev[selDate] || []).map(t => t.id === id ? { …t, done: !t.done } : t) }));
+setTodos(prev => ({ ...prev, [selDate]: (prev[selDate] || []).map(t => t.id === id ? { ...t, done: !t.done } : t) }));
 }
 function removeTodo(id) {
 setTodos(prev => {
 const next = (prev[selDate] || []).filter(t => t.id !== id);
-const out = { …prev };
+const out = { ...prev };
 if (next.length === 0) delete out[selDate]; else out[selDate] = next;
 return out;
 });
 }
 
 return (
-<div className=“fadeIn” style={{ paddingTop:20 }}>
-<div style={{ background:C.paper, border:`1px solid ${C.line}`, display:‘flex’, alignItems:‘center’, justifyContent:‘space-between’, padding:‘10px 14px’, marginBottom:8 }}>
-<button onClick={prevMonth} style={{ background:‘none’, border:‘none’, padding:6, cursor:‘pointer’, color:C.ink }}><ChevronLeft size={18} /></button>
-<div style={{ display:‘flex’, alignItems:‘center’, gap:10 }}>
-<div className=“serif” style={{ fontSize:18, fontWeight:600, letterSpacing:’-0.01em’ }}>{monthName}</div>
+<div className="fadeIn" style={{ paddingTop:20 }}>
+<div style={{ background:C.paper, border:`1px solid ${C.line}`, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', marginBottom:8 }}>
+<button onClick={prevMonth} style={{ background:'none', border:'none', padding:6, cursor:'pointer', color:C.ink }}><ChevronLeft size={18} /></button>
+<div style={{ display:'flex', alignItems:'center', gap:10 }}>
+<div className="serif" style={{ fontSize:18, fontWeight:600, letterSpacing:'-0.01em' }}>{monthName}</div>
 <button onClick={jumpToday}
-style={{ background:‘transparent’, border:`1px solid ${C.line}`, color:C.muted, padding:‘3px 8px’, fontSize:10, cursor:‘pointer’, letterSpacing:‘0.1em’, fontFamily:”‘Noto Serif KR’, serif” }}>
+style={{ background:'transparent', border:`1px solid ${C.line}`, color:C.muted, padding:'3px 8px', fontSize:10, cursor:'pointer', letterSpacing:'0.1em', fontFamily:"'Noto Serif KR', serif" }}>
 오늘
 </button>
 </div>
-<button onClick={nextMonth} style={{ background:‘none’, border:‘none’, padding:6, cursor:‘pointer’, color:C.ink }}><ChevronRight size={18} /></button>
+<button onClick={nextMonth} style={{ background:'none', border:'none', padding:6, cursor:'pointer', color:C.ink }}><ChevronRight size={18} /></button>
 </div>
 
-```
   {/* 일정 추가 토글바 */}
   {addMode === null ? (
     <button onClick={startAddMode}
@@ -1744,7 +1562,7 @@ style={{ background:‘transparent’, border:`1px solid ${C.line}`, color:C.mut
   ) : addMode === 'form' ? (
     <div style={{ background:C.ink, color:'#fff', padding:'12px 14px', marginBottom:8 }}>
       <div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', opacity:0.7, marginBottom:8, fontWeight:600 }}>
-        새 일정 · {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace('-','/')} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace('-','/')}
+        새 일정 - {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace('-','/')} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace('-','/')}
       </div>
       <input value={draftTitle} onChange={e => setDraftTitle(e.target.value)} autoFocus
         placeholder="일정 제목 (예: 김영환 헌법 인강)"
@@ -1765,7 +1583,7 @@ style={{ background:‘transparent’, border:`1px solid ${C.line}`, color:C.mut
   ) : (
     <div style={{ background:C.accent, color:'#fff', padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
       <div className="kserif" style={{ fontSize:12, fontWeight:600 }}>
-        {addMode === 'start' ? '시작일을 탭하세요' : `종료일을 탭하세요 · 시작 ${pendingStart.slice(5).replace('-','/')}`}
+        {addMode === 'start' ? '시작일을 탭하세요' : `종료일을 탭하세요 - 시작 ${pendingStart.slice(5).replace('-','/')}`}
       </div>
       <button onClick={cancelAddMode} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', padding:'4px 10px', fontSize:11, cursor:'pointer' }}>취소</button>
     </div>
@@ -1913,13 +1731,12 @@ style={{ background:‘transparent’, border:`1px solid ${C.line}`, color:C.mut
 
   <div style={{ height:20 }} />
 </div>
-```
 
 );
 }
 
 function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, tracks, schedules = [], mood, setMood, onAddTodo, onToggleTodo, onRemoveTodo, onGoToLog, isToday }) {
-const [newTodo, setNewTodo] = useState(’’);
+const [newTodo, setNewTodo] = useState('');
 const [moodLocal, setMoodLocal] = useState(mood);
 useEffect(() => { setMoodLocal(mood); }, [mood, date]);
 
@@ -1938,19 +1755,18 @@ const doneTodos = todos.filter(t => t.done);
 const tracksDoneCount = TRACK_TYPES.filter(tt => tracks[tt.key]?.done).length;
 const hasTrackData = TRACK_TYPES.some(tt => tracks[tt.key]?.done || tracks[tt.key]?.text);
 
-function submit() { onAddTodo(newTodo); setNewTodo(’’); }
+function submit() { onAddTodo(newTodo); setNewTodo(''); }
 
 return (
 <div style={{ background:C.paper, border:`1px solid ${C.line}` }}>
-<div style={{ padding:‘14px 16px’, borderBottom:`1px solid ${C.lineSoft}`, display:‘flex’, alignItems:‘baseline’, justifyContent:‘space-between’ }}>
+<div style={{ padding:'14px 16px', borderBottom:`1px solid ${C.lineSoft}`, display:'flex', alignItems:'baseline', justifyContent:'space-between' }}>
 <div>
-<div className=“kserif” style={{ fontSize:15, fontWeight:600 }}>{fmtKDate(date)}</div>
-{isToday && <span className=“kserif” style={{ fontSize:10, color:C.accent, marginLeft:6, letterSpacing:‘0.1em’, fontWeight:600 }}>TODAY</span>}
+<div className="kserif" style={{ fontSize:15, fontWeight:600 }}>{fmtKDate(date)}</div>
+{isToday && <span className="kserif" style={{ fontSize:10, color:C.accent, marginLeft:6, letterSpacing:'0.1em', fontWeight:600 }}>TODAY</span>}
 </div>
-<span className=“serif mono” style={{ fontSize:14, fontWeight:600, color: minutes > 0 ? C.ink : C.muted }}>{fmtMin(minutes)}</span>
+<span className="serif mono" style={{ fontSize:14, fontWeight:600, color: minutes > 0 ? C.ink : C.muted }}>{fmtMin(minutes)}</span>
 </div>
 
-```
   {mock && (
     <div style={{ padding:'14px 16px', borderBottom:`1px solid ${C.lineSoft}`, background: C.accent, color:'#fff', display:'flex', alignItems:'center', gap:12 }}>
       <div style={{ width:40, height:40, background:'rgba(255,255,255,0.2)', display:'grid', placeItems:'center', flexShrink:0 }}>
@@ -1958,7 +1774,7 @@ return (
       </div>
       <div style={{ flex:1, minWidth:0 }}>
         <div className="kserif" style={{ fontSize:14, fontWeight:600 }}>{mock.label}</div>
-        <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{mock.dayNum}/{mock.totalDays}일차 · {mock.start.slice(5)} ~ {mock.end.slice(5)}</div>
+        <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{mock.dayNum}/{mock.totalDays}일차 - {mock.start.slice(5)} ~ {mock.end.slice(5)}</div>
       </div>
     </div>
   )}
@@ -1972,7 +1788,7 @@ return (
         <div className="kserif" style={{ fontSize:14, fontWeight:600 }}>
           {cycleInfo.subject}{cycleInfo.subject === '민사법' && ' + 선택법'}
         </div>
-        <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{cycleInfo.cycleLabel} · 블록 {cycleInfo.dayInBlock}/{cycleInfo.blockDays}일</div>
+        <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{cycleInfo.cycleLabel} - 블록 {cycleInfo.dayInBlock}/{cycleInfo.blockDays}일</div>
       </div>
       {cycleInfo.isBlockLast && (
         <div style={{ fontSize:10, padding:'3px 8px', background:'rgba(255,255,255,0.2)', fontFamily:"'Noto Serif KR', serif", fontWeight:600, letterSpacing:'0.05em' }}>블록 마지막날</div>
@@ -2103,31 +1919,30 @@ return (
     {isToday && (
       <button onClick={onGoToLog}
         style={{ width:'100%', marginTop:10, background:'transparent', border:`1px solid ${C.line}`, color:C.ink, padding:'8px', fontSize:11, cursor:'pointer', fontFamily:"'Noto Serif KR', serif", letterSpacing:'0.05em' }}>
-        오늘 공부 기록하러 가기 →
+        오늘 공부 기록하러 가기 ->
       </button>
     )}
   </div>
 </div>
-```
 
 );
 }
 
 function TodoRow({ todo, onToggle, onRemove }) {
 return (
-<div style={{ display:‘flex’, alignItems:‘center’, gap:8, padding:‘6px 4px’, borderBottom:`1px dashed ${C.lineSoft}` }}>
-<button onClick={onToggle} style={{ background:‘none’, border:‘none’, padding:2, cursor:‘pointer’, color: todo.done ? C.good : C.muted, display:‘flex’ }}>
+<div style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:`1px dashed ${C.lineSoft}` }}>
+<button onClick={onToggle} style={{ background:'none', border:'none', padding:2, cursor:'pointer', color: todo.done ? C.good : C.muted, display:'flex' }}>
 {todo.done ? <CheckSquare size={16} strokeWidth={2} /> : <Square size={16} strokeWidth={1.5} />}
 </button>
-<span className=“kserif” style={{
+<span className="kserif" style={{
 flex:1, fontSize:13, minWidth:0,
-textDecoration: todo.done ? ‘line-through’ : ‘none’,
-color: todo.done ? C.muted : C.ink, wordBreak:‘keep-all’,
+textDecoration: todo.done ? 'line-through' : 'none',
+color: todo.done ? C.muted : C.ink, wordBreak:'keep-all',
 }}>
 {todo.title}
-{todo.fromMock && <span style={{ fontSize:9, color:C.accent, marginLeft:6, fontFamily:”‘JetBrains Mono’, monospace” }}>모의리뷰</span>}
+{todo.fromMock && <span style={{ fontSize:9, color:C.accent, marginLeft:6, fontFamily:"'JetBrains Mono', monospace" }}>모의리뷰</span>}
 </span>
-<button onClick={onRemove} style={{ background:‘none’, border:‘none’, padding:4, cursor:‘pointer’, color:C.muted, display:‘flex’ }}>
+<button onClick={onRemove} style={{ background:'none', border:'none', padding:4, cursor:'pointer', color:C.muted, display:'flex' }}>
 <X size={12} />
 </button>
 </div>
@@ -2140,21 +1955,20 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
 const [date, setDate] = useState(initialDate || today);
 
 return (
-<div className=“fadeIn” style={{ padding:‘18px 0 24px’ }}>
-<div style={{ display:‘flex’, alignItems:‘center’, justifyContent:‘space-between’, marginBottom:14, gap:8 }}>
-<button onClick={() => setDate(addDays(date, -1))} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:‘7px 10px’, cursor:‘pointer’ }}>
+<div className="fadeIn" style={{ padding:'18px 0 24px' }}>
+<div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14, gap:8 }}>
+<button onClick={() => setDate(addDays(date, -1))} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'7px 10px', cursor:'pointer' }}>
 <ChevronLeft size={14} />
 </button>
-<input type=“date” value={date} onChange={e => setDate(e.target.value)}
-style={{ flex:1, background:C.paper, border:`1px solid ${C.line}`, padding:‘8px 10px’, fontSize:13, textAlign:‘center’, outline:‘none’ }} />
-<button onClick={() => setDate(addDays(date, 1))} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:‘7px 10px’, cursor:‘pointer’ }}>
+<input type="date" value={date} onChange={e => setDate(e.target.value)}
+style={{ flex:1, background:C.paper, border:`1px solid ${C.line}`, padding:'8px 10px', fontSize:13, textAlign:'center', outline:'none' }} />
+<button onClick={() => setDate(addDays(date, 1))} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'7px 10px', cursor:'pointer' }}>
 <ChevronRight size={14} />
 </button>
 </div>
 
-```
   {date !== today && (
-    <button onClick={() => setDate(today)} style={{ background:'none', border:'none', color:C.accent, fontSize:11, cursor:'pointer', marginBottom:12 }}>오늘로 돌아가기 →</button>
+    <button onClick={() => setDate(today)} style={{ background:'none', border:'none', color:C.accent, fontSize:11, cursor:'pointer', marginBottom:12 }}>오늘로 돌아가기 -></button>
   )}
 
   <TimerSection today={today} logs={logs} setLogs={setLogs} />
@@ -2165,7 +1979,6 @@ style={{ flex:1, background:C.paper, border:`1px solid ${C.line}`, padding:‘8p
 
   <ScoresSection date={date} examScores={examScores} setExamScores={setExamScores} />
 </div>
-```
 
 );
 }
@@ -2173,20 +1986,20 @@ style={{ flex:1, background:C.paper, border:`1px solid ${C.line}`, padding:‘8p
 function TimerSection({ today, logs, setLogs }) {
 // 타이머 상태는 새로고침에도 유지되도록 localStorage에 보관
 const [running, setRunning] = useState(() => {
-try { const v = localStorage.getItem(‘bar-timer’); if (v) { const p = JSON.parse(v); return p.running || false; } } catch {}
+try { const v = localStorage.getItem('bar-timer'); if (v) { const p = JSON.parse(v); return p.running || false; } } catch {}
 return false;
 });
 const [startedAt, setStartedAt] = useState(() => {
-try { const v = localStorage.getItem(‘bar-timer’); if (v) return JSON.parse(v).startedAt || null; } catch {}
+try { const v = localStorage.getItem('bar-timer'); if (v) return JSON.parse(v).startedAt || null; } catch {}
 return null;
 });
 const [subject, setSubject] = useState(() => {
-try { const v = localStorage.getItem(‘bar-timer’); if (v) return JSON.parse(v).subject || ‘민사법’; } catch {}
-return ‘민사법’;
+try { const v = localStorage.getItem('bar-timer'); if (v) return JSON.parse(v).subject || '민사법'; } catch {}
+return '민사법';
 });
 const [type, setType] = useState(() => {
-try { const v = localStorage.getItem(‘bar-timer’); if (v) return JSON.parse(v).type || ‘선택형’; } catch {}
-return ‘선택형’;
+try { const v = localStorage.getItem('bar-timer'); if (v) return JSON.parse(v).type || '선택형'; } catch {}
+return '선택형';
 });
 const [tick, setTick] = useState(0);
 
@@ -2199,7 +2012,7 @@ return () => clearInterval(id);
 
 // 상태 변경 시 localStorage 저장
 useEffect(() => {
-try { localStorage.setItem(‘bar-timer’, JSON.stringify({ running, startedAt, subject, type })); } catch {}
+try { localStorage.setItem('bar-timer', JSON.stringify({ running, startedAt, subject, type })); } catch {}
 }, [running, startedAt, subject, type]);
 
 const elapsedSec = startedAt && running ? Math.floor((Date.now() - startedAt) / 1000) : 0;
@@ -2215,7 +2028,7 @@ const subjectColor = SUBJECTS[subject]?.color || C.ink;
 useEffect(() => {
 const validTypes = SUBJECTS[subject]?.types.map(t => t.key) || [];
 if (!validTypes.includes(type)) {
-setType(validTypes[0] || ‘선택형’);
+setType(validTypes[0] || '선택형');
 }
 }, [subject]);
 
@@ -2225,33 +2038,29 @@ setRunning(true);
 }
 function stop(saveIt = true) {
 if (saveIt && startedAt) {
+const startISO = new Date(startedAt - new Date(startedAt).getTimezoneOffset() * 60000).toISOString().slice(0,10);
+const endISO = todayISO();
 const key = `${subject}::${type}`;
-const now = Date.now();
-const totalMin = Math.max(1, Math.round((now - startedAt) / 60000));
-
-```
-  // 새벽 5시 기준으로 학습일 분할
-  const startStudyDay = studyDayISOFromTimestamp(startedAt);
-  const endStudyDay = studyDayISOFromTimestamp(now);
+const totalMin = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
 
   let nextLogs;
-  if (startStudyDay === endStudyDay) {
-    // 같은 학습일 — 한 번에 저장
-    const dl = logs[startStudyDay] || {};
-    nextLogs = { ...logs, [startStudyDay]: { ...dl, [key]: (dl[key] || 0) + totalMin } };
+  if (startISO === endISO) {
+    // 같은 날짜에 끝남 - 평소대로
+    const dl = logs[startISO] || {};
+    nextLogs = { ...logs, [startISO]: { ...dl, [key]: (dl[key] || 0) + totalMin } };
   } else {
-    // 학습일 경계(다음 5시)를 넘김 — 두 학습일에 분할
-    const boundary = nextStudyDayBoundary(startedAt);
-    const startMin = Math.max(0, Math.round((boundary - startedAt) / 60000));
+    // 자정 넘김 - 시작일 자정까지 / 자정 이후로 분할
+    const midnight = new Date(endISO + 'T00:00:00').getTime();
+    const startMin = Math.max(0, Math.round((midnight - startedAt) / 60000));
     const endMin = Math.max(0, totalMin - startMin);
     nextLogs = { ...logs };
     if (startMin > 0) {
-      const dl = nextLogs[startStudyDay] || {};
-      nextLogs[startStudyDay] = { ...dl, [key]: (dl[key] || 0) + startMin };
+      const dl = nextLogs[startISO] || {};
+      nextLogs[startISO] = { ...dl, [key]: (dl[key] || 0) + startMin };
     }
     if (endMin > 0) {
-      const dl = nextLogs[endStudyDay] || {};
-      nextLogs[endStudyDay] = { ...dl, [key]: (dl[key] || 0) + endMin };
+      const dl = nextLogs[endISO] || {};
+      nextLogs[endISO] = { ...dl, [key]: (dl[key] || 0) + endMin };
     }
   }
   setLogs(nextLogs);
@@ -2259,7 +2068,6 @@ const totalMin = Math.max(1, Math.round((now - startedAt) / 60000));
 setRunning(false);
 setStartedAt(null);
 setTick(0);
-```
 
 }
 function pauseOrResume() {
@@ -2283,21 +2091,20 @@ return (
 <SectionTitle>타이머</SectionTitle>
 <div style={{
 background: running ? subjectColor : C.paper,
-color: running ? ‘#fff’ : C.ink,
+color: running ? '#fff' : C.ink,
 border: `1px solid ${running ? subjectColor : C.line}`,
-padding:‘14px 14px 16px’,
-transition:‘background .3s, color .3s’,
+padding:'14px 14px 16px',
+transition:'background .3s, color .3s',
 }}>
-<div style={{ display:‘flex’, alignItems:‘baseline’, justifyContent:‘space-between’, marginBottom:10 }}>
-<div className=“kserif” style={{ fontSize:10, letterSpacing:‘0.22em’, opacity: running ? 0.85 : 0.6, fontWeight:600 }}>
-{running ? ‘측정 중’ : ‘대기’}
+<div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:10 }}>
+<div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', opacity: running ? 0.85 : 0.6, fontWeight:600 }}>
+{running ? '측정 중' : '대기'}
 </div>
 {running && elapsedMin > 0 && (
-<div className=“mono” style={{ fontSize:10, opacity:0.85 }}>≈ {fmtMin(elapsedMin)}</div>
+<div className="mono" style={{ fontSize:10, opacity:0.85 }}>≈ {fmtMin(elapsedMin)}</div>
 )}
 </div>
 
-```
     <div className="serif mono" style={{
       fontSize:42, fontWeight:600, letterSpacing:'-0.02em', lineHeight:1,
       textAlign:'center', marginBottom:14, fontFamily:"'JetBrains Mono', monospace",
@@ -2352,16 +2159,15 @@ transition:‘background .3s, color .3s’,
             flex:2, background:'#fff', color: subjectColor,
             border:'none', padding:'10px', cursor:'pointer', fontSize:13, fontWeight:600,
           }}>
-          ■ 정지 · 저장 ({elapsedMin}분)
+          ■ 정지 - 저장 ({elapsedMin}분)
         </button>
       </div>
     )}
   </div>
   <div style={{ fontSize:10, color:C.muted, marginTop:6, lineHeight:1.5 }}>
-    측정값은 학습일(새벽 5시 기준)의 선택한 과목·유형에 합산됩니다. 5시 이전엔 어제, 그 이후는 오늘로 저장돼요. 앱을 닫아도 측정은 유지됩니다.
+    측정값은 항상 <b>오늘 날짜</b>의 선택한 과목·유형 시간에 자동 합산됩니다. 앱을 닫아도 측정은 유지돼요.
   </div>
 </div>
-```
 
 );
 }
@@ -2371,40 +2177,40 @@ const dayTracks = tracks[date] || {};
 
 function toggle(key) {
 const cur = dayTracks[key] || {};
-const updated = { …dayTracks, [key]: { …cur, done: !cur.done } };
-setTracks({ …tracks, [date]: updated });
+const updated = { ...dayTracks, [key]: { ...cur, done: !cur.done } };
+setTracks({ ...tracks, [date]: updated });
 }
 function setText(key, text) {
 const cur = dayTracks[key] || {};
-const updated = { …dayTracks, [key]: { …cur, text } };
-setTracks({ …tracks, [date]: updated });
+const updated = { ...dayTracks, [key]: { ...cur, text } };
+setTracks({ ...tracks, [date]: updated });
 }
 
 return (
 <div style={{ marginBottom:24 }}>
 <SectionTitle>오늘의 5트랙</SectionTitle>
-<div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:‘4px 0’ }}>
+<div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'4px 0' }}>
 {TRACK_TYPES.map((t, i) => {
 const v = dayTracks[t.key] || {};
 return (
 <div key={t.key} style={{
-display:‘flex’, alignItems:‘center’, gap:10, padding:‘10px 14px’,
-borderBottom: i < TRACK_TYPES.length - 1 ? `1px dashed ${C.lineSoft}` : ‘none’,
+display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
+borderBottom: i < TRACK_TYPES.length - 1 ? `1px dashed ${C.lineSoft}` : 'none',
 }}>
-<button onClick={() => toggle(t.key)} style={{ background:‘none’, border:‘none’, cursor:‘pointer’, padding:0, flexShrink:0 }}>
+<button onClick={() => toggle(t.key)} style={{ background:'none', border:'none', cursor:'pointer', padding:0, flexShrink:0 }}>
 {v.done ? <CheckSquare size={18} color={t.color} /> : <Square size={18} color={C.muted} />}
 </button>
-<div style={{ width:28, fontFamily:”‘Fraunces’, serif”, fontWeight:600, fontSize:16, color:t.color, textAlign:‘center’, flexShrink:0 }}>
+<div style={{ width:28, fontFamily:"'Fraunces', serif", fontWeight:600, fontSize:16, color:t.color, textAlign:'center', flexShrink:0 }}>
 {t.short}
 </div>
 <input
-value={v.text || ‘’}
+value={v.text || ''}
 onChange={e => setText(t.key, e.target.value)}
 placeholder={t.placeholder}
 style={{
-flex:1, background:‘transparent’, border:‘none’, outline:‘none’,
-fontSize:12, color:C.ink, padding:‘2px 0’,
-textDecoration: v.done && !v.text ? ‘none’ : ‘none’,
+flex:1, background:'transparent', border:'none', outline:'none',
+fontSize:12, color:C.ink, padding:'2px 0',
+textDecoration: v.done && !v.text ? 'none' : 'none',
 }}
 />
 </div>
@@ -2420,10 +2226,10 @@ const dl = logs[date] || {};
 
 function setMin(subj, type, val) {
 const key = `${subj}::${type}`;
-const next = { …dl };
+const next = { ...dl };
 if (val > 0) next[key] = val;
 else delete next[key];
-const all = { …logs };
+const all = { ...logs };
 if (Object.keys(next).length === 0) delete all[date];
 else all[date] = next;
 setLogs(all);
@@ -2431,7 +2237,7 @@ setLogs(all);
 
 const subTotals = {};
 Object.entries(dl).forEach(([k, v]) => {
-const [s] = k.split(’::’);
+const [s] = k.split('::');
 subTotals[s] = (subTotals[s] || 0) + (v || 0);
 });
 const grandTotal = Object.values(dl).reduce((a, b) => a + b, 0);
@@ -2444,12 +2250,12 @@ return (
 const meta = SUBJECTS[sub];
 const sTot = subTotals[sub] || 0;
 return (
-<div key={sub} style={{ borderTop: si > 0 ? `1px solid ${C.lineSoft}` : ‘none’, padding:‘10px 14px’ }}>
-<div style={{ display:‘flex’, justifyContent:‘space-between’, alignItems:‘baseline’, marginBottom:6 }}>
-<span className=“kserif” style={{ fontSize:13, fontWeight:600, color:meta.color }}>{sub}</span>
-<span className=“mono” style={{ fontSize:11, color:C.muted }}>{fmtMin(sTot)}</span>
+<div key={sub} style={{ borderTop: si > 0 ? `1px solid ${C.lineSoft}` : 'none', padding:'10px 14px' }}>
+<div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+<span className="kserif" style={{ fontSize:13, fontWeight:600, color:meta.color }}>{sub}</span>
+<span className="mono" style={{ fontSize:11, color:C.muted }}>{fmtMin(sTot)}</span>
 </div>
-<div style={{ display:‘grid’, gridTemplateColumns:‘repeat(2, 1fr)’, gap:6 }}>
+<div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:6 }}>
 {meta.types.map(t => {
 const key = `${sub}::${t.key}`;
 return <TypeEntry key={key} label={t.label} value={dl[key] || 0} onChange={v => setMin(sub, t.key, v)} color={meta.color} />;
@@ -2460,8 +2266,8 @@ return <TypeEntry key={key} label={t.label} value={dl[key] || 0} onChange={v => 
 })}
 </div>
 {grandTotal > 0 && (
-<div style={{ textAlign:‘right’, marginTop:8, fontSize:12, color:C.muted }}>
-합계 <span className=“mono” style={{ color:C.ink, fontWeight:600 }}>{fmtMin(grandTotal)}</span>
+<div style={{ textAlign:'right', marginTop:8, fontSize:12, color:C.muted }}>
+합계 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{fmtMin(grandTotal)}</span>
 </div>
 )}
 </div>
@@ -2471,53 +2277,45 @@ return <TypeEntry key={key} label={t.label} value={dl[key] || 0} onChange={v => 
 function TypeEntry({ label, value, onChange, color }) {
 function bump(d) { onChange(Math.max(0, value + d)); }
 return (
-<div style={{ display:‘flex’, alignItems:‘center’, gap:4, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:‘4px 6px’ }}>
-<span style={{ fontSize:10, color:C.muted, flex:1, minWidth:0, overflow:‘hidden’, textOverflow:‘ellipsis’, whiteSpace:‘nowrap’ }}>{label}</span>
-<button onClick={() => bump(-15)} style={{ background:‘none’, border:‘none’, cursor:‘pointer’, padding:‘2px 4px’, color:C.muted }}>
+<div style={{ display:'flex', alignItems:'center', gap:4, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'4px 6px' }}>
+<span style={{ fontSize:10, color:C.muted, flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{label}</span>
+<button onClick={() => bump(-15)} style={{ background:'none', border:'none', cursor:'pointer', padding:'2px 4px', color:C.muted }}>
 <Minus size={11} />
 </button>
-<input type=“number” inputMode=“numeric” value={value || ‘’} onChange={e => onChange(parseInt(e.target.value) || 0)}
-style={{ width:36, textAlign:‘center’, background:‘transparent’, border:‘none’, outline:‘none’, fontSize:11, fontFamily:”‘JetBrains Mono’, monospace”, color:value > 0 ? color : C.muted, fontWeight:600 }} />
-<button onClick={() => bump(15)} style={{ background:‘none’, border:‘none’, cursor:‘pointer’, padding:‘2px 4px’, color:C.muted }}>
+<input type="number" inputMode="numeric" value={value || ''} onChange={e => onChange(parseInt(e.target.value) || 0)}
+style={{ width:36, textAlign:'center', background:'transparent', border:'none', outline:'none', fontSize:11, fontFamily:"'JetBrains Mono', monospace", color:value > 0 ? color : C.muted, fontWeight:600 }} />
+<button onClick={() => bump(15)} style={{ background:'none', border:'none', cursor:'pointer', padding:'2px 4px', color:C.muted }}>
 <Plus size={11} />
 </button>
 </div>
 );
 }
 
-/* 객관식 과목별 고정 총 문항 수 */
-const MCQ_TOTAL = { 공법: 40, 형사법: 40, 민사법: 70 };
+const SCORE_TYPES = ['선택형'];
 
 function ScoresSection({ date, examScores, setExamScores }) {
-const [round, setRound] = useState(’’);
-const [subject, setSubject] = useState(‘공법’);
-const [wrong, setWrong] = useState(’’);
-const [note, setNote] = useState(’’);
+const [round, setRound] = useState('');
+const [subject, setSubject] = useState('공법');
+const [wrong, setWrong] = useState('');
+const [total, setTotal] = useState('');
+const [note, setNote] = useState('');
 
 const todays = examScores.filter(s => s.date === date).sort((a,b) => (a.subject + a.round).localeCompare(b.subject + b.round));
-const total = MCQ_TOTAL[subject];
-const wrongNum = parseInt(wrong);
-const correctPreview = (!isNaN(wrongNum) && wrongNum >= 0 && wrongNum <= total) ? total - wrongNum : null;
 
 function add() {
-if (!round || wrong === ‘’) return;
-const w = parseInt(wrong);
-if (isNaN(w) || w < 0 || w > total) {
-alert(`틀린 개수는 0~${total} 사이여야 합니다.`);
-return;
-}
+if (!round || wrong === '') return;
 const newScore = {
 id: uid(),
 date,
 round: parseInt(round),
 subject,
-type: ‘선택형’,
-wrong: w,
-total,
+type: '선택형',
+wrong: parseInt(wrong),
+total: total ? parseInt(total) : null,
 note: note.trim() || null,
 };
-setExamScores([…examScores, newScore]);
-setRound(’’); setWrong(’’); setNote(’’);
+setExamScores([...examScores, newScore]);
+setRound(''); setWrong(''); setTotal(''); setNote('');
 }
 function del(id) {
 setExamScores(examScores.filter(s => s.id !== id));
@@ -2526,90 +2324,50 @@ setExamScores(examScores.filter(s => s.id !== id));
 return (
 <div style={{ marginBottom:24 }}>
 <SectionTitle>객관식 회차 점수</SectionTitle>
-<div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:‘12px 14px’ }}>
+<div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'12px 14px' }}>
 {todays.length > 0 && (
-<div style={{ marginBottom:12 }}>
-{todays.map(s => {
-const correct = s.total ? s.total - s.wrong : null;
-return (
-<div key={s.id} style={{ display:‘flex’, alignItems:‘center’, gap:8, padding:‘6px 0’, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:12 }}>
-<span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:30 }}>{SUBJECTS[s.subject].short}</span>
-<span className=“mono” style={{ color:C.muted, minWidth:34 }}>{s.round}회</span>
-<span className=“mono” style={{ color:C.good, fontWeight:600, minWidth:48 }}>+{correct ?? ‘-’}</span>
-<span className=“mono” style={{ color:C.accent, minWidth:36 }}>-{s.wrong}</span>
-<span style={{ flex:1, color:C.muted, fontSize:10, minWidth:0, overflow:‘hidden’, textOverflow:‘ellipsis’, whiteSpace:‘nowrap’ }}>{s.note || ‘’}</span>
-<button onClick={() => del(s.id)} style={{ background:‘none’, border:‘none’, cursor:‘pointer’, padding:0, flexShrink:0 }}>
+<div style={{ marginBottom:10 }}>
+{todays.map(s => (
+<div key={s.id} style={{ display:'flex', alignItems:'baseline', gap:10, padding:'5px 0', borderBottom:`1px dashed ${C.lineSoft}`, fontSize:12 }}>
+<span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:40 }}>{SUBJECTS[s.subject].short}</span>
+<span className="mono" style={{ color:C.muted, minWidth:30 }}>{s.round}회</span>
+<span className="mono" style={{ color:C.ink, minWidth:40 }}>-{s.wrong}{s.total ? `/${s.total}` : ''}</span>
+<span style={{ flex:1, color:C.muted, fontSize:11 }}>{s.note || ''}</span>
+<button onClick={() => del(s.id)} style={{ background:'none', border:'none', cursor:'pointer', padding:0 }}>
 <X size={12} color={C.muted} />
 </button>
 </div>
-);
-})}
+))}
 </div>
 )}
-
-```
-    {/* 1행: 과목 선택 */}
-    <div style={{ display:'flex', gap:5, marginBottom:6 }}>
-      {Object.keys(MCQ_TOTAL).map(s => (
-        <button key={s} onClick={() => setSubject(s)}
-          style={{
-            flex:1, background: subject === s ? SUBJECTS[s].color : C.bg,
-            color: subject === s ? '#fff' : C.muted,
-            border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`,
-            padding:'7px 4px', fontSize:11, cursor:'pointer', fontWeight: subject === s ? 600 : 400,
-          }}>
-          {s} <span style={{ opacity:0.7, fontSize:10 }}>({MCQ_TOTAL[s]})</span>
-        </button>
-      ))}
-    </div>
-
-    {/* 2행: 회차 / 틀림 입력 */}
-    <div style={{ display:'flex', gap:5, marginBottom:6, alignItems:'stretch' }}>
-      <div style={{ flex:1, display:'flex', alignItems:'center', background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'0 8px' }}>
-        <input value={round} onChange={e => setRound(e.target.value)} placeholder="회차"
-          type="number" inputMode="numeric"
-          style={{ flex:1, background:'transparent', border:'none', outline:'none', padding:'8px 0', fontSize:12, fontFamily:"'JetBrains Mono', monospace" }} />
-        <span style={{ fontSize:10, color:C.muted }}>회</span>
-      </div>
-      <div style={{ flex:1.4, display:'flex', alignItems:'center', background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'0 8px' }}>
-        <input value={wrong} onChange={e => setWrong(e.target.value)}
-          placeholder="틀린 개수" type="number" inputMode="numeric" min={0} max={total}
-          style={{ flex:1, background:'transparent', border:'none', outline:'none', padding:'8px 0', fontSize:12, fontFamily:"'JetBrains Mono', monospace", color:C.accent, fontWeight:600 }} />
-        <span style={{ fontSize:10, color:C.muted }}>/{total}</span>
-      </div>
-      <button onClick={add}
-        style={{ background:C.ink, color:'#fff', border:'none', padding:'0 16px', cursor:'pointer', fontSize:12, display:'flex', alignItems:'center' }}>
-        <Plus size={14} />
-      </button>
-    </div>
-
-    {/* 미리보기: 맞은 개수 */}
-    {correctPreview !== null && (
-      <div style={{ fontSize:11, color:C.muted, marginBottom:6, textAlign:'right' }}>
-        맞은 개수 <span className="mono" style={{ color:C.good, fontWeight:600, fontSize:13 }}>{correctPreview}</span>
-        <span className="mono" style={{ color:C.muted, fontSize:10 }}> / {total} ({Math.round((correctPreview/total)*100)}%)</span>
-      </div>
-    )}
-
-    {/* 3행: 메모 */}
-    <input value={note} onChange={e => setNote(e.target.value)} placeholder="메모 (선택)"
-      style={{ width:'100%', background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'7px 10px', fontSize:11, outline:'none' }} />
-  </div>
+<div style={{ display:'grid', gridTemplateColumns:'1fr 1.4fr 1fr 1fr auto', gap:5 }}>
+<select value={subject} onChange={e => setSubject(e.target.value)} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'6px', fontSize:11, outline:'none' }}>
+{Object.keys(SUBJECTS).filter(s => s !== '선택법').map(s => <option key={s} value={s}>{s}</option>)}
+</select>
+<input value={round} onChange={e => setRound(e.target.value)} placeholder="회차" type="number" inputMode="numeric"
+style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'6px', fontSize:11, outline:'none' }} />
+<input value={wrong} onChange={e => setWrong(e.target.value)} placeholder="틀림" type="number" inputMode="numeric"
+style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'6px', fontSize:11, outline:'none' }} />
+<input value={total} onChange={e => setTotal(e.target.value)} placeholder="총" type="number" inputMode="numeric"
+style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'6px', fontSize:11, outline:'none' }} />
+<button onClick={add} style={{ background:C.ink, color:'#fff', border:'none', padding:'6px 10px', cursor:'pointer', fontSize:11 }}>+</button>
 </div>
-```
-
+<input value={note} onChange={e => setNote(e.target.value)} placeholder="메모(선택)"
+style={{ width:'100%', marginTop:5, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'6px 8px', fontSize:11, outline:'none' }} />
+</div>
+</div>
 );
 }
 
 /* ============================================================ EXAMS (기출 회차 점수) ============================================================ */
 
 function ExamsView({ examScores }) {
-const [filterSubject, setFilterSubject] = useState(‘전체’);
+const [filterSubject, setFilterSubject] = useState('전체');
 
 // matrix: subject x round
 const matrix = useMemo(() => {
 const m = {};
-Object.keys(SUBJECTS).filter(s => s !== ‘선택법’).forEach(s => { m[s] = {}; });
+Object.keys(SUBJECTS).filter(s => s !== '선택법').forEach(s => { m[s] = {}; });
 examScores.forEach(s => {
 if (m[s.subject]) {
 const cur = m[s.subject][s.round];
@@ -2622,10 +2380,8 @@ return m;
 const allRounds = useMemo(() => {
 const set = new Set();
 examScores.forEach(s => set.add(s.round));
-return […set].sort((a,b) => a - b);
+return [...set].sort((a,b) => a - b);
 }, [examScores]);
-
-const [chartMode, setChartMode] = useState(‘correct’); // ‘correct’ | ‘wrong’
 
 const chartData = useMemo(() => {
 const data = [];
@@ -2633,28 +2389,24 @@ allRounds.forEach(r => {
 const row = { round: `${r}회` };
 Object.keys(matrix).forEach(sub => {
 const s = matrix[sub][r];
-if (s) {
-const totalQ = s.total || MCQ_TOTAL[sub] || 0;
-row[sub] = chartMode === ‘correct’ ? (totalQ - s.wrong) : s.wrong;
-}
+if (s) row[sub] = s.wrong;
 });
 data.push(row);
 });
 return data;
-}, [allRounds, matrix, chartMode]);
+}, [allRounds, matrix]);
 
-const subjects = Object.keys(SUBJECTS).filter(s => s !== ‘선택법’);
-const filteredScores = filterSubject === ‘전체’ ? examScores : examScores.filter(s => s.subject === filterSubject);
-const sortedScores = […filteredScores].sort((a,b) => b.date.localeCompare(a.date));
+const subjects = Object.keys(SUBJECTS).filter(s => s !== '선택법');
+const filteredScores = filterSubject === '전체' ? examScores : examScores.filter(s => s.subject === filterSubject);
+const sortedScores = [...filteredScores].sort((a,b) => b.date.localeCompare(a.date));
 
 return (
-<div className=“fadeIn” style={{ padding:‘18px 0 24px’ }}>
+<div className="fadeIn" style={{ padding:'18px 0 24px' }}>
 <div style={{ marginBottom:6 }}>
-<h1 className=“serif” style={{ margin:0, fontSize:22, fontWeight:600 }}>기출 회차</h1>
-<div style={{ fontSize:11, color:C.muted, marginTop:3 }}>객관식 회차별 점수 추이</div>
+<h1 className="serif" style={{ margin:0, fontSize:22, fontWeight:600 }}>기출 회차</h1>
+<div style={{ fontSize:11, color:C.muted, marginTop:3 }}>객관식 회차별 틀린 개수 추이</div>
 </div>
 
-```
   {chartData.length === 0 ? (
     <div style={{ background:C.paper, border:`1px dashed ${C.line}`, padding:24, textAlign:'center', fontSize:12, color:C.muted, margin:'18px 0' }}>
       기록 탭에서 회차 점수를 입력해 보세요
@@ -2662,27 +2414,13 @@ return (
   ) : (
     <>
       {/* Trend chart */}
-      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'14px 12px 12px', margin:'14px 0 18px' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, paddingLeft:4 }}>
-          <span className="kserif" style={{ fontSize:10, color:C.muted, letterSpacing:'0.18em', fontWeight:600 }}>
-            {chartMode === 'correct' ? '맞은 개수 추이' : '틀린 개수 추이'}
-          </span>
-          <div style={{ display:'flex', gap:0, border:`1px solid ${C.line}` }}>
-            <button onClick={() => setChartMode('correct')}
-              style={{ background: chartMode === 'correct' ? C.good : 'transparent', color: chartMode === 'correct' ? '#fff' : C.muted, border:'none', padding:'4px 10px', fontSize:10, cursor:'pointer', fontWeight:600 }}>
-              맞음
-            </button>
-            <button onClick={() => setChartMode('wrong')}
-              style={{ background: chartMode === 'wrong' ? C.accent : 'transparent', color: chartMode === 'wrong' ? '#fff' : C.muted, border:'none', padding:'4px 10px', fontSize:10, cursor:'pointer', fontWeight:600 }}>
-              틀림
-            </button>
-          </div>
-        </div>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'16px 12px 12px', margin:'14px 0 18px' }}>
+        <div className="kserif" style={{ fontSize:10, color:C.muted, letterSpacing:'0.18em', marginBottom:10, paddingLeft:4, fontWeight:600 }}>틀린 개수 추이</div>
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={chartData} margin={{ top:5, right:10, bottom:5, left:-10 }}>
             <CartesianGrid stroke={C.lineSoft} strokeDasharray="3 3" />
             <XAxis dataKey="round" tick={{ fontSize:10, fill:C.muted }} />
-            <YAxis reversed={chartMode === 'wrong'} tick={{ fontSize:10, fill:C.muted }} />
+            <YAxis reversed tick={{ fontSize:10, fill:C.muted }} />
             <Tooltip contentStyle={{ background:C.paper, border:`1px solid ${C.line}`, fontSize:11 }} />
             {subjects.map(sub => (
               <Line key={sub} type="monotone" dataKey={sub} stroke={SUBJECTS[sub].color} strokeWidth={2} dot={{ r:3 }} connectNulls />
@@ -2692,7 +2430,7 @@ return (
         <div style={{ display:'flex', gap:12, justifyContent:'center', marginTop:6, flexWrap:'wrap' }}>
           {subjects.map(sub => (
             <span key={sub} style={{ fontSize:10, color:C.muted, display:'inline-flex', alignItems:'center', gap:4 }}>
-              <span style={{ width:10, height:2, background:SUBJECTS[sub].color, display:'inline-block' }} /> {sub}<span className="mono" style={{ opacity:0.6, marginLeft:2 }}>({MCQ_TOTAL[sub]})</span>
+              <span style={{ width:10, height:2, background:SUBJECTS[sub].color, display:'inline-block' }} /> {sub}
             </span>
           ))}
         </div>
@@ -2706,9 +2444,7 @@ return (
             <tr>
               <th style={{ padding:'6px 10px', textAlign:'left', color:C.muted, fontWeight:500, borderBottom:`1px solid ${C.lineSoft}` }}>회차</th>
               {subjects.map(sub => (
-                <th key={sub} style={{ padding:'6px 10px', textAlign:'center', color:SUBJECTS[sub].color, fontWeight:600, borderBottom:`1px solid ${C.lineSoft}` }}>
-                  {SUBJECTS[sub].short}<span style={{ fontSize:9, opacity:0.6, marginLeft:2 }}>/{MCQ_TOTAL[sub]}</span>
-                </th>
+                <th key={sub} style={{ padding:'6px 10px', textAlign:'center', color:SUBJECTS[sub].color, fontWeight:600, borderBottom:`1px solid ${C.lineSoft}` }}>{SUBJECTS[sub].short}</th>
               ))}
             </tr>
           </thead>
@@ -2718,16 +2454,9 @@ return (
                 <td className="mono" style={{ padding:'6px 10px', color:C.ink, borderBottom:`1px dashed ${C.lineSoft}` }}>{r}회</td>
                 {subjects.map(sub => {
                   const s = matrix[sub][r];
-                  const totalQ = MCQ_TOTAL[sub];
-                  const correct = s ? (s.total || totalQ) - s.wrong : null;
                   return (
-                    <td key={sub} className="mono" style={{ padding:'6px 10px', textAlign:'center', borderBottom:`1px dashed ${C.lineSoft}`, fontWeight: s ? 600 : 400 }}>
-                      {s ? (
-                        <span>
-                          <span style={{ color: SUBJECTS[sub].color }}>{correct}</span>
-                          <span style={{ color: C.muted, fontSize:9, fontWeight:400 }}>·-{s.wrong}</span>
-                        </span>
-                      ) : <span style={{ color: C.muted }}>·</span>}
+                    <td key={sub} className="mono" style={{ padding:'6px 10px', textAlign:'center', color: s ? SUBJECTS[sub].color : C.muted, borderBottom:`1px dashed ${C.lineSoft}`, fontWeight: s ? 600 : 400 }}>
+                      {s ? `-${s.wrong}` : '·'}
                     </td>
                   );
                 })}
@@ -2757,24 +2486,18 @@ return (
     <div style={{ fontSize:11, color:C.muted, textAlign:'center', padding:14 }}>기록이 없습니다</div>
   ) : (
     <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'4px 14px' }}>
-      {sortedScores.map(s => {
-        const totalQ = s.total || MCQ_TOTAL[s.subject];
-        const correct = totalQ - s.wrong;
-        return (
-          <div key={s.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:`1px dashed ${C.lineSoft}`, fontSize:12 }}>
-            <span className="mono" style={{ color:C.muted, fontSize:10, minWidth:48 }}>{s.date.slice(5)}</span>
-            <span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:42 }}>{s.subject}</span>
-            <span className="mono" style={{ color:C.muted, minWidth:30 }}>{s.round}회</span>
-            <span className="mono" style={{ color:C.good, fontWeight:600, minWidth:34 }}>+{correct}</span>
-            <span className="mono" style={{ color:C.accent, minWidth:30 }}>-{s.wrong}</span>
-            {s.note && <span style={{ flex:1, fontSize:10, color:C.muted, fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0 }}>{s.note}</span>}
-          </div>
-        );
-      })}
+      {sortedScores.map(s => (
+        <div key={s.id} style={{ display:'flex', alignItems:'baseline', gap:8, padding:'8px 0', borderBottom:`1px dashed ${C.lineSoft}`, fontSize:12 }}>
+          <span className="mono" style={{ color:C.muted, fontSize:10, minWidth:60 }}>{s.date.slice(5)}</span>
+          <span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:50 }}>{s.subject}</span>
+          <span className="mono" style={{ color:C.muted, minWidth:30 }}>{s.round}회</span>
+          <span className="mono" style={{ color:C.ink, minWidth:30 }}>-{s.wrong}</span>
+          {s.note && <span style={{ flex:1, fontSize:10, color:C.muted, fontStyle:'italic' }}>{s.note}</span>}
+        </div>
+      ))}
     </div>
   )}
 </div>
-```
 
 );
 }
@@ -2782,21 +2505,20 @@ return (
 /* ============================================================ REVIEW (회독) ============================================================ */
 
 function ReviewView({ today, reviews, setReviews, books, setBooks, materials, setMaterials, materialLog, setMaterialLog }) {
-const [tab, setTab] = useState(‘topics’);
+const [tab, setTab] = useState('topics');
 
 const tabs = [
-{ key:‘topics’, label:‘주제’, icon:RotateCw },
-{ key:‘books’, label:‘문제집’, icon:BookOpen },
-{ key:‘materials’, label:‘자료’, icon:Library },
+{ key:'topics', label:'주제', icon:RotateCw },
+{ key:'books', label:'문제집', icon:BookOpen },
+{ key:'materials', label:'자료', icon:Library },
 ];
 
 return (
-<div className=“fadeIn” style={{ padding:‘18px 0 24px’ }}>
+<div className="fadeIn" style={{ padding:'18px 0 24px' }}>
 <div style={{ marginBottom:14 }}>
-<h1 className=“serif” style={{ margin:0, fontSize:22, fontWeight:600 }}>회독</h1>
+<h1 className="serif" style={{ margin:0, fontSize:22, fontWeight:600 }}>회독</h1>
 </div>
 
-```
   <div style={{ display:'flex', gap:6, marginBottom:14, borderBottom:`1px solid ${C.line}` }}>
     {tabs.map(t => {
       const Icon = t.icon;
@@ -2820,7 +2542,6 @@ return (
   {tab === 'books' && <BooksReview today={today} books={books} setBooks={setBooks} />}
   {tab === 'materials' && <MaterialsReview today={today} materials={materials} setMaterials={setMaterials} materialLog={materialLog} setMaterialLog={setMaterialLog} />}
 </div>
-```
 
 );
 }
@@ -2833,7 +2554,7 @@ return reviews.map(r => {
 const interval = r.intervals[Math.min(r.cycleIndex, r.intervals.length - 1)];
 const next = addDays(r.lastReviewed, interval);
 const days = daysDiff(today, next);
-return { …r, nextDue: next, daysUntilDue: days };
+return { ...r, nextDue: next, daysUntilDue: days };
 }).sort((a, b) => a.nextDue.localeCompare(b.nextDue));
 }, [reviews, today]);
 
@@ -2841,15 +2562,15 @@ function addReview(data) {
 const r = {
 id: uid(), title: data.title, subject: data.subject,
 created: today, lastReviewed: today, cycleIndex: 0,
-intervals: [5, 3, 2], note: data.note || ‘’,
+intervals: [5, 3, 2], note: data.note || '',
 };
-setReviews([…reviews, r]);
+setReviews([...reviews, r]);
 setShowAdd(false);
 }
 
 function markReviewed(id) {
 setReviews(reviews.map(r => r.id === id ? {
-…r, lastReviewed: today,
+...r, lastReviewed: today,
 cycleIndex: Math.min(r.cycleIndex + 1, r.intervals.length - 1),
 } : r));
 }
@@ -2858,13 +2579,12 @@ function delReview(id) { setReviews(reviews.filter(r => r.id !== id)); }
 return (
 <>
 <div style={{ fontSize:11, color:C.muted, marginBottom:14, lineHeight:1.6 }}>
-주제별 5–3–2 망각곡선 회독
+주제별 5-3-2 망각곡선 회독
 </div>
-<button onClick={() => setShowAdd(true)} style={{ width:‘100%’, background:C.ink, color:’#fff’, border:‘none’, padding:‘10px’, cursor:‘pointer’, marginBottom:14, fontSize:12, display:‘flex’, alignItems:‘center’, justifyContent:‘center’, gap:6 }}>
+<button onClick={() => setShowAdd(true)} style={{ width:'100%', background:C.ink, color:'#fff', border:'none', padding:'10px', cursor:'pointer', marginBottom:14, fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
 <Plus size={14} /> 주제 추가
 </button>
 
-```
   {showAdd && <AddReviewForm onAdd={addReview} onCancel={() => setShowAdd(false)} />}
 
   {enriched.length === 0 ? (
@@ -2877,37 +2597,36 @@ return (
     </div>
   )}
 </>
-```
 
 );
 }
 
 function AddReviewForm({ onAdd, onCancel }) {
-const [title, setTitle] = useState(’’);
-const [subject, setSubject] = useState(‘민사법’);
-const [note, setNote] = useState(’’);
+const [title, setTitle] = useState('');
+const [subject, setSubject] = useState('민사법');
+const [note, setNote] = useState('');
 
 return (
 <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
-<input value={title} onChange={e => setTitle(e.target.value)} placeholder=“주제 (예: 채권자대위)”
-style={{ width:‘100%’, background:C.bg, border:`1px solid ${C.line}`, padding:‘8px 10px’, fontSize:12, marginBottom:8, outline:‘none’ }} />
-<div style={{ display:‘flex’, gap:6, marginBottom:8 }}>
+<input value={title} onChange={e => setTitle(e.target.value)} placeholder="주제 (예: 채권자대위)"
+style={{ width:'100%', background:C.bg, border:`1px solid ${C.line}`, padding:'8px 10px', fontSize:12, marginBottom:8, outline:'none' }} />
+<div style={{ display:'flex', gap:6, marginBottom:8 }}>
 {Object.keys(SUBJECTS).map(s => (
 <button key={s} onClick={() => setSubject(s)}
 style={{
 flex:1, background: subject === s ? SUBJECTS[s].color : C.bg,
-color: subject === s ? ‘#fff’ : C.muted,
+color: subject === s ? '#fff' : C.muted,
 border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`,
-padding:‘6px 4px’, fontSize:10, cursor:‘pointer’,
+padding:'6px 4px', fontSize:10, cursor:'pointer',
 }}>{SUBJECTS[s].short}</button>
 ))}
 </div>
-<textarea value={note} onChange={e => setNote(e.target.value)} placeholder=“메모 (선택)” rows={2}
-style={{ width:‘100%’, background:C.bg, border:`1px solid ${C.line}`, padding:‘8px 10px’, fontSize:12, marginBottom:10, outline:‘none’, resize:‘vertical’, fontFamily:”‘Noto Serif KR’, serif” }} />
-<div style={{ display:‘flex’, gap:6 }}>
-<button onClick={onCancel} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:‘8px’, cursor:‘pointer’, fontSize:12 }}>취소</button>
+<textarea value={note} onChange={e => setNote(e.target.value)} placeholder="메모 (선택)" rows={2}
+style={{ width:'100%', background:C.bg, border:`1px solid ${C.line}`, padding:'8px 10px', fontSize:12, marginBottom:10, outline:'none', resize:'vertical', fontFamily:"'Noto Serif KR', serif" }} />
+<div style={{ display:'flex', gap:6 }}>
+<button onClick={onCancel} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:'8px', cursor:'pointer', fontSize:12 }}>취소</button>
 <button onClick={() => title && onAdd({ title, subject, note })}
-style={{ flex:1, background:C.ink, color:’#fff’, border:‘none’, padding:‘8px’, cursor:‘pointer’, fontSize:12 }}>추가</button>
+style={{ flex:1, background:C.ink, color:'#fff', border:'none', padding:'8px', cursor:'pointer', fontSize:12 }}>추가</button>
 </div>
 </div>
 );
@@ -2917,24 +2636,24 @@ function ReviewCard({ review, onReviewed, onDelete }) {
 const isDue = review.daysUntilDue <= 0;
 const subColor = SUBJECTS[review.subject].color;
 return (
-<div style={{ background:C.paper, border:`1px solid ${isDue ? C.accent : C.line}`, padding:‘12px 14px’, display:‘flex’, alignItems:‘center’, gap:10 }}>
-<div style={{ width:3, alignSelf:‘stretch’, background:subColor }} />
+<div style={{ background:C.paper, border:`1px solid ${isDue ? C.accent : C.line}`, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
+<div style={{ width:3, alignSelf:'stretch', background:subColor }} />
 <div style={{ flex:1 }}>
-<div style={{ display:‘flex’, alignItems:‘baseline’, justifyContent:‘space-between’, gap:8 }}>
+<div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8 }}>
 <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{review.title}</div>
-<div className=“mono” style={{ fontSize:10, color: isDue ? C.accent : C.muted, fontWeight: isDue ? 600 : 400 }}>
-{isDue ? ‘오늘’ : `D-${review.daysUntilDue}`}
+<div className="mono" style={{ fontSize:10, color: isDue ? C.accent : C.muted, fontWeight: isDue ? 600 : 400 }}>
+{isDue ? '오늘' : `D-${review.daysUntilDue}`}
 </div>
 </div>
 <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
-<span style={{ color:subColor, fontWeight:600 }}>{review.subject}</span> · 회독 {review.cycleIndex + 1}회차
+<span style={{ color:subColor, fontWeight:600 }}>{review.subject}</span> - 회독 {review.cycleIndex + 1}회차
 </div>
-{review.note && <div style={{ fontSize:10, color:C.muted, marginTop:4, fontStyle:‘italic’ }}>{review.note}</div>}
+{review.note && <div style={{ fontSize:10, color:C.muted, marginTop:4, fontStyle:'italic' }}>{review.note}</div>}
 </div>
-<button onClick={onReviewed} style={{ background:C.ink, color:’#fff’, border:‘none’, padding:‘5px 8px’, cursor:‘pointer’, fontSize:10 }}>
+<button onClick={onReviewed} style={{ background:C.ink, color:'#fff', border:'none', padding:'5px 8px', cursor:'pointer', fontSize:10 }}>
 <Check size={11} />
 </button>
-<button onClick={onDelete} style={{ background:‘none’, border:‘none’, cursor:‘pointer’, padding:0 }}>
+<button onClick={onDelete} style={{ background:'none', border:'none', cursor:'pointer', padding:0 }}>
 <X size={12} color={C.muted} />
 </button>
 </div>
@@ -2947,19 +2666,19 @@ const [showAdd, setShowAdd] = useState(false);
 function addBook(data) {
 const b = {
 id: uid(), title: data.title, subject: data.subject,
-target: data.target, current: 0, log: [], note: data.note || ‘’,
+target: data.target, current: 0, log: [], note: data.note || '',
 };
-setBooks([…books, b]);
+setBooks([...books, b]);
 setShowAdd(false);
 }
 function bumpRound(id) {
-setBooks(books.map(b => b.id === id ? { …b, current: b.current + 1, log: […b.log, today] } : b));
+setBooks(books.map(b => b.id === id ? { ...b, current: b.current + 1, log: [...b.log, today] } : b));
 }
 function decRound(id) {
 setBooks(books.map(b => {
 if (b.id !== id) return b;
 if (b.current <= 0) return b;
-return { …b, current: b.current - 1, log: b.log.slice(0, -1) };
+return { ...b, current: b.current - 1, log: b.log.slice(0, -1) };
 }));
 }
 function delBook(id) { setBooks(books.filter(b => b.id !== id)); }
@@ -2969,11 +2688,10 @@ return (
 <div style={{ fontSize:11, color:C.muted, marginBottom:14, lineHeight:1.6 }}>
 문제집 / 강의 누적 회독
 </div>
-<button onClick={() => setShowAdd(true)} style={{ width:‘100%’, background:C.ink, color:’#fff’, border:‘none’, padding:‘10px’, cursor:‘pointer’, marginBottom:14, fontSize:12, display:‘flex’, alignItems:‘center’, justifyContent:‘center’, gap:6 }}>
+<button onClick={() => setShowAdd(true)} style={{ width:'100%', background:C.ink, color:'#fff', border:'none', padding:'10px', cursor:'pointer', marginBottom:14, fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
 <Plus size={14} /> 문제집 추가
 </button>
 
-```
   {showAdd && <AddBookForm onAdd={addBook} onCancel={() => setShowAdd(false)} />}
 
   {books.length === 0 ? (
@@ -2986,44 +2704,43 @@ return (
     </div>
   )}
 </>
-```
 
 );
 }
 
 function AddBookForm({ onAdd, onCancel }) {
-const [title, setTitle] = useState(’’);
-const [subject, setSubject] = useState(‘민사법’);
+const [title, setTitle] = useState('');
+const [subject, setSubject] = useState('민사법');
 const [target, setTarget] = useState(3);
-const [note, setNote] = useState(’’);
+const [note, setNote] = useState('');
 
 return (
 <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
-<input value={title} onChange={e => setTitle(e.target.value)} placeholder=“제목”
-style={{ width:‘100%’, background:C.bg, border:`1px solid ${C.line}`, padding:‘8px 10px’, fontSize:12, marginBottom:8, outline:‘none’ }} />
-<div style={{ display:‘flex’, gap:6, marginBottom:8 }}>
+<input value={title} onChange={e => setTitle(e.target.value)} placeholder="제목"
+style={{ width:'100%', background:C.bg, border:`1px solid ${C.line}`, padding:'8px 10px', fontSize:12, marginBottom:8, outline:'none' }} />
+<div style={{ display:'flex', gap:6, marginBottom:8 }}>
 {Object.keys(SUBJECTS).map(s => (
 <button key={s} onClick={() => setSubject(s)}
 style={{
 flex:1, background: subject === s ? SUBJECTS[s].color : C.bg,
-color: subject === s ? ‘#fff’ : C.muted,
+color: subject === s ? '#fff' : C.muted,
 border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`,
-padding:‘6px 4px’, fontSize:10, cursor:‘pointer’,
+padding:'6px 4px', fontSize:10, cursor:'pointer',
 }}>{SUBJECTS[s].short}</button>
 ))}
 </div>
-<div style={{ display:‘flex’, gap:6, marginBottom:10, alignItems:‘center’ }}>
+<div style={{ display:'flex', gap:6, marginBottom:10, alignItems:'center' }}>
 <span style={{ fontSize:11, color:C.muted }}>목표 회독:</span>
-<input type=“number” value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1}
-style={{ width:50, background:C.bg, border:`1px solid ${C.line}`, padding:‘5px’, fontSize:12, textAlign:‘center’, outline:‘none’ }} />
+<input type="number" value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1}
+style={{ width:50, background:C.bg, border:`1px solid ${C.line}`, padding:'5px', fontSize:12, textAlign:'center', outline:'none' }} />
 <span style={{ fontSize:11, color:C.muted }}>회</span>
 </div>
-<textarea value={note} onChange={e => setNote(e.target.value)} placeholder=“메모 (선택)” rows={2}
-style={{ width:‘100%’, background:C.bg, border:`1px solid ${C.line}`, padding:‘8px 10px’, fontSize:12, marginBottom:10, outline:‘none’, resize:‘vertical’, fontFamily:”‘Noto Serif KR’, serif” }} />
-<div style={{ display:‘flex’, gap:6 }}>
-<button onClick={onCancel} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:‘8px’, cursor:‘pointer’, fontSize:12 }}>취소</button>
+<textarea value={note} onChange={e => setNote(e.target.value)} placeholder="메모 (선택)" rows={2}
+style={{ width:'100%', background:C.bg, border:`1px solid ${C.line}`, padding:'8px 10px', fontSize:12, marginBottom:10, outline:'none', resize:'vertical', fontFamily:"'Noto Serif KR', serif" }} />
+<div style={{ display:'flex', gap:6 }}>
+<button onClick={onCancel} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:'8px', cursor:'pointer', fontSize:12 }}>취소</button>
 <button onClick={() => title && onAdd({ title, subject, target, note })}
-style={{ flex:1, background:C.ink, color:’#fff’, border:‘none’, padding:‘8px’, cursor:‘pointer’, fontSize:12 }}>추가</button>
+style={{ flex:1, background:C.ink, color:'#fff', border:'none', padding:'8px', cursor:'pointer', fontSize:12 }}>추가</button>
 </div>
 </div>
 );
@@ -3033,30 +2750,30 @@ function BookCard({ book, onUp, onDown, onDelete }) {
 const subColor = SUBJECTS[book.subject].color;
 const pct = Math.min(100, (book.current / book.target) * 100);
 return (
-<div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:‘12px 14px’, display:‘flex’, gap:10 }}>
-<div style={{ width:3, alignSelf:‘stretch’, background:subColor }} />
+<div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'12px 14px', display:'flex', gap:10 }}>
+<div style={{ width:3, alignSelf:'stretch', background:subColor }} />
 <div style={{ flex:1 }}>
-<div style={{ display:‘flex’, justifyContent:‘space-between’, alignItems:‘baseline’ }}>
+<div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
 <div style={{ fontSize:13, fontWeight:600 }}>{book.title}</div>
-<div className=“mono” style={{ fontSize:11, color:C.ink }}>
+<div className="mono" style={{ fontSize:11, color:C.ink }}>
 <span style={{ color: book.current >= book.target ? C.good : C.ink, fontWeight:600 }}>{book.current}</span>
 <span style={{ color:C.muted }}> / {book.target}</span>
 </div>
 </div>
 <div style={{ fontSize:10, color:subColor, fontWeight:600, marginTop:2 }}>{book.subject}</div>
-<div style={{ height:3, background:C.lineSoft, marginTop:8, position:‘relative’ }}>
-<div style={{ position:‘absolute’, left:0, top:0, bottom:0, width:`${pct}%`, background: book.current >= book.target ? C.good : subColor }} />
+<div style={{ height:3, background:C.lineSoft, marginTop:8, position:'relative' }}>
+<div style={{ position:'absolute', left:0, top:0, bottom:0, width:`${pct}%`, background: book.current >= book.target ? C.good : subColor }} />
 </div>
-{book.note && <div style={{ fontSize:10, color:C.muted, marginTop:6, fontStyle:‘italic’ }}>{book.note}</div>}
+{book.note && <div style={{ fontSize:10, color:C.muted, marginTop:6, fontStyle:'italic' }}>{book.note}</div>}
 </div>
-<div style={{ display:‘flex’, flexDirection:‘column’, gap:4 }}>
-<button onClick={onUp} style={{ background:C.ink, color:’#fff’, border:‘none’, padding:‘4px 6px’, cursor:‘pointer’ }}>
+<div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+<button onClick={onUp} style={{ background:C.ink, color:'#fff', border:'none', padding:'4px 6px', cursor:'pointer' }}>
 <Plus size={11} />
 </button>
-<button onClick={onDown} style={{ background:C.bg, color:C.muted, border:`1px solid ${C.line}`, padding:‘4px 6px’, cursor:‘pointer’ }}>
+<button onClick={onDown} style={{ background:C.bg, color:C.muted, border:`1px solid ${C.line}`, padding:'4px 6px', cursor:'pointer' }}>
 <Minus size={11} />
 </button>
-<button onClick={onDelete} style={{ background:‘none’, border:‘none’, cursor:‘pointer’, padding:‘2px 0’ }}>
+<button onClick={onDelete} style={{ background:'none', border:'none', cursor:'pointer', padding:'2px 0' }}>
 <X size={12} color={C.muted} />
 </button>
 </div>
@@ -3066,10 +2783,10 @@ return (
 
 function MaterialsReview({ today, materials, setMaterials, materialLog, setMaterialLog }) {
 const [showAdd, setShowAdd] = useState(false);
-const [newName, setNewName] = useState(’’);
-const [newSubject, setNewSubject] = useState(‘민사법’);
+const [newName, setNewName] = useState('');
+const [newSubject, setNewSubject] = useState('민사법');
 const [newTarget, setNewTarget] = useState(3);
-const [filter, setFilter] = useState(‘전체’);
+const [filter, setFilter] = useState('전체');
 
 function addMaterial() {
 if (!newName.trim()) return;
@@ -3080,24 +2797,24 @@ subject: newSubject,
 color: SUBJECTS[newSubject].color,
 rounds: 0, target: newTarget,
 };
-setMaterials([…materials, m]);
-setNewName(’’); setShowAdd(false);
+setMaterials([...materials, m]);
+setNewName(''); setShowAdd(false);
 }
 function bump(id) {
-setMaterials(materials.map(m => m.id === id ? { …m, rounds: m.rounds + 1, lastDate: today } : m));
+setMaterials(materials.map(m => m.id === id ? { ...m, rounds: m.rounds + 1, lastDate: today } : m));
 const list = materialLog[today] || [];
 const mat = materials.find(m => m.id === id);
-setMaterialLog({ …materialLog, [today]: […list, { id: uid(), materialId: id, name: mat?.name || ‘’, date: today }] });
+setMaterialLog({ ...materialLog, [today]: [...list, { id: uid(), materialId: id, name: mat?.name || '', date: today }] });
 }
 function dec(id) {
-setMaterials(materials.map(m => m.id === id ? { …m, rounds: Math.max(0, m.rounds - 1) } : m));
+setMaterials(materials.map(m => m.id === id ? { ...m, rounds: Math.max(0, m.rounds - 1) } : m));
 }
 function del(id) {
-if (!confirm(‘이 자료를 삭제할까요?’)) return;
+if (!confirm('이 자료를 삭제할까요?')) return;
 setMaterials(materials.filter(m => m.id !== id));
 }
 
-const filtered = filter === ‘전체’ ? materials : materials.filter(m => m.subject === filter);
+const filtered = filter === '전체' ? materials : materials.filter(m => m.subject === filter);
 
 return (
 <>
@@ -3105,7 +2822,6 @@ return (
 명명된 자료(청취 / 청원 / 캡슐 / 로만 / 암기장 / 찌라시 / 핸드북 / 최판 등) 누적 회독
 </div>
 
-```
   <div style={{ display:'flex', gap:6, marginBottom:10, flexWrap:'wrap' }}>
     {['전체', ...Object.keys(SUBJECTS)].map(s => (
       <button key={s} onClick={() => setFilter(s)}
@@ -3191,351 +2907,7 @@ return (
     </div>
   )}
 </>
-```
 
-);
-}
-
-/* ============================================================ CHECKLIST (점수 누수 방어) ============================================================ */
-
-function ChecklistView({ today, settings, checklists = [], setChecklists }) {
-const [activeId, setActiveId] = useState(checklists[0]?.id || null);
-const [showAdd, setShowAdd] = useState(false);
-const [newCatName, setNewCatName] = useState(’’);
-const [newCatSubject, setNewCatSubject] = useState(‘민사법’);
-
-const dday = daysDiff(today, settings.examDate);
-const isUrgent = dday >= 0 && dday <= 7;
-
-const active = checklists.find(c => c.id === activeId) || checklists[0];
-
-function addCategory() {
-const name = newCatName.trim();
-if (!name) return;
-const cat = {
-id: uid(), name, subject: newCatSubject,
-color: SUBJECTS[newCatSubject]?.color || C.muted,
-items: [], lastReviewed: null,
-};
-setChecklists([…checklists, cat]);
-setActiveId(cat.id);
-setNewCatName(’’); setShowAdd(false);
-}
-function delCategory(id) {
-if (!confirm(‘이 체크리스트를 삭제할까요? 안의 항목도 모두 사라집니다.’)) return;
-const next = checklists.filter(c => c.id !== id);
-setChecklists(next);
-if (activeId === id) setActiveId(next[0]?.id || null);
-}
-function addItem(text, stars = 2) {
-if (!active) return;
-const t = text.trim(); if (!t) return;
-setChecklists(checklists.map(c => c.id === active.id ? {
-…c, items: […c.items, { id: uid(), text: t, stars }],
-} : c));
-}
-function delItem(itemId) {
-setChecklists(checklists.map(c => c.id === active.id ? {
-…c, items: c.items.filter(it => it.id !== itemId),
-} : c));
-}
-function updItem(itemId, patch) {
-setChecklists(checklists.map(c => c.id === active.id ? {
-…c, items: c.items.map(it => it.id === itemId ? { …it, …patch } : it),
-} : c));
-}
-function moveItem(itemId, dir) {
-setChecklists(checklists.map(c => {
-if (c.id !== active.id) return c;
-const idx = c.items.findIndex(it => it.id === itemId);
-if (idx < 0) return c;
-const next = […c.items];
-const newIdx = dir === ‘up’ ? idx - 1 : idx + 1;
-if (newIdx < 0 || newIdx >= next.length) return c;
-[next[idx], next[newIdx]] = [next[newIdx], next[idx]];
-return { …c, items: next };
-}));
-}
-function markReviewed() {
-if (!active) return;
-setChecklists(checklists.map(c => c.id === active.id ? { …c, lastReviewed: today } : c));
-}
-function daysSinceReview(c) {
-if (!c.lastReviewed) return null;
-return daysDiff(c.lastReviewed, today);
-}
-
-return (
-<div className=“fadeIn” style={{ padding:‘18px 0 24px’ }}>
-<div style={{ marginBottom:14 }}>
-<h1 className=“serif” style={{ margin:0, fontSize:22, fontWeight:600 }}>체크리스트</h1>
-<div style={{ fontSize:11, color:C.muted, marginTop:3, lineHeight:1.5 }}>
-답안 작성 직전·직후 점검용 — 점수 누수 방어의 핵심.
-</div>
-</div>
-
-```
-  {isUrgent && (
-    <div style={{ background:C.accent, color:'#fff', padding:'10px 14px', marginBottom:12, fontSize:12 }}>
-      <span className="kserif" style={{ fontWeight:600 }}>D-{dday} · 직전 점검 모드</span>
-      <div style={{ fontSize:11, opacity:0.9, marginTop:3 }}>각 카테고리를 매일 한 번 이상 회독하세요.</div>
-    </div>
-  )}
-
-  {/* 카테고리 탭 */}
-  <div style={{ display:'flex', gap:6, overflowX:'auto', marginBottom:12, paddingBottom:4 }} className="hide-scroll">
-    {checklists.map(c => {
-      const sinceRev = daysSinceReview(c);
-      const stale = sinceRev !== null && sinceRev >= 14;
-      const fresh = sinceRev !== null && sinceRev <= 1;
-      const isActive = c.id === active?.id;
-      return (
-        <button key={c.id} onClick={() => setActiveId(c.id)}
-          style={{
-            background: isActive ? c.color : C.paper,
-            color: isActive ? '#fff' : C.ink,
-            border: `1px solid ${isActive ? c.color : C.line}`,
-            padding:'7px 12px', cursor:'pointer', fontSize:12,
-            whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:5,
-            fontWeight: isActive ? 600 : 400,
-            position:'relative',
-          }}>
-          {c.name}
-          {sinceRev !== null && (
-            <span className="mono" style={{
-              fontSize:9, opacity: isActive ? 0.85 : 0.6,
-              color: stale ? (isActive ? '#FFB6B6' : C.accent) : (fresh ? (isActive ? '#B6FFB6' : C.good) : 'inherit'),
-              fontWeight: stale ? 700 : 400,
-            }}>{sinceRev === 0 ? '오늘' : `${sinceRev}d`}</span>
-          )}
-          {sinceRev === null && (
-            <span className="mono" style={{ fontSize:9, opacity:0.6 }}>—</span>
-          )}
-        </button>
-      );
-    })}
-    <button onClick={() => setShowAdd(true)}
-      style={{ background:C.bg, border:`1px dashed ${C.line}`, color:C.muted, padding:'7px 10px', cursor:'pointer', fontSize:12, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:4 }}>
-      <Plus size={12} /> 새 카테고리
-    </button>
-  </div>
-
-  {showAdd && (
-    <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:12, marginBottom:12 }}>
-      <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
-        placeholder="카테고리 이름 (예: 공사례, 상법, 시험 직전)"
-        style={{ width:'100%', background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'7px 10px', fontSize:12, marginBottom:8, outline:'none' }} />
-      <div style={{ display:'flex', gap:6, marginBottom:8 }}>
-        {Object.keys(SUBJECTS).map(s => (
-          <button key={s} onClick={() => setNewCatSubject(s)}
-            style={{
-              flex:1, background: newCatSubject === s ? SUBJECTS[s].color : C.bg,
-              color: newCatSubject === s ? '#fff' : C.muted,
-              border: `1px solid ${newCatSubject === s ? SUBJECTS[s].color : C.lineSoft}`,
-              padding:'6px 4px', fontSize:10, cursor:'pointer',
-            }}>{SUBJECTS[s].short}</button>
-        ))}
-      </div>
-      <div style={{ display:'flex', gap:6 }}>
-        <button onClick={() => setShowAdd(false)} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:'7px', cursor:'pointer', fontSize:12 }}>취소</button>
-        <button onClick={addCategory} style={{ flex:1, background:C.ink, color:'#fff', border:'none', padding:'7px', cursor:'pointer', fontSize:12 }}>추가</button>
-      </div>
-    </div>
-  )}
-
-  {!active ? (
-    <div style={{ background:C.paper, border:`1px dashed ${C.line}`, padding:30, textAlign:'center', fontSize:12, color:C.muted }}>
-      왼쪽 위에서 카테고리를 만들어 시작하세요.
-    </div>
-  ) : (
-    <ChecklistDetail
-      category={active}
-      onAddItem={addItem}
-      onDelItem={delItem}
-      onUpdItem={updItem}
-      onMoveItem={moveItem}
-      onMarkReviewed={markReviewed}
-      onDelCategory={() => delCategory(active.id)}
-      daysSinceReview={daysSinceReview(active)}
-    />
-  )}
-</div>
-```
-
-);
-}
-
-function ChecklistDetail({ category, onAddItem, onDelItem, onUpdItem, onMoveItem, onMarkReviewed, onDelCategory, daysSinceReview }) {
-const [newText, setNewText] = useState(’’);
-const [newStars, setNewStars] = useState(2);
-const [filterStars, setFilterStars] = useState(0); // 0=all, 1/2/3 = 별 N개 이상
-const [editId, setEditId] = useState(null);
-
-const items = category.items.filter(it => it.stars >= filterStars);
-const stale = daysSinceReview !== null && daysSinceReview >= 14;
-
-function submit() {
-if (!newText.trim()) return;
-onAddItem(newText.trim(), newStars);
-setNewText(’’);
-}
-
-return (
-<div>
-{/* 헤더 */}
-<div style={{
-background: category.color, color:’#fff’, padding:‘14px 16px’, marginBottom:0,
-display:‘flex’, alignItems:‘center’, justifyContent:‘space-between’, gap:10,
-}}>
-<div style={{ minWidth:0, flex:1 }}>
-<div className=“serif” style={{ fontSize:18, fontWeight:600, letterSpacing:’-0.01em’ }}>{category.name}</div>
-<div style={{ fontSize:10, opacity:0.85, marginTop:3, fontFamily:”‘JetBrains Mono’, monospace” }}>
-{category.items.length}개 항목 · {’ ‘}
-{daysSinceReview === null ? ‘미회독’ :
-daysSinceReview === 0 ? ‘오늘 회독’ :
-`${daysSinceReview}일 전 회독`}
-{stale && <span style={{ marginLeft:6, padding:‘1px 5px’, background:‘rgba(255,255,255,0.25)’, fontWeight:600 }}>점검 필요</span>}
-</div>
-</div>
-<button onClick={onMarkReviewed}
-style={{ background:‘rgba(255,255,255,0.2)’, border:‘1px solid rgba(255,255,255,0.4)’, color:’#fff’, padding:‘7px 12px’, cursor:‘pointer’, fontSize:11, display:‘flex’, alignItems:‘center’, gap:5, flexShrink:0 }}>
-<Check size={12} /> 회독 완료
-</button>
-</div>
-
-```
-  {/* 필터 / 추가 */}
-  <div style={{ background:C.paper, border:`1px solid ${C.line}`, borderTop:'none', padding:'10px 14px' }}>
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-      <div style={{ display:'flex', gap:5 }}>
-        {[0, 1, 2, 3].map(s => (
-          <button key={s} onClick={() => setFilterStars(s)}
-            style={{
-              background: filterStars === s ? C.ink : C.bg,
-              color: filterStars === s ? '#fff' : C.muted,
-              border: `1px solid ${filterStars === s ? C.ink : C.lineSoft}`,
-              padding:'4px 8px', fontSize:10, cursor:'pointer',
-            }}>
-            {s === 0 ? '전체' : `★${s}↑`}
-          </button>
-        ))}
-      </div>
-      <button onClick={onDelCategory}
-        style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:10, display:'flex', alignItems:'center', gap:3 }}>
-        <Trash2 size={11} /> 카테고리 삭제
-      </button>
-    </div>
-
-    {/* 항목 목록 */}
-    {items.length === 0 ? (
-      <div style={{ fontSize:11, color:C.muted, textAlign:'center', padding:'20px 0' }}>
-        {category.items.length === 0 ? '아래에서 항목을 추가하세요.' : '필터 조건에 맞는 항목이 없습니다.'}
-      </div>
-    ) : (
-      <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:12 }}>
-        {items.map((it, idx) => (
-          <ChecklistItemRow key={it.id} item={it} idx={idx} total={items.length}
-            isEditing={editId === it.id}
-            onStartEdit={() => setEditId(it.id)}
-            onCancelEdit={() => setEditId(null)}
-            onSave={(patch) => { onUpdItem(it.id, patch); setEditId(null); }}
-            onDelete={() => onDelItem(it.id)}
-            onUp={() => onMoveItem(it.id, 'up')}
-            onDown={() => onMoveItem(it.id, 'down')}
-            color={category.color}
-          />
-        ))}
-      </div>
-    )}
-
-    {/* 추가 폼 */}
-    <div style={{ borderTop:`1px dashed ${C.lineSoft}`, paddingTop:10 }}>
-      <div style={{ display:'flex', gap:6, marginBottom:6 }}>
-        <input value={newText} onChange={e => setNewText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
-          placeholder="새 항목 (예: 공소시효 항변 검토)"
-          style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:'8px 10px', fontSize:12, outline:'none' }} />
-        <button onClick={submit}
-          style={{ background:C.ink, color:'#fff', border:'none', padding:'0 14px', fontSize:12, cursor:'pointer' }}>
-          <Plus size={13} />
-        </button>
-      </div>
-      <div style={{ display:'flex', gap:5, alignItems:'center', fontSize:10, color:C.muted }}>
-        <span>중요도</span>
-        {[1, 2, 3].map(s => (
-          <button key={s} onClick={() => setNewStars(s)}
-            style={{
-              background: newStars === s ? C.ink : 'transparent',
-              color: newStars === s ? '#fff' : C.muted,
-              border: `1px solid ${newStars === s ? C.ink : C.lineSoft}`,
-              padding:'3px 7px', fontSize:10, cursor:'pointer',
-            }}>{'★'.repeat(s)}</button>
-        ))}
-      </div>
-    </div>
-  </div>
-</div>
-```
-
-);
-}
-
-function ChecklistItemRow({ item, idx, total, isEditing, onStartEdit, onCancelEdit, onSave, onDelete, onUp, onDown, color }) {
-const [text, setText] = useState(item.text);
-const [stars, setStars] = useState(item.stars || 2);
-useEffect(() => { setText(item.text); setStars(item.stars || 2); }, [item.id, isEditing]);
-
-if (isEditing) {
-return (
-<div style={{ background:C.bg, border:`1px solid ${C.line}`, padding:‘8px 10px’ }}>
-<textarea value={text} onChange={e => setText(e.target.value)} rows={2}
-style={{ width:‘100%’, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:‘6px 8px’, fontSize:12, outline:‘none’, resize:‘vertical’, fontFamily:”‘Noto Serif KR’, serif”, marginBottom:6 }} />
-<div style={{ display:‘flex’, alignItems:‘center’, justifyContent:‘space-between’, gap:6 }}>
-<div style={{ display:‘flex’, gap:4 }}>
-{[1, 2, 3].map(s => (
-<button key={s} onClick={() => setStars(s)}
-style={{
-background: stars === s ? C.ink : C.paper,
-color: stars === s ? ‘#fff’ : C.muted,
-border: `1px solid ${stars === s ? C.ink : C.lineSoft}`,
-padding:‘3px 7px’, fontSize:10, cursor:‘pointer’,
-}}>{‘★’.repeat(s)}</button>
-))}
-</div>
-<div style={{ display:‘flex’, gap:4 }}>
-<button onClick={onCancelEdit} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:‘5px 10px’, cursor:‘pointer’, fontSize:11 }}>취소</button>
-<button onClick={() => onSave({ text: text.trim() || item.text, stars })} style={{ background:C.ink, color:’#fff’, border:‘none’, padding:‘5px 10px’, cursor:‘pointer’, fontSize:11 }}>저장</button>
-</div>
-</div>
-</div>
-);
-}
-
-const starColor = item.stars === 3 ? C.accent : item.stars === 2 ? color : C.muted;
-return (
-<div style={{
-background:C.bg, border:`1px solid ${C.lineSoft}`,
-padding:‘8px 10px’, display:‘flex’, alignItems:‘flex-start’, gap:8,
-borderLeft:`3px solid ${starColor}`,
-}}>
-<span style={{ fontSize:10, color:starColor, flexShrink:0, marginTop:1, fontFamily:”‘JetBrains Mono’, monospace” }}>
-{‘★’.repeat(item.stars || 1)}
-</span>
-<span onClick={onStartEdit}
-style={{ flex:1, fontSize:12, color:C.ink, lineHeight:1.5, cursor:‘pointer’, fontFamily:”‘Noto Serif KR’, serif”, minWidth:0 }}>
-{item.text}
-</span>
-<div style={{ display:‘flex’, flexDirection:‘column’, gap:1, flexShrink:0 }}>
-<button onClick={onUp} disabled={idx === 0}
-style={{ background:‘none’, border:‘none’, cursor: idx === 0 ? ‘default’ : ‘pointer’, padding:‘1px 4px’, color: idx === 0 ? C.lineSoft : C.muted, fontSize:9 }}>▲</button>
-<button onClick={onDown} disabled={idx === total - 1}
-style={{ background:‘none’, border:‘none’, cursor: idx === total - 1 ? ‘default’ : ‘pointer’, padding:‘1px 4px’, color: idx === total - 1 ? C.lineSoft : C.muted, fontSize:9 }}>▼</button>
-</div>
-<button onClick={onDelete}
-style={{ background:‘none’, border:‘none’, cursor:‘pointer’, padding:‘2px’, color:C.muted, flexShrink:0 }}>
-<X size={11} />
-</button>
-</div>
 );
 }
 
@@ -3550,7 +2922,7 @@ Object.keys(SUBJECTS).forEach(s => { weeklyBySubject[s] = 0; });
 wDates.forEach(d => {
 const dl = logs[d] || {};
 Object.entries(dl).forEach(([k, v]) => {
-const [sub] = k.split(’::’);
+const [sub] = k.split('::');
 if (weeklyBySubject[sub] !== undefined) weeklyBySubject[sub] += v || 0;
 });
 });
@@ -3566,11 +2938,11 @@ color: SUBJECTS[sub].color,
 // last 14 days (daily totals)
 const dailyData = useMemo(() => {
 const arr = [];
-for (let i = 13; i >= 0; i–) {
+for (let i = 13; i >= 0; i--) {
 const d = addDays(today, -i);
 const dl = logs[d] || {};
 const total = Object.values(dl).reduce((s, t) => s + (t || 0), 0);
-arr.push({ date: d.slice(5).replace(’-’, ‘/’), minutes: total, hours: Math.round(total/60*10)/10 });
+arr.push({ date: d.slice(5).replace('-', '/'), minutes: total, hours: Math.round(total/60*10)/10 });
 }
 return arr;
 }, [today, logs]);
@@ -3581,7 +2953,7 @@ const out = {};
 Object.keys(SUBJECTS).forEach(s => { out[s] = {}; });
 Object.values(logs).forEach(dl => {
 Object.entries(dl).forEach(([k, v]) => {
-const [sub, type] = k.split(’::’);
+const [sub, type] = k.split('::');
 if (out[sub]) out[sub][type] = (out[sub][type] || 0) + (v || 0);
 });
 });
@@ -3596,7 +2968,7 @@ const avgPerDay = studyDays > 0 ? allMin / studyDays : 0;
 // mock score average per subject
 const mockAvg = useMemo(() => {
 const out = {};
-Object.keys(SUBJECTS).filter(s => s !== ‘선택법’).forEach(s => {
+Object.keys(SUBJECTS).filter(s => s !== '선택법').forEach(s => {
 const subScores = examScores.filter(es => es.subject === s);
 if (subScores.length === 0) { out[s] = null; return; }
 const avg = subScores.reduce((a,b) => a + b.wrong, 0) / subScores.length;
@@ -3606,15 +2978,14 @@ return out;
 }, [examScores]);
 
 return (
-<div className=“fadeIn” style={{ padding:‘18px 0 24px’ }}>
+<div className="fadeIn" style={{ padding:'18px 0 24px' }}>
 <div style={{ marginBottom:16 }}>
-<h1 className=“serif” style={{ margin:0, fontSize:22, fontWeight:600 }}>리포트</h1>
+<h1 className="serif" style={{ margin:0, fontSize:22, fontWeight:600 }}>리포트</h1>
 <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
-총 학습일 {studyDays}일 · 누적 {fmtHour(allMin)} · 일평균 {fmtHour(avgPerDay)}
+총 학습일 {studyDays}일 - 누적 {fmtHour(allMin)} - 일평균 {fmtHour(avgPerDay)}
 </div>
 </div>
 
-```
   {/* Weekly progress */}
   <SectionTitle>주간 목표 (이번 주)</SectionTitle>
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'14px 14px', marginBottom:18 }}>
@@ -3727,7 +3098,7 @@ return (
             <div key={sub} style={{ padding:'8px 0', borderBottom:`1px dashed ${C.lineSoft}`, display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
               <span className="kserif" style={{ fontSize:12, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
               <span className="mono" style={{ fontSize:10, color:C.muted }}>
-                완료 {completed}/{ms.length} · 누적 {totalRounds}/{totalTarget}회
+                완료 {completed}/{ms.length} - 누적 {totalRounds}/{totalTarget}회
               </span>
             </div>
           );
@@ -3736,7 +3107,6 @@ return (
     </>
   )}
 </div>
-```
 
 );
 }
@@ -3754,7 +3124,7 @@ const [autoGen, setAutoGen] = useState(settings.autoGenMockReview);
 
 function save() {
 setSettings({
-…settings,
+...settings,
 examDate, examLabel,
 weeklyTargets: targets,
 cycleDefs,
@@ -3762,20 +3132,20 @@ mockExams,
 d30Mode,
 autoGenMockReview: autoGen,
 });
-alert(‘저장되었습니다’);
+alert('저장되었습니다');
 }
 
 function updCycleBlock(cycleId, blockIdx, days) {
 setCycleDefs(cycleDefs.map(c => c.id === cycleId ? {
-…c, blocks: c.blocks.map((b, i) => i === blockIdx ? { …b, days: parseInt(days) || 1 } : b),
+...c, blocks: c.blocks.map((b, i) => i === blockIdx ? { ...b, days: parseInt(days) || 1 } : b),
 } : c));
 }
 
 function addMock() {
-setMockExams([…mockExams, { id: uid(), label: `모의고사 ${mockExams.length + 1}`, start: examDate, end: examDate }]);
+setMockExams([...mockExams, { id: uid(), label: `모의고사 ${mockExams.length + 1}`, start: examDate, end: examDate }]);
 }
 function updMock(id, field, val) {
-setMockExams(mockExams.map(m => m.id === id ? { …m, [field]: val } : m));
+setMockExams(mockExams.map(m => m.id === id ? { ...m, [field]: val } : m));
 }
 function delMock(id) {
 setMockExams(mockExams.filter(m => m.id !== id));
@@ -3783,14 +3153,14 @@ setMockExams(mockExams.filter(m => m.id !== id));
 
 function addSchedule() {
 if (!setSchedules) return;
-setSchedules([…(schedules || []), {
-id: uid(), title: ‘새 일정’, color: SCHEDULE_PALETTE[0],
+setSchedules([...(schedules || []), {
+id: uid(), title: '새 일정', color: SCHEDULE_PALETTE[0],
 start: todayISO(), end: addDays(todayISO(), 7),
 }]);
 }
 function updSchedule(id, field, val) {
 if (!setSchedules) return;
-setSchedules((schedules || []).map(s => s.id === id ? { …s, [field]: val } : s));
+setSchedules((schedules || []).map(s => s.id === id ? { ...s, [field]: val } : s));
 }
 function delSchedule(id) {
 if (!setSchedules) return;
@@ -3799,12 +3169,11 @@ setSchedules((schedules || []).filter(s => s.id !== id));
 const palette = SCHEDULE_PALETTE;
 
 return (
-<div className=“fadeIn” style={{ padding:‘18px 0 24px’ }}>
+<div className="fadeIn" style={{ padding:'18px 0 24px' }}>
 <div style={{ marginBottom:14 }}>
-<h1 className=“serif” style={{ margin:0, fontSize:22, fontWeight:600 }}>설정</h1>
+<h1 className="serif" style={{ margin:0, fontSize:22, fontWeight:600 }}>설정</h1>
 </div>
 
-```
   <SectionTitle>시험</SectionTitle>
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
     <label style={{ display:'block', fontSize:11, color:C.muted, marginBottom:4 }}>시험 이름</label>
@@ -3882,7 +3251,7 @@ return (
   <SectionTitle>사이클 (블록 일수)</SectionTitle>
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
     <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
-      순서: 민사법(+선택법) → 형사법 → 공법<br/>
+      순서: 민사법(+선택법) -> 형사법 -> 공법<br/>
       각 모의고사 / 본시험 직전부터 거꾸로 깔립니다.
     </div>
     {cycleDefs.map(c => (
@@ -3975,7 +3344,7 @@ return (
   <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'14px 14px', marginBottom:18 }}>
     <div style={{ fontSize:11, color:C.muted, lineHeight:1.7, marginBottom:10 }}>
       본시험·모의고사·내가 추가한 모든 일정을 .ics 파일로 받아서 애플 캘린더에 추가할 수 있습니다.
-      <br />아이폰: 다운로드된 파일 탭 → "캘린더에 추가". 구글 캘린더에도 같은 방식으로 가져오기 가능합니다.
+      <br />아이폰: 다운로드된 파일 탭 -> "캘린더에 추가". 구글 캘린더에도 같은 방식으로 가져오기 가능합니다.
     </div>
     <button onClick={() => {
       const ics = buildICS({
@@ -3997,7 +3366,7 @@ return (
       <Sheet size={14} /> 엑셀(.xlsx)로 내보내기
     </button>
     <div style={{ fontSize:10, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
-      요약 / 학습시간 / 5트랙 / 회차점수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 — 9개 시트로 정리됩니다.
+      요약 / 학습시간 / 5트랙 / 회차점수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 - 9개 시트로 정리됩니다.
     </div>
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
       <button onClick={onExport} style={{ background:C.bg, border:`1px solid ${C.line}`, padding:'10px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
@@ -4027,10 +3396,9 @@ return (
   )}
 
   <div style={{ textAlign:'center', fontSize:10, color:C.muted, marginTop:30, fontStyle:'italic' }}>
-    Bar Exam Journal · 16회 변시
+    Bar Exam Journal - 16회 변시
   </div>
 </div>
-```
 
 );
 }
