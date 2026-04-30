@@ -659,6 +659,21 @@ function getMockExam(dateISO, settings) {
   return null;
 }
 
+/* 본시험 주간 (변호사시험 5일) — 시험 시작일 ~ +4일까지 본시험 주간으로 처리 */
+const EXAM_WEEK_DAYS = 5;
+function getExamWeek(dateISO, settings) {
+  if (!settings.examDate) return null;
+  const start = settings.examDate;
+  const end = addDays(settings.examDate, EXAM_WEEK_DAYS - 1);
+  if (dateISO < start || dateISO > end) return null;
+  const dayNum = daysDiff(start, dateISO) + 1;
+  return {
+    start, end,
+    label: settings.examLabel || `변호사시험`,
+    dayNum, totalDays: EXAM_WEEK_DAYS,
+  };
+}
+
 function nextMockExam(dateISO, settings) {
   if (!settings.mockExams) return null;
   const upcoming = settings.mockExams
@@ -670,7 +685,12 @@ function nextMockExam(dateISO, settings) {
 /* Cycle: backward from each mock/exam */
 function getCycleInfo(dateISO, settings) {
   const { cycleDefs, examDate, mockExams = [] } = settings;
-  if (examDate && dateISO >= examDate) return null;
+  // 본시험 주간(5일) 동안에는 사이클 표시 안 함
+  if (examDate) {
+    const examEnd = addDays(examDate, EXAM_WEEK_DAYS - 1);
+    if (dateISO >= examDate && dateISO <= examEnd) return null;
+    if (dateISO > examEnd) return null;
+  }
 
   const anchors = [
     ...mockExams.map(m => ({ start: m.start, end: m.end, kind: `mock`, label: m.label })),
@@ -866,12 +886,24 @@ export default function App() {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists]);
 
-  // Auto-generate mock review todos
+  // 모의고사 리뷰 todo 자동 생성 — 모의 일정이 바뀌면 옛 todo 청소 후 새로 깔림
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
+    const validMockIds = new Set((settings.mockExams || []).map(m => m.id));
     setTodos(prev => {
-      let next = { ...prev };
-      let changed = false;
+      let next = {};
+      // 1) 더 이상 존재하지 않거나 변경된 모의의 fromMock todo / sentinel 청소
+      const liveSentinels = new Set((settings.mockExams || []).map(m => `__mockreview__${m.id}`));
+      Object.keys(prev).forEach(date => {
+        const filtered = (prev[date] || []).filter(t => {
+          if (t.fromMock && !validMockIds.has(t.fromMock)) return false;
+          if (typeof t.title === `string` && t.title.startsWith(`__mockreview__`) && !liveSentinels.has(t.title)) return false;
+          return true;
+        });
+        if (filtered.length > 0) next[date] = filtered;
+      });
+
+      // 2) 각 모의에 대해 종료 후 sentinel 없으면 깔기
       (settings.mockExams || []).forEach(m => {
         const sentinelDate = m.end;
         const sentinelMark = `__mockreview__${m.id}`;
@@ -882,47 +914,48 @@ export default function App() {
           const targetDate = addDays(m.end, tmpl.offset);
           const list = next[targetDate] || [];
           if (!list.some(t => t.title === tmpl.title && t.fromMock === m.id)) {
-            list.push({ id: uid(), title: tmpl.title, done: false, fromMock: m.id });
-            next = { ...next, [targetDate]: list };
-            changed = true;
+            next = { ...next, [targetDate]: [...list, { id: uid(), title: tmpl.title, done: false, fromMock: m.id }] };
           }
         });
-        next = { ...next, [sentinelDate]: [...existing, { id: uid(), title: sentinelMark, done: true, hidden: true }] };
-        changed = true;
+        next = { ...next, [sentinelDate]: [...(next[sentinelDate] || []), { id: uid(), title: sentinelMark, done: true, hidden: true }] };
       });
-      return changed ? next : prev;
+      return next;
     });
   }, [loaded, settings.mockExams, settings.autoGenMockReview, today]);
 
   // 시험 직전 (D-3, D-1, D-day) — 체크리스트 점검 todo 자동 생성
+  // 시험일이 바뀌면 옛 todo 자동 청소 후 새 시험일로 다시 깔림
   useEffect(() => {
     if (!loaded || !settings.examDate || !checklists?.length) return;
     setTodos(prev => {
-      const sentinelMark = `__checklist_premium__${settings.examDate}`;
-      let next = { ...prev };
-      let changed = false;
-      const sentinelDate = settings.examDate;
-      const existing = next[sentinelDate] || [];
-      if (existing.some(t => t.title === sentinelMark)) return prev;
-
+      const currentSentinelMark = `__checklist_premium__${settings.examDate}`;
+      let next = {};
+      // 1) 모든 fromChecklist 자동생성 todo / 옛 checklist sentinel 제거
+      Object.keys(prev).forEach(date => {
+        const filtered = (prev[date] || []).filter(t => {
+          if (t.fromChecklist) return false; // 자동 생성된 체크리스트 todo 모두 삭제
+          if (typeof t.title === `string` && t.title.startsWith(`__checklist_premium__`)) return false;
+          return true;
+        });
+        if (filtered.length > 0) next[date] = filtered;
+      });
+      // 2) 새 시험일 기준으로 D-3, D-1, D-day todo 생성
       [3, 1, 0].forEach(offset => {
         const targetDate = addDays(settings.examDate, -offset);
         const list = next[targetDate] || [];
         const title = offset === 0
-          ? '체크리스트 일독 (시험 당일 아침)'
+          ? `체크리스트 일독 (시험 당일 아침)`
           : offset === 1
-          ? '체크리스트 전체 회독 (D-1)'
+          ? `체크리스트 전체 회독 (D-1)`
           : `체크리스트 회독 + 우선순위 ★★★만 별도 정리 (D-3)`;
-        if (!list.some(t => t.title === title)) {
-          next = { ...next, [targetDate]: [...list, { id: uid(), title, done: false, fromChecklist: true }] };
-          changed = true;
-        }
+        next = { ...next, [targetDate]: [...list, { id: uid(), title, done: false, fromChecklist: true }] };
       });
-      next = { ...next, [sentinelDate]: [...(next[sentinelDate] || []), { id: uid(), title: sentinelMark, done: true, hidden: true }] };
-      changed = true;
-      return changed ? next : prev;
+      // 3) sentinel
+      const sentinelList = next[settings.examDate] || [];
+      next = { ...next, [settings.examDate]: [...sentinelList, { id: uid(), title: currentSentinelMark, done: true, hidden: true }] };
+      return next;
     });
-  }, [loaded, settings.examDate, checklists?.length]);
+  }, [loaded, settings.examDate]);
 
   const dday = useMemo(() => daysDiff(today, settings.examDate), [today, settings.examDate]);
 
@@ -935,9 +968,9 @@ export default function App() {
         input, textarea, button, select { font-family: inherit; color: inherit; }
         input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
-        .serif { font-family: 'Fraunces', 'Noto Serif KR', serif; }
-        .kserif { font-family: 'Noto Serif KR', serif; }
-        .mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+        .serif { font-family: `Fraunces`, `Noto Serif KR`, serif; }
+        .kserif { font-family: `Noto Serif KR`, serif; }
+        .mono { font-family: `JetBrains Mono`, monospace; font-variant-numeric: tabular-nums; }
         .fadeIn { animation: fade .35s ease both; }
         @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
         .lift:active { transform: scale(0.98); }
@@ -1675,6 +1708,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
       meta[d] = {
         cycle: getCycleInfo(d, settings),
         mock: getMockExam(d, settings),
+        examWeek: getExamWeek(d, settings),
       };
     });
     return meta;
@@ -1792,6 +1826,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
   const selDueReviews = (reviewsByDate[selDate] || []);
   const selCycleInfo = useMemo(() => getCycleInfo(selDate, settings), [selDate, settings]);
   const selMock = useMemo(() => getMockExam(selDate, settings), [selDate, settings]);
+  const selExamWeek = useMemo(() => getExamWeek(selDate, settings), [selDate, settings]);
   const selTracks = tracks[selDate] || {};
 
   function addTodo(title) {
@@ -1887,21 +1922,26 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
             const isBlockFirst = cInfo?.dayInBlock === 1;
             const mock = cellMeta[d]?.mock;
             const isMockFirst = mock && d === mock.start;
+            const examWeek = cellMeta[d]?.examWeek;
+            const isExamFirst = examWeek && d === examWeek.start;
             const inPending = addMode && isInPending(d);
             const isPendingStart = pendingStart === d;
+            // 본시험 주간 배경 — 진한 빨강 (강조), 모의보다 강함
+            const examWeekBg = examWeek ? `#F4C8C8` : null;
             return (
               <button key={i} onClick={() => handleDayTap(d)}
                 style={{
                   position:`relative`, aspectRatio:`1 / 1.15`,
-                  background: inPending ? C.accent : (isSelected && !addMode) ? C.ink : (mock ? '#FBE4E4' : intensityBg[intLevel]),
-                  border: isPendingStart ? `2px solid ${C.ink}` : isToday && !isSelected && !inPending ? `1.5px solid ${C.accent}` : `1px solid ${(isSelected && !addMode) ? C.ink : 'transparent'}`,
+                  background: inPending ? C.accent : (isSelected && !addMode) ? C.ink : (examWeekBg || (mock ? '#FBE4E4' : intensityBg[intLevel])),
+                  border: isPendingStart ? `2px solid ${C.ink}` : isToday && !isSelected && !inPending ? `1.5px solid ${C.accent}` : `1px solid ${(isSelected && !addMode) ? C.ink : examWeek ? C.accent : 'transparent'}`,
                   cursor:`pointer`, padding:`3px 3px 2px`,
                   display:`flex`, flexDirection:`column`, alignItems:`stretch`,
                   opacity: inMonth ? 1 : 0.35,
                   color: (inPending || (isSelected && !addMode)) ? C.paper : C.ink,
                 }}>
-                {mock && (<div style={{ position:`absolute`, top:0, left:0, right:0, height:3, background: C.accent, opacity: isSelected ? 0.85 : 1 }} />)}
-                {!mock && cycleColor && (<div style={{ position:`absolute`, top:0, left:0, right:0, height:3, background: cycleColor, opacity: isSelected ? 0.85 : 1 }} />)}
+                {examWeek && (<div style={{ position:`absolute`, top:0, left:0, right:0, height:3, background: C.accent, opacity: isSelected ? 0.85 : 1 }} />)}
+                {!examWeek && mock && (<div style={{ position:`absolute`, top:0, left:0, right:0, height:3, background: C.accent, opacity: isSelected ? 0.85 : 1 }} />)}
+                {!examWeek && !mock && cycleColor && (<div style={{ position:`absolute`, top:0, left:0, right:0, height:3, background: cycleColor, opacity: isSelected ? 0.85 : 1 }} />)}
                 {(() => {
                   const sched = schedulesOnDay(d).slice(0, 3);
                   return sched.map(s => {
@@ -1929,11 +1969,16 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
                 })()}
                 <div style={{
                   fontSize:11, fontWeight: isToday ? 700 : 500,
-                  textAlign:`left`, lineHeight:1, marginTop: (cycleColor || mock) ? 4 : 1,
+                  textAlign:`left`, lineHeight:1, marginTop: (cycleColor || mock || examWeek) ? 4 : 1,
                   fontFamily:"'JetBrains Mono', monospace",
-                  color: isSelected ? C.paper : (mock ? C.accent : (dow === 0 ? C.accent : dow === 6 ? '#1E3A5F' : C.ink)),
+                  color: isSelected ? C.paper : (examWeek || mock ? C.accent : (dow === 0 ? C.accent : dow === 6 ? '#1E3A5F' : C.ink)),
                 }}>{dt.getDate()}</div>
-                {mock ? (
+                {examWeek ? (
+                  <div style={{ fontSize: 9, fontFamily:"'Noto Serif KR', serif", fontWeight:700, color: isSelected ? C.paper : C.accent, textAlign:`center`, marginTop:2, lineHeight:1.1, letterSpacing:`-0.02em` }}>
+                    {isExamFirst ? `본시험` : `시험중`}
+                    <div style={{ fontSize: 8, marginTop:1, fontFamily:"'JetBrains Mono', monospace", fontWeight:500, opacity:0.85 }}>{examWeek.dayNum}일차</div>
+                  </div>
+                ) : mock ? (
                   <div style={{ fontSize: 9, fontFamily:"'Noto Serif KR', serif", fontWeight:700, color: isSelected ? C.paper : C.accent, textAlign:`center`, marginTop:2, lineHeight:1.1, letterSpacing:`-0.02em` }}>
                     {isMockFirst ? '모의' : `시험`}
                     <div style={{ fontSize: 8, marginTop:1, fontFamily:"'JetBrains Mono', monospace", fontWeight:500, opacity:0.85 }}>{mock.dayNum}일차</div>
@@ -1988,7 +2033,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
       <DayDetail
         date={selDate} minutes={selMinutes} log={selLog} todos={selTodos}
         dueReviews={selDueReviews}
-        cycleInfo={selCycleInfo} mock={selMock} tracks={selTracks}
+        cycleInfo={selCycleInfo} mock={selMock} examWeek={selExamWeek} tracks={selTracks}
         schedules={schedulesOnDay(selDate)}
         mood={moods[selDate] || ``}
         setMood={(v) => setMoods(prev => {
@@ -2005,7 +2050,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
   );
 }
 
-function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, tracks, schedules = [], mood, setMood, onAddTodo, onToggleTodo, onRemoveTodo, onGoToLog, isToday }) {
+function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, examWeek, tracks, schedules = [], mood, setMood, onAddTodo, onToggleTodo, onRemoveTodo, onGoToLog, isToday }) {
   const [newTodo, setNewTodo] = useState(``);
   const [moodLocal, setMoodLocal] = useState(mood);
   useEffect(() => { setMoodLocal(mood); }, [mood, date]);
@@ -2037,7 +2082,19 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, tra
         <span className="serif mono" style={{ fontSize:14, fontWeight:600, color: minutes > 0 ? C.ink : C.muted }}>{fmtMin(minutes)}</span>
       </div>
 
-      {mock && (
+      {examWeek && (
+        <div style={{ padding:`14px 16px`, borderBottom:`1px solid ${C.lineSoft}`, background: C.accent, color:`#fff`, display:`flex`, alignItems:`center`, gap:12 }}>
+          <div style={{ width:40, height:40, background:`rgba(255,255,255,0.2)`, display:`grid`, placeItems:`center`, flexShrink:0 }}>
+            <span className="serif" style={{ fontSize:18, fontWeight:700, lineHeight:1 }}>!</span>
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div className="kserif" style={{ fontSize:14, fontWeight:600 }}>{examWeek.label}</div>
+            <div className="mono" style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{examWeek.dayNum}/{examWeek.totalDays}일차 · {examWeek.start.slice(5)} ~ {examWeek.end.slice(5)}</div>
+          </div>
+        </div>
+      )}
+
+      {mock && !examWeek && (
         <div style={{ padding:`14px 16px`, borderBottom:`1px solid ${C.lineSoft}`, background: C.accent, color:`#fff`, display:`flex`, alignItems:`center`, gap:12 }}>
           <div style={{ width:40, height:40, background:`rgba(255,255,255,0.2)`, display:`grid`, placeItems:`center`, flexShrink:0 }}>
             <span className="serif" style={{ fontSize:18, fontWeight:700, lineHeight:1 }}>{mock.label.match(/\d/)?.[0] || `!`}</span>
