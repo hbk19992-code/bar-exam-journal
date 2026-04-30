@@ -777,34 +777,46 @@ const DEFAULT_STATE = {
 };
 
 async function loadStateFromFirestore(uid) {
-  try {
-    const ref = doc(fbDB, `users`, uid);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return { ...DEFAULT_STATE };
-    const d = snap.data() || {};
-    return {
-      settings: {
-        ...DEFAULT_SETTINGS, ...(d.settings || {}),
-        weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
-        cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
-        mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
-      },
-      logs: d.logs || {},
-      reviews: d.reviews || [],
-      books: d.books || [],
-      todos: d.todos || {},
-      tracks: d.tracks || {},
-      materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
-      materialLog: d.materialLog || {},
-      examScores: d.examScores || [],
-      moods: d.moods || {},
-      schedules: d.schedules || [],
-      checklists: (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS,
-    };
-  } catch (e) {
-    console.error(`[loadState]`, e);
-    return { ...DEFAULT_STATE };
-  }
+  try {
+    const ref = doc(fbDB, `users`, uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return { ...DEFAULT_STATE };
+    const d = snap.data() || {};
+
+    // --- 기존 데이터와 새 기본 체크리스트 병합 로직 추가 ---
+    let loadedChecklists = (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS;
+    const existingIds = new Set(loadedChecklists.map(c => c.id));
+    const mergedChecklists = [...loadedChecklists];
+    DEFAULT_CHECKLISTS.forEach(dc => {
+      if (!existingIds.has(dc.id)) {
+        mergedChecklists.push(dc);
+      }
+    });
+    // -----------------------------------------------------
+
+    return {
+      settings: {
+        ...DEFAULT_SETTINGS, ...(d.settings || {}),
+        weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
+        cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
+        mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
+      },
+      logs: d.logs || {},
+      reviews: d.reviews || [],
+      books: d.books || [],
+      todos: d.todos || {},
+      tracks: d.tracks || {},
+      materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
+      materialLog: d.materialLog || {},
+      examScores: d.examScores || [],
+      moods: d.moods || {},
+      schedules: d.schedules || [],
+      checklists: mergedChecklists, // 수정된 부분: 병합된 체크리스트를 반환
+    };
+  } catch (e) {
+    console.error(`[loadState]`, e);
+    return { ...DEFAULT_STATE };
+  }
 }
 
 async function saveStateToFirestore(uid, partial) {
