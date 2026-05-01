@@ -312,6 +312,29 @@ const DEFAULT_CHECKLISTS = [
   },
 ];
 
+/* 객관식 3요소(기출/최판/법리) × 7과목 — 최민하 합격수기 기반 권장 별점 (1~5)
+   subject는 헌법/행정법/형법/형소법/민법/민소법/상법으로 세분화 */
+const MCQ_AREAS = [
+  { id: `con`, name: `헌법`, group: `공법`, color: `#1E3A5F`, weights: { 기출: 2, 최판: 5, 법리: 2 } },
+  { id: `adm`, name: `행정법`, group: `공법`, color: `#1E3A5F`, weights: { 기출: 3, 최판: 4, 법리: 4 } },
+  { id: `cri`, name: `형법`, group: `형사법`, color: `#7A2828`, weights: { 기출: 4, 최판: 3, 법리: 3 } },
+  { id: `crp`, name: `형소법`, group: `형사법`, color: `#7A2828`, weights: { 기출: 3, 최판: 5, 법리: 3 } },
+  { id: `civ`, name: `민법`, group: `민사법`, color: `#2D5A3D`, weights: { 기출: 5, 최판: 3, 법리: 5 } },
+  { id: `cvp`, name: `민소법`, group: `민사법`, color: `#2D5A3D`, weights: { 기출: 5, 최판: 4, 법리: 5 } },
+  { id: `com`, name: `상법`, group: `민사법`, color: `#2D5A3D`, weights: { 기출: 5, 최판: 2, 법리: 2 } },
+];
+const MCQ_PILLARS = [`기출`, `최판`, `법리`];
+
+/* 루틴 트래커 기본 시드 — 최민하 합격수기 기반 (시간 고정 루틴) */
+const DEFAULT_ROUTINES = [
+  { id: `rt-1`, name: `6:30 기상`, icon: `🌅`, order: 1 },
+  { id: `rt-2`, name: `7시 이전 정독실`, icon: `📖`, order: 2 },
+  { id: `rt-3`, name: `정시 점심 (11:20)`, icon: `🍱`, order: 3 },
+  { id: `rt-4`, name: `정시 저녁 (17:20)`, icon: `🍚`, order: 4 },
+  { id: `rt-5`, name: `23:30 이전 취침`, icon: `🌙`, order: 5 },
+  { id: `rt-6`, name: `스트레칭`, icon: `🧘`, order: 6 },
+];
+
 const DEFAULT_SETTINGS = {
   examDate: `2027-01-07`,
   examLabel: `제16회 변호사시험`,
@@ -774,49 +797,43 @@ const DEFAULT_STATE = {
   moods: {},
   schedules: [], // [{ id, title, color, start, end, note }]
   checklists: DEFAULT_CHECKLISTS, // [{ id, name, subject, color, items: [{ id, text, stars }], lastReviewed }]
+  mcqProgress: {}, // { "areaId__pillar": { rounds, target, lastDate } }  ex) "con__기출": { rounds:2, target:3 }
+  routines: DEFAULT_ROUTINES, // [{ id, name, icon, order }]
+  routineLog: {},  // { "YYYY-MM-DD": { routineId: true } }
 };
 
 async function loadStateFromFirestore(uid) {
-  try {
-    const ref = doc(fbDB, `users`, uid);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return { ...DEFAULT_STATE };
-    const d = snap.data() || {};
-
-    // --- 기존 데이터와 새 기본 체크리스트 병합 로직 추가 ---
-    let loadedChecklists = (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS;
-    const existingIds = new Set(loadedChecklists.map(c => c.id));
-    const mergedChecklists = [...loadedChecklists];
-    DEFAULT_CHECKLISTS.forEach(dc => {
-      if (!existingIds.has(dc.id)) {
-        mergedChecklists.push(dc);
-      }
-    });
-    // -----------------------------------------------------
-
-    return {
-      settings: {
-        ...DEFAULT_SETTINGS, ...(d.settings || {}),
-        weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
-        cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
-        mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
-      },
-      logs: d.logs || {},
-      reviews: d.reviews || [],
-      books: d.books || [],
-      todos: d.todos || {},
-      tracks: d.tracks || {},
-      materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
-      materialLog: d.materialLog || {},
-      examScores: d.examScores || [],
-      moods: d.moods || {},
-      schedules: d.schedules || [],
-      checklists: mergedChecklists, // 수정된 부분: 병합된 체크리스트를 반환
-    };
-  } catch (e) {
-    console.error(`[loadState]`, e);
-    return { ...DEFAULT_STATE };
-  }
+  try {
+    const ref = doc(fbDB, `users`, uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return { ...DEFAULT_STATE };
+    const d = snap.data() || {};
+    return {
+      settings: {
+        ...DEFAULT_SETTINGS, ...(d.settings || {}),
+        weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
+        cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
+        mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
+      },
+      logs: d.logs || {},
+      reviews: d.reviews || [],
+      books: d.books || [],
+      todos: d.todos || {},
+      tracks: d.tracks || {},
+      materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
+      materialLog: d.materialLog || {},
+      examScores: d.examScores || [],
+      moods: d.moods || {},
+      schedules: d.schedules || [],
+      checklists: (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS,
+      mcqProgress: d.mcqProgress || {},
+      routines: (d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES,
+      routineLog: d.routineLog || {},
+    };
+  } catch (e) {
+    console.error(`[loadState]`, e);
+    return { ...DEFAULT_STATE };
+  }
 }
 
 async function saveStateToFirestore(uid, partial) {
@@ -847,6 +864,9 @@ export default function App() {
   const [moods, setMoods] = useState({});
   const [schedules, setSchedules] = useState([]);
   const [checklists, setChecklists] = useState(DEFAULT_CHECKLISTS);
+  const [mcqProgress, setMcqProgress] = useState({});
+  const [routines, setRoutines] = useState(DEFAULT_ROUTINES);
+  const [routineLog, setRoutineLog] = useState({});
   const [loaded, setLoaded] = useState(false);
   const [today, setToday] = useState(todayISO());
   const [syncStatus, setSyncStatus] = useState(`idle`); // idle | saving | saved | error
@@ -875,6 +895,9 @@ export default function App() {
       setMaterialLog(s.materialLog); setExamScores(s.examScores); setMoods(s.moods);
       setSchedules(s.schedules);
       setChecklists(s.checklists || DEFAULT_CHECKLISTS);
+      setMcqProgress(s.mcqProgress || {});
+      setRoutines(s.routines || DEFAULT_ROUTINES);
+      setRoutineLog(s.routineLog || {});
       clearTimeout(fallback);
       setLoaded(true);
     });
@@ -891,12 +914,13 @@ export default function App() {
       const ok = await saveStateToFirestore(user.uid, {
         settings, logs, reviews, books, todos, tracks,
         materials, materialLog, examScores, moods, schedules, checklists,
+        mcqProgress, routines, routineLog,
         updatedAt: new Date().toISOString(),
       });
       setSyncStatus(ok ? 'saved' : `error`);
     }, 2500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists]);
+  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog]);
 
   // 모의고사 리뷰 todo 자동 생성 — 모의 일정이 바뀌면 옛 todo 청소 후 새로 깔림
   useEffect(() => {
@@ -980,9 +1004,9 @@ export default function App() {
         input, textarea, button, select { font-family: inherit; color: inherit; }
         input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
-        .serif { font-family: 'Fraunces', 'Noto Serif KR', serif; }
-        .kserif { font-family: 'Noto Serif KR', serif; }
-        .mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+        .serif { font-family: `Fraunces`, `Noto Serif KR`, serif; }
+        .kserif { font-family: `Noto Serif KR`, serif; }
+        .mono { font-family: `JetBrains Mono`, monospace; font-variant-numeric: tabular-nums; }
         .fadeIn { animation: fade .35s ease both; }
         @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
         .lift:active { transform: scale(0.98); }
@@ -1052,6 +1076,9 @@ VITE_FIREBASE_APP_ID`}</pre>
     examScores, setExamScores, moods, setMoods,
     schedules, setSchedules,
     checklists, setChecklists,
+    mcqProgress, setMcqProgress,
+    routines, setRoutines,
+    routineLog, setRoutineLog,
   };
 
   return (
@@ -1357,7 +1384,7 @@ function PrevScoreCard({ user }) {
 
 /* ============================================================ HOME ============================================================ */
 
-function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examScores, moods, setMoods, checklists = [], user, onGoTo }) {
+function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examScores, moods, setMoods, checklists = [], routines = [], routineLog = {}, setRoutineLog, user, onGoTo }) {
   const todayLog = logs[today] || {};
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
@@ -1546,6 +1573,63 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
         })}
       </div>
 
+      {/* 루틴 — 최민하 합격수기 기반 생활 패턴 트래커 */}
+      {(() => {
+        const todayRoutines = routineLog[today] || {};
+        const doneCount = routines.filter(r => todayRoutines[r.id]).length;
+        const allDone = routines.length > 0 && doneCount === routines.length;
+        // Perfect Day streak 계산
+        let perfectStreak = 0;
+        for (let i = 0; i < 365; i++) {
+          const d = addDays(today, -i);
+          const log = routineLog[d] || {};
+          const allRoutinesDone = routines.length > 0 && routines.every(r => log[r.id]);
+          if (allRoutinesDone) perfectStreak++;
+          else if (i > 0) break;
+        }
+        return (
+          <>
+            <SectionTitle>
+              루틴 · {doneCount}/{routines.length}
+              {allDone && <span style={{ marginLeft:8, color:`#D4A437` }}>⭐ Perfect Day</span>}
+              {perfectStreak > 1 && <span style={{ marginLeft:8, color:C.accent, fontSize:10 }}>· {perfectStreak}일 연속</span>}
+            </SectionTitle>
+            <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px`, marginBottom:22, display:`grid`, gridTemplateColumns:`repeat(${Math.min(routines.length, 6)}, 1fr)`, gap:6 }}>
+              {routines.length === 0 ? (
+                <div style={{ gridColumn:`1 / -1`, textAlign:`center`, fontSize:11, color:C.muted, padding:`10px` }}>
+                  설정 → 루틴에서 추가하세요.
+                </div>
+              ) : routines.map(r => {
+                const done = !!todayRoutines[r.id];
+                return (
+                  <button key={r.id}
+                    onClick={() => {
+                      const cur = routineLog[today] || {};
+                      const next = { ...cur };
+                      if (done) delete next[r.id]; else next[r.id] = true;
+                      const nextLog = { ...routineLog };
+                      if (Object.keys(next).length === 0) delete nextLog[today];
+                      else nextLog[today] = next;
+                      setRoutineLog(nextLog);
+                    }}
+                    style={{
+                      background: done ? `#D4A437` : C.bg,
+                      color: done ? `#fff` : C.muted,
+                      border: `1px solid ${done ? `#D4A437` : C.line}`,
+                      padding:`8px 4px`, cursor:`pointer`,
+                      display:`flex`, flexDirection:`column`, alignItems:`center`, gap:3,
+                      transition:`all .15s ease`,
+                    }}>
+                    <span style={{ fontSize:18, lineHeight:1 }}>{r.icon || `✓`}</span>
+                    <span className="kserif" style={{ fontSize:9, fontWeight: done ? 600 : 400, lineHeight:1.2, textAlign:`center` }}>{r.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        );
+      })()}
+
       <SectionTitle>오늘 {fmtKDate(today).slice(5)}</SectionTitle>
       <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, 1fr)`, gap:8, marginBottom:22 }}>
         <Stat icon={Clock} label="공부 시간" value={fmtMin(todayMinutes)} />
@@ -1704,7 +1788,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
 
 /* ============================================================ CALENDAR ============================================================ */
 
-function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks, moods, setMoods, schedules = [], setSchedules, onGoToLog }) {
+function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks, moods, setMoods, schedules = [], setSchedules, routines = [], routineLog = {}, onGoToLog }) {
   const [cursor, setCursor] = useState(() => {
     const d = new Date(today + `T00:00:00`);
     return { y: d.getFullYear(), m: d.getMonth() };
@@ -2010,6 +2094,12 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
                       ))}
                     </div>
                   )}
+                  {(() => {
+                    const dayLog = routineLog[d] || {};
+                    const allDone = routines.length > 0 && routines.every(r => dayLog[r.id]);
+                    if (!allDone) return null;
+                    return <span style={{ fontSize:9, lineHeight:1, filter: isSelected ? `none` : `none` }}>⭐</span>;
+                  })()}
                   {todoOpen > 0 && (
                     <span style={{ fontSize:8, fontWeight:700, color: isSelected ? C.paper : C.accent, fontFamily:"'JetBrains Mono', monospace", lineHeight:1 }}>✓{todoOpen}</span>
                   )}
@@ -2919,10 +3009,11 @@ function ExamsView({ examScores }) {
 
 /* ============================================================ REVIEW (회독) ============================================================ */
 
-function ReviewView({ today, reviews, setReviews, books, setBooks, materials, setMaterials, materialLog, setMaterialLog }) {
-  const [tab, setTab] = useState(`topics`);
+function ReviewView({ today, reviews, setReviews, books, setBooks, materials, setMaterials, materialLog, setMaterialLog, mcqProgress, setMcqProgress }) {
+  const [tab, setTab] = useState(`matrix`);
 
   const tabs = [
+    { key:`matrix`, label:`매트릭스`, icon:Layers },
     { key:`topics`, label:`주제`, icon:RotateCw },
     { key:`books`, label:`문제집`, icon:BookOpen },
     { key:`materials`, label:`자료`, icon:Library },
@@ -2934,7 +3025,7 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
         <h1 className="serif" style={{ margin:0, fontSize:22, fontWeight:600 }}>회독</h1>
       </div>
 
-      <div style={{ display:`flex`, gap:6, marginBottom:14, borderBottom:`1px solid ${C.line}` }}>
+      <div style={{ display:`flex`, gap:6, marginBottom:14, borderBottom:`1px solid ${C.line}`, overflowX:`auto` }} className="hide-scroll">
         {tabs.map(t => {
           const Icon = t.icon;
           const active = tab === t.key;
@@ -2946,6 +3037,7 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
                 borderBottom: active ? `2px solid ${C.accent}` : `2px solid transparent`,
                 marginBottom:-1, display:`flex`, alignItems:`center`, gap:5,
                 fontSize:12, fontWeight: active ? 600 : 400, fontFamily:"'Noto Serif KR', serif",
+                whiteSpace:`nowrap`,
               }}>
               <Icon size={13} /> {t.label}
             </button>
@@ -2953,10 +3045,186 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
         })}
       </div>
 
+      {tab === `matrix` && <McqMatrix today={today} mcqProgress={mcqProgress} setMcqProgress={setMcqProgress} />}
       {tab === `topics` && <TopicsReview today={today} reviews={reviews} setReviews={setReviews} />}
       {tab === `books` && <BooksReview today={today} books={books} setBooks={setBooks} />}
       {tab === `materials` && <MaterialsReview today={today} materials={materials} setMaterials={setMaterials} materialLog={materialLog} setMaterialLog={setMaterialLog} />}
     </div>
+  );
+}
+
+/* 객관식 3요소 × 7과목 매트릭스 — 최민하 합격수기 기반 권장 별점 */
+function McqMatrix({ today, mcqProgress, setMcqProgress }) {
+  const STAR_COLOR = `#D4A437`;
+  const [selected, setSelected] = useState(null); // { areaId, pillar }
+
+  function k(areaId, pillar) { return `${areaId}__${pillar}`; }
+  function getCell(areaId, pillar) {
+    return mcqProgress[k(areaId, pillar)] || { rounds: 0, target: 0, lastDate: null };
+  }
+  function setCell(areaId, pillar, patch) {
+    const key = k(areaId, pillar);
+    const cur = getCell(areaId, pillar);
+    const updated = { ...cur, ...patch };
+    if (updated.rounds === 0 && updated.target === 0 && !updated.lastDate) {
+      const next = { ...mcqProgress };
+      delete next[key];
+      setMcqProgress(next);
+    } else {
+      setMcqProgress({ ...mcqProgress, [key]: updated });
+    }
+  }
+  function bump(areaId, pillar, delta) {
+    const cur = getCell(areaId, pillar);
+    const newRounds = Math.max(0, cur.rounds + delta);
+    setCell(areaId, pillar, {
+      rounds: newRounds,
+      lastDate: delta > 0 ? today : cur.lastDate,
+    });
+  }
+
+  // 강조도: 별점 높은데 회독 부족하면 빨간 경고
+  function priority(area, pillar) {
+    const w = area.weights[pillar];
+    const c = getCell(area.id, pillar);
+    if (w >= 4 && c.rounds === 0) return `urgent`;   // 미시작
+    if (w >= 5 && c.rounds < 2) return `urgent`;
+    if (w >= 4 && c.rounds < 2) return `attention`;
+    return `ok`;
+  }
+
+  const sel = selected ? { area: MCQ_AREAS.find(a => a.id === selected.areaId), pillar: selected.pillar, cell: getCell(selected.areaId, selected.pillar) } : null;
+
+  return (
+    <>
+      <div style={{ fontSize:11, color:C.muted, marginBottom:14, lineHeight:1.6 }}>
+        7과목 × 3요소(기출/최판/법리) — 별점은 합격수기 권장 비중. 빨간 경고는 본인이 미흡한 칸.
+      </div>
+
+      {/* 매트릭스 표 */}
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`8px`, marginBottom:18, overflowX:`auto` }}>
+        <table style={{ width:`100%`, borderCollapse:`collapse`, fontSize:11, minWidth:320 }}>
+          <thead>
+            <tr>
+              <th style={{ padding:`6px 4px`, textAlign:`left`, color:C.muted, fontWeight:500, fontSize:10 }}>과목</th>
+              {MCQ_PILLARS.map(p => (
+                <th key={p} style={{ padding:`6px 4px`, textAlign:`center`, color:C.muted, fontWeight:600, fontSize:10 }}>{p}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {MCQ_AREAS.map(area => (
+              <tr key={area.id}>
+                <td style={{ padding:`8px 6px`, borderTop:`1px dashed ${C.lineSoft}`, color:area.color, fontWeight:600, fontSize:12, fontFamily:"'Noto Serif KR', serif" }}>
+                  {area.name}
+                </td>
+                {MCQ_PILLARS.map(pillar => {
+                  const w = area.weights[pillar];
+                  const c = getCell(area.id, pillar);
+                  const pri = priority(area, pillar);
+                  const isSel = selected && selected.areaId === area.id && selected.pillar === pillar;
+                  return (
+                    <td key={pillar} onClick={() => setSelected({ areaId: area.id, pillar })}
+                      style={{
+                        padding:`6px 4px`, borderTop:`1px dashed ${C.lineSoft}`, textAlign:`center`,
+                        background: isSel ? area.color : (pri === `urgent` ? `#FBE4E4` : pri === `attention` ? `#F4EAD0` : `transparent`),
+                        cursor:`pointer`,
+                      }}>
+                      <div style={{ fontSize:10, color: isSel ? `#fff` : STAR_COLOR, fontWeight:700, letterSpacing:`-0.06em` }}>
+                        {`★`.repeat(w)}<span style={{ color: isSel ? `rgba(255,255,255,0.4)` : `#E8DFC4` }}>{`★`.repeat(5 - w)}</span>
+                      </div>
+                      <div className="mono" style={{ fontSize:11, color: isSel ? `#fff` : (c.rounds > 0 ? area.color : C.muted), fontWeight:600, marginTop:3 }}>
+                        {c.rounds}{c.target > 0 ? `/${c.target}` : ``}회
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 선택된 셀 상세 */}
+      {sel ? (
+        <div style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:14 }}>
+          <div style={{ background: sel.area.color, color:`#fff`, padding:`12px 14px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10 }}>
+            <div>
+              <div className="serif" style={{ fontSize:16, fontWeight:600 }}>{sel.area.name} · {sel.pillar}</div>
+              <div style={{ fontSize:10, opacity:0.85, marginTop:3, fontFamily:"'JetBrains Mono', monospace" }}>
+                권장 비중 <span style={{ color:`#FFD466`, fontWeight:700 }}>{`★`.repeat(sel.area.weights[sel.pillar])}</span>
+                {` · 마지막 회독 ${sel.cell.lastDate || `미회독`}`}
+              </div>
+            </div>
+            <button onClick={() => setSelected(null)}
+              style={{ background:`rgba(255,255,255,0.2)`, border:`none`, color:`#fff`, padding:`4px 8px`, cursor:`pointer`, fontSize:11 }}>
+              <X size={12} />
+            </button>
+          </div>
+          <div style={{ padding:`14px 16px` }}>
+            <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, marginBottom:12 }}>
+              <span style={{ fontSize:11, color:C.muted }}>현재 회독</span>
+              <div style={{ display:`flex`, alignItems:`center`, gap:6 }}>
+                <button onClick={() => bump(sel.area.id, sel.pillar, -1)}
+                  style={{ background:C.bg, border:`1px solid ${C.line}`, width:32, height:32, cursor:`pointer`, display:`grid`, placeItems:`center`, color:C.muted }}>
+                  <Minus size={13} />
+                </button>
+                <div className="mono" style={{ minWidth:48, textAlign:`center`, fontSize:20, fontWeight:700, color:sel.area.color }}>
+                  {sel.cell.rounds}
+                </div>
+                <button onClick={() => bump(sel.area.id, sel.pillar, 1)}
+                  style={{ background:sel.area.color, border:`none`, color:`#fff`, width:32, height:32, cursor:`pointer`, display:`grid`, placeItems:`center` }}>
+                  <Plus size={13} />
+                </button>
+              </div>
+            </div>
+            <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between` }}>
+              <span style={{ fontSize:11, color:C.muted }}>목표 회독 (선택)</span>
+              <input type="number" value={sel.cell.target || ``} min={0}
+                onChange={e => setCell(sel.area.id, sel.pillar, { target: parseInt(e.target.value) || 0 })}
+                placeholder="0"
+                style={{ width:60, background:C.bg, border:`1px solid ${C.line}`, padding:`5px 8px`, fontSize:13, textAlign:`center`, outline:`none`, fontFamily:"'JetBrains Mono', monospace" }} />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize:11, color:C.muted, textAlign:`center`, padding:`14px`, background:C.paper, border:`1px dashed ${C.line}`, marginBottom:14 }}>
+          매트릭스의 칸을 탭해서 회독 수를 입력하세요.
+        </div>
+      )}
+
+      {/* 빨간 경고 요약 */}
+      {(() => {
+        const urgent = [];
+        MCQ_AREAS.forEach(area => {
+          MCQ_PILLARS.forEach(pillar => {
+            if (priority(area, pillar) === `urgent`) {
+              urgent.push({ area, pillar, w: area.weights[pillar], c: getCell(area.id, pillar) });
+            }
+          });
+        });
+        if (urgent.length === 0) return null;
+        return (
+          <>
+            <SectionTitle>점검 필요 ({urgent.length})</SectionTitle>
+            <div style={{ display:`flex`, flexDirection:`column`, gap:6, marginBottom:14 }}>
+              {urgent.slice(0, 8).map(u => (
+                <button key={`${u.area.id}-${u.pillar}`} onClick={() => setSelected({ areaId: u.area.id, pillar: u.pillar })}
+                  style={{ background:`#FBE4E4`, border:`1px solid ${C.accent}`, borderLeft:`3px solid ${u.area.color}`, padding:`8px 10px`, display:`flex`, justifyContent:`space-between`, alignItems:`center`, cursor:`pointer`, textAlign:`left` }}>
+                  <span className="kserif" style={{ fontSize:12, fontWeight:600, color:C.ink }}>
+                    {u.area.name} <span style={{ color:C.muted, fontWeight:400 }}>· {u.pillar}</span>
+                    <span style={{ color:STAR_COLOR, marginLeft:6, letterSpacing:`-0.06em`, fontSize:10 }}>{`★`.repeat(u.w)}</span>
+                  </span>
+                  <span className="mono" style={{ fontSize:11, color:C.accent, fontWeight:600 }}>
+                    {u.c.rounds === 0 ? `미시작` : `${u.c.rounds}회뿐`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        );
+      })()}
+    </>
   );
 }
 
@@ -3861,7 +4129,7 @@ function ReportView({ today, settings, logs, examScores, materials }) {
 
 /* ============================================================ SETTINGS ============================================================ */
 
-function SettingsView({ settings, setSettings, schedules = [], setSchedules, user, onLogout, onReset, onExport, onExportXLSX }) {
+function SettingsView({ settings, setSettings, schedules = [], setSchedules, routines = [], setRoutines, user, onLogout, onReset, onExport, onExportXLSX }) {
   const [examDate, setExamDate] = useState(settings.examDate);
   const [examLabel, setExamLabel] = useState(settings.examLabel);
   const [targets, setTargets] = useState(settings.weeklyTargets);
@@ -4064,6 +4332,31 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, use
             <span style={{ fontSize:10, color:C.muted, marginLeft:6 }}>일평균 {fmtHour(Object.values(targets).reduce((a,b) => a + (b || 0), 0) / 7)}</span>
           </span>
         </div>
+      </div>
+
+      <SectionTitle>루틴 (생활 패턴)</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
+          매일 지키고 싶은 생활 루틴(기상·식사·취침 등)을 등록하세요. 홈에서 매일 체크할 수 있고, 모두 ✓한 날은 캘린더에 ⭐로 표시됩니다.
+        </div>
+        {(routines || []).sort((a,b) => (a.order || 0) - (b.order || 0)).map((r, idx, arr) => (
+          <div key={r.id} style={{ display:`flex`, gap:6, marginBottom:6, alignItems:`center` }}>
+            <input value={r.icon || ``} onChange={e => setRoutines(routines.map(x => x.id === r.id ? { ...x, icon: e.target.value.slice(0, 2) } : x))}
+              maxLength={2} placeholder="🌅"
+              style={{ width:36, textAlign:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 4px`, fontSize:14, outline:`none` }} />
+            <input value={r.name} onChange={e => setRoutines(routines.map(x => x.id === r.id ? { ...x, name: e.target.value } : x))}
+              placeholder="루틴 이름"
+              style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, fontSize:11, outline:`none` }} />
+            <button onClick={() => setRoutines(routines.filter(x => x.id !== r.id))}
+              style={{ background:`none`, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, cursor:`pointer`, color:C.muted }}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+        <button onClick={() => setRoutines([...(routines || []), { id: uid(), name: `새 루틴`, icon: `✓`, order: (routines.length || 0) + 1 }])}
+          style={{ width:`100%`, background:C.bg, border:`1px dashed ${C.line}`, padding:`8px`, cursor:`pointer`, fontSize:11, color:C.muted, marginTop:6 }}>
+          + 루틴 추가
+        </button>
       </div>
 
       <SectionTitle>자동화</SectionTitle>
