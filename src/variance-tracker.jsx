@@ -3970,5 +3970,6 @@ function ReportView({ today, settings, logs, examScores, materials }) {
     Object.keys(SUBJECTS).forEach(s => { out[s] = {}; });
     Object.values(logs).forEach(dl => {
       Object.entries(dl).forEach(([k, v]) => {
-        const [sub, type] = k.split('::');
-        if (out[sub]) out[sub][저는 언어 모델일 뿐이라서 그것을 도와드릴 수가 없습니다.
+  const [sub, type] = k.split('::');
+  if (out[sub]) out[sub][type] = (out[sub][type] || 0) + (v || 0);
+});
