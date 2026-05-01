@@ -1016,7 +1016,7 @@ export default function App() {
       `}</style>
     </>
   );
-
+  
   if (!FIREBASE_OK) {
     return (
       <div style={{ minHeight:'100vh', background:C.bg, display:'grid', placeItems:'center', padding:24, fontFamily:"'Noto Sans KR', sans-serif" }}>
