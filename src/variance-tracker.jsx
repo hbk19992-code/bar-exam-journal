@@ -408,7 +408,14 @@ const stamp = (() => {
 const d = new Date();
 return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
 })();
-const dateOnly = iso => iso.replaceAll(`-`, `); // ICS 줄바꿈은 CRLF, 텍스트 안 콤마/세미콜론은 백슬래시 이스케이프 const esc = s => String(s || `).replace(/\/g, ‘\\’).replace(/\n/g, ‘\n’).replace(/,/g, ‘\,’).replace(/;/g, ‘\;’);
+const dateOnly = iso => iso.replaceAll('-', '');
+
+// ICS 줄바꿈은 CRLF, 텍스트 안 콤마/세미콜론은 백슬래시 이스케이프 
+const esc = s => String(s || '')
+  .replace(/\\/g, '\\\\')
+  .replace(/\n/g, '\\n')
+  .replace(/,/g, '\\,')
+  .replace(/;/g, '\\;');
 
 const events = [];
 // 본시험
