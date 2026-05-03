@@ -2020,12 +2020,24 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
                     );
                   });
                 })()}
-                <div style={{
-                  fontSize:11, fontWeight: isToday ? 700 : 500,
-                  textAlign:'left', lineHeight:1, marginTop: (cycleColor || mock || examWeek) ? 4 : 1,
-                  fontFamily:"'JetBrains Mono', monospace",
-                  color: isSelected ? C.paper : (examWeek || mock ? C.accent : (dow === 0 ? C.accent : dow === 6 ? '#1E3A5F' : C.ink)),
-                }}>{dt.getDate()}</div>
+{/* 날짜와 별을 한 줄(가로)에 배치 */}
+<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: (cycleColor || mock || examWeek) ? 4 : 1 }}>
+  <div style={{
+    fontSize:11, fontWeight: isToday ? 700 : 500,
+    textAlign:'left', lineHeight:1,
+    fontFamily:"'JetBrains Mono', monospace",
+    color: isSelected ? C.paper : (examWeek || mock ? C.accent : (dow === 0 ? C.accent : dow === 6 ? '#1E3A5F' : C.ink)),
+  }}>{dt.getDate()}</div>
+  
+  {/* 루틴 올클리어 별을 우측 상단으로 이동 */}
+  {(() => {
+    const dayLog = routineLog[d] || {};
+    const allDone = routines.length > 0 && routines.every(r => dayLog[r.id]);
+    if (!allDone) return null;
+    return <span style={{ fontSize:9, lineHeight:1 }}>⭐</span>;
+  })()}
+</div>
+
                 {examWeek ? (
                   <div style={{ fontSize: 9, fontFamily:"'Noto Serif KR', serif", fontWeight:700, color: isSelected ? C.paper : C.accent, textAlign:'center', marginTop:2, lineHeight:1.1, letterSpacing:'-0.02em' }}>
                     {isExamFirst ? '본시험' : '시험중'}
@@ -2051,12 +2063,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
                       ))}
                     </div>
                   )}
-                  {(() => {
-                    const dayLog = routineLog[d] || {};
-                    const allDone = routines.length > 0 && routines.every(r => dayLog[r.id]);
-                    if (!allDone) return null;
-                    return <span style={{ fontSize:9, lineHeight:1, filter: isSelected ? 'none' : 'none' }}>⭐</span>;
-                  })()}
+                  
                   {todoOpen > 0 && (
                     <span style={{ fontSize:8, fontWeight:700, color: isSelected ? C.paper : C.accent, fontFamily:"'JetBrains Mono', monospace", lineHeight:1 }}>✓{todoOpen}</span>
                   )}
