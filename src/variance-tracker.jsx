@@ -401,79 +401,30 @@ return `${m}분`;
 function fmtHour(n) { return `${Math.round((n / 60) * 10) / 10}h`; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
-/* ICS (Apple/Google Calendar) 내보내기 — 모든 일정·모의고사·본시험을 .ics 한 파일로 */
+/* ICS (Apple/Google Calendar) export */
 function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
-const pad = n => String(n).padStart(2, `0`);
-const stamp = (() => {
-const d = new Date();
-return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
-})();
-const dateOnly = iso => iso.split(`-`).join(`); // ICS uses CRLF; escape backslash, comma, semicolon in text const BS = String.fromCharCode(92);  // \ const NL = String.fromCharCode(10);  // newline const esc = s => { let out = String(s || `);
-out = out.split(BS).join(BS + BS);
-out = out.split(NL).join(BS + `n`);
-out = out.split(`,`).join(BS + `,`);
-out = out.split(`;`).join(BS + `;`);
-return out;
-};
-
-const events = [];
-// Main exam
-if (examDate) {
-const endExclusive = addDays(examDate, 5); //
-events.push({
-uid: `exam-${examDate}@bar-journal`,
-start: dateOnly(examDate),
-end: dateOnly(endExclusive),
-summary: examLabel || `변호사시험`,
-desc: `Bar Exam Journal`,
-});
-}
-// Mock exam
-mockExams.forEach(m => {
-events.push({
-uid: `mock-${m.id}@bar-journal`,
-start: dateOnly(m.start),
-end: dateOnly(addDays(m.end, 1)),
-summary: m.label,
-desc: `Bar Exam Journal · 모의고사`,
-});
-});
-// User schedules
-schedules.forEach(s => {
-events.push({
-uid: `sched-${s.id}@bar-journal`,
-start: dateOnly(s.start),
-end: dateOnly(addDays(s.end, 1)),
-summary: s.title || `일정`,
-desc: `Bar Exam Journal · 일정`,
-});
-});
-
-const lines = [
-`BEGIN:VCALENDAR`,
-`VERSION:2.0`,
-`PRODID:-//Bar Exam Journal//KR`,
-`CALSCALE:GREGORIAN`,
-`METHOD:PUBLISH`,
-`X-WR-CALNAME:변호사시험 일정`,
-`X-WR-TIMEZONE:Asia/Seoul`,
-];
-events.forEach(ev => {
-lines.push(
-`BEGIN:VEVENT`,
-`UID:${ev.uid}`,
-`DTSTAMP:${stamp}`,
-`DTSTART;VALUE=DATE:${ev.start}`,
-`DTEND;VALUE=DATE:${ev.end}`,
-`SUMMARY:${esc(ev.summary)}`,
-`DESCRIPTION:${esc(ev.desc)}`,
-`TRANSP:TRANSPARENT`,
-`END:VEVENT`,
-);
-});
-lines.push(`END:VCALENDAR`);
+const BS = String.fromCharCode(92);
+const NL = String.fromCharCode(10);
 const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
-return lines.join(CRLF);
+const pad2 = n => (n < 10 ? `0` : `) + n; const d = new Date(); const stamp = `${d.getUTCFullYear()}${pad2(d.getUTCMonth()+1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`; const dOnly = iso => iso.split(`-`).join(`);
+const esc = s => {
+let o = String(s == null ? `` : s);
+o = o.split(BS).join(BS + BS);
+o = o.split(NL).join(BS + `n`);
+o = o.split(`,`).join(BS + `,`);
+o = o.split(`;`).join(BS + `;`);
+return o;
+};
+const ev = [];
+if (examDate) ev.push({ uid: `exam-` + examDate, s: dOnly(examDate), e: dOnly(addDays(examDate, 5)), t: examLabel || `변호사시험` });
+mockExams.forEach(m => ev.push({ uid: `mock-` + m.id, s: dOnly(m.start), e: dOnly(addDays(m.end, 1)), t: m.label }));
+schedules.forEach(x => ev.push({ uid: `sched-` + x.id, s: dOnly(x.start), e: dOnly(addDays(x.end, 1)), t: x.title || `일정` }));
+const out = [`BEGIN:VCALENDAR`, `VERSION:2.0`, `PRODID:-//Bar Exam Journal//KR`, `CALSCALE:GREGORIAN`, `X-WR-CALNAME:변호사시험 일정`, `X-WR-TIMEZONE:Asia/Seoul`];
+ev.forEach(x => {
+out.push(`BEGIN:VEVENT`, `UID:` + x.uid + `@bar-journal`, `DTSTAMP:` + stamp, `DTSTART;VALUE=DATE:` + x.s, `DTEND;VALUE=DATE:` + x.e, `SUMMARY:` + esc(x.t), `TRANSP:TRANSPARENT`, `END:VEVENT`);
+});
+out.push(`END:VCALENDAR`);
+return out.join(CRLF);
 }
 
 function downloadICS(content, filename = `변시일정.ics`) {
