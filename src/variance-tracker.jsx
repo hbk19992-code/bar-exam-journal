@@ -2013,7 +2013,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
             <input type="file" accept=".ics" style={{ display: 'none' }} onChange={handleICSImport} />
           </label>
         </div>
-      ) : addMode === 'form' ? ( ... )
+      ) : addMode === 'form' ?
 
         <div style={{ background:C.ink, color:'#fff', padding:'12px 14px', marginBottom:8 }}>
           <div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', opacity:0.7, marginBottom:8, fontWeight:600 }}>
