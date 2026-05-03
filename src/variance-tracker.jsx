@@ -2000,8 +2000,8 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
         <button onClick={nextMonth} style={{ background:'none', border:'none', padding:6, cursor:'pointer', color:C.ink }}><ChevronRight size={18} /></button>
       </div>
 
-            {/* 일정 추가 / 동기화 토글바 */}
-      {addMode === null ? (
+                  {/* 일정 추가 / 동기화 토글바 */}
+      {addMode === null && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <button onClick={startAddMode}
             style={{ flex: 1, background:C.paper, border:`1px dashed ${C.line}`, color:C.muted, padding:'8px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
@@ -2013,8 +2013,9 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
             <input type="file" accept=".ics" style={{ display: 'none' }} onChange={handleICSImport} />
           </label>
         </div>
-      ) : addMode === 'form' ?
+      )}
 
+      {addMode === 'form' && (
         <div style={{ background:C.ink, color:'#fff', padding:'12px 14px', marginBottom:8 }}>
           <div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', opacity:0.7, marginBottom:8, fontWeight:600 }}>
             새 일정 · {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace('-','/')} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace('-','/')}
@@ -2035,7 +2036,9 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
               style={{ flex:2, background: draftTitle.trim() ? '#fff' : 'rgba(255,255,255,0.3)', color: draftTitle.trim() ? C.ink : 'rgba(255,255,255,0.5)', border:'none', padding:'8px', cursor: draftTitle.trim() ? 'pointer' : 'default', fontSize:12, fontWeight:600 }}>저장</button>
           </div>
         </div>
-      ) : (
+      )}
+
+      {(addMode === 'start' || addMode === 'end') && (
         <div style={{ background:C.accent, color:'#fff', padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div className="kserif" style={{ fontSize:12, fontWeight:600 }}>
             {addMode === 'start' ? '시작일을 탭하세요' : `종료일을 탭하세요 · 시작 ${pendingStart.slice(5).replace('-','/')}`}
@@ -2043,6 +2046,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
           <button onClick={cancelAddMode} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', padding:'4px 10px', fontSize:11, cursor:'pointer' }}>취소</button>
         </div>
       )}
+
 
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:'10px 8px', marginBottom:14 }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', marginBottom:6 }}>
