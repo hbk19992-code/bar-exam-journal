@@ -616,7 +616,7 @@ const day = d.getDay();
 d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
 return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
-function weekDays(startISO) { return […Array(7)].map((_, i) => addDays(startISO, i)); }
+function weekDays(startISO) { return [...Array(7)].map((_, i) => addDays(startISO, i)); }
 
 function monthGrid(year, month0) {
 const first = new Date(year, month0, 1);
