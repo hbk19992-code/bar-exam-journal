@@ -455,154 +455,160 @@ return _xlsxPromise;
 }
 
 async function exportXLSX(state, filename) {
-const XLSX = await loadXLSX();
-const wb = XLSX.utils.book_new();
-const {
-settings = {}, logs = {}, tracks = {}, todos = {}, examScores = [],
-materials = [], reviews = [], books = [], schedules = [], moods = {},
-} = state;
+  const XLSX = await loadXLSX();
+  const wb = XLSX.utils.book_new();
+  const {
+    settings = {}, logs = {}, tracks = {}, todos = {}, examScores = [],
+    materials = [], reviews = [], books = [], schedules = [], moods = {},
+  } = state;
 
-// [1] Summary
-const totalMin = Object.values(logs).reduce((s, dl) => s + Object.values(dl).reduce((a,b)=>a+(b||0),0), 0);
-const studyDays = Object.keys(logs).length;
-const summary = [
-[`Bar Exam Journal — 데이터 내보내기`],
-[`생성일`, new Date().toISOString().slice(0,19).replace(`T`,` `)],
-[],
-[`시험 정보`],
-[`시험명`, settings.examLabel || `], [`시험일`, settings.examDate || `],
-[`D-day`, settings.examDate ? daysDiff(todayISO(), settings.examDate) : ``],
-[],
-[`누적 학습`],
-[`총 학습 시간(분)`, totalMin],
-[`총 학습 시간(시간)`, Math.round(totalMin/60*10)/10],
-[`학습 일수`, studyDays],
-[`일평균(분)`, studyDays > 0 ? Math.round(totalMin/studyDays) : 0],
-[],
-[`주간 목표 (분)`],
-…Object.entries(settings.weeklyTargets || {}).map(([k,v]) => [k, v]),
-];
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), `요약`);
+  // [1] Summary
+  const totalMin = Object.values(logs).reduce((s, dl) => s + Object.values(dl).reduce((a,b)=>a+(b||0),0), 0);
+  const studyDays = Object.keys(logs).length;
+  const summary = [
+    ['Bar Exam Journal — 데이터 내보내기'],
+    ['생성일', new Date().toISOString().slice(0,19).replace('T',' ')],
+    [],
+    ['시험 정보'],
+    ['시험명', settings.examLabel || ''], ['시험일', settings.examDate || ''],
+    ['D-day', settings.examDate ? daysDiff(todayISO(), settings.examDate) : ''],
+    [],
+    ['누적 학습'],
+    ['총 학습 시간(분)', totalMin],
+    ['총 학습 시간(시간)', Math.round(totalMin/60*10)/10],
+    ['학습 일수', studyDays],
+    ['일평균(분)', studyDays > 0 ? Math.round(totalMin/studyDays) : 0],
+    [],
+    ['주간 목표 (분)'],
+    ...Object.entries(settings.weeklyTargets || {}).map(([k,v]) => [k, v]),
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), '요약');
 
-// [2] Daily study time matrix
-const allKeys = new Set();
-Object.values(logs).forEach(dl => Object.keys(dl).forEach(k => allKeys.add(k)));
-const sortedKeys = […allKeys].sort();
-const dateRows = Object.keys(logs).sort();
-const logHeader = [`날짜`, `요일`, …sortedKeys, `합계(분)`, `한줄메모`];
-const logRows = [logHeader];
-const dows = [`일`,`월`,`화`,`수`,`목`,`금`,`토`];
-dateRows.forEach(d => {
-const dl = logs[d] || {};
-const dt = new Date(d + `T00:00:00`);
-const sum = Object.values(dl).reduce((a,b) => a+(b||0), 0);
-const row = [d, dows[dt.getDay()]];
-sortedKeys.forEach(k => row.push(dl[k] || 0));
-row.push(sum);
-row.push(moods[d] || ``);
-logRows.push(row);
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(logRows), `학습시간`);
+  // [2] Daily study time matrix
+  const allKeys = new Set();
+  Object.values(logs).forEach(dl => Object.keys(dl).forEach(k => allKeys.add(k)));
+  const sortedKeys = [...allKeys].sort();
+  const dateRows = Object.keys(logs).sort();
+  const logHeader = ['날짜', '요일', ...sortedKeys, '합계(분)', '한줄메모'];
+  const logRows = [logHeader];
+  const dows = ['일','월','화','수','목','금','토'];
+  dateRows.forEach(d => {
+    const dl = logs[d] || {};
+    const dt = new Date(d + 'T00:00:00');
+    const sum = Object.values(dl).reduce((a,b) => a+(b||0), 0);
+    const row = [d, dows[dt.getDay()]];
+    sortedKeys.forEach(k => row.push(dl[k] || 0));
+    row.push(sum);
+    row.push(moods[d] || '');
+    logRows.push(row);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(logRows), '학습시간');
 
-// [3] 5-track journal
-const trackRows = [[`날짜`, `요일`, …TRACK_TYPES.map(t => t.label), `한줄메모`]];
-Object.keys(tracks).sort().forEach(d => {
-const dt = new Date(d + `T00:00:00`);
-const t = tracks[d] || {};
-const row = [d, dows[dt.getDay()]];
-TRACK_TYPES.forEach(tt => {
-const v = t[tt.key] || {};
-let cell = `; if (v.done) cell = `✓`; if (v.text) cell = (cell ? cell + ' ' : `) + v.text;
-row.push(cell);
-});
-row.push(moods[d] || ``);
-trackRows.push(row);
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trackRows), `5트랙`);
+  // [3] 5-track journal
+  const trackRows = [['날짜', '요일', ...TRACK_TYPES.map(t => t.label), '한줄메모']];
+  Object.keys(tracks).sort().forEach(d => {
+    const dt = new Date(d + 'T00:00:00');
+    const t = tracks[d] || {};
+    const row = [d, dows[dt.getDay()]];
+    TRACK_TYPES.forEach(tt => {
+      const v = t[tt.key] || {};
+      let cell = ''; 
+      if (v.done) cell = '✓'; 
+      if (v.text) cell = (cell ? cell + ' ' : '') + v.text;
+      row.push(cell);
+    });
+    row.push(moods[d] || '');
+    trackRows.push(row);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trackRows), '5트랙');
 
-// [4] MCQ round scores
-const scoreRows = [[`날짜`, `회차`, `과목`, `유형`, `틀림`, `총문항`, `메모`]];
-[…examScores].sort((a,b) => a.date.localeCompare(b.date) || a.subject.localeCompare(b.subject)).forEach(s => {
-scoreRows.push([s.date, s.round, s.subject, s.type || `선택형`, s.wrong, s.total || `, s.note || `]);
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreRows), `회차점수`);
+  // [4] MCQ round scores
+  const scoreRows = [['날짜', '회차', '과목', '유형', '틀림', '총문항', '메모']];
+  [...examScores].sort((a,b) => a.date.localeCompare(b.date) || a.subject.localeCompare(b.subject)).forEach(s => {
+    scoreRows.push([s.date, s.round, s.subject, s.type || '선택형', s.wrong, s.total || '', s.note || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreRows), '회차점수');
 
-// [5] Materials
-const matRows = [[`자료명`, `과목`, `현재 회독`, `목표 회독`, `진행률(%)`]];
-materials.forEach(m => {
-const pct = m.target > 0 ? Math.round((m.rounds / m.target) * 100) : 0;
-matRows.push([m.name, m.subject, m.rounds, m.target, pct]);
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matRows), `자료회독`);
+  // [5] Materials
+  const matRows = [['자료명', '과목', '현재 회독', '목표 회독', '진행률(%)']];
+  materials.forEach(m => {
+    const pct = m.target > 0 ? Math.round((m.rounds / m.target) * 100) : 0;
+    matRows.push([m.name, m.subject, m.rounds, m.target, pct]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matRows), '자료회독');
 
-// [6] Topics
-const reviewRows = [[`주제`, `과목`, `생성일`, `마지막 회독`, `회독차`, `메모`]];
-reviews.forEach(r => {
-reviewRows.push([r.title, r.subject, r.created, r.lastReviewed, r.cycleIndex + 1, r.note || ``]);
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(reviewRows), `주제회독`);
+  // [6] Topics
+  const reviewRows = [['주제', '과목', '생성일', '마지막 회독', '회독차', '메모']];
+  reviews.forEach(r => {
+    reviewRows.push([r.title, r.subject, r.created, r.lastReviewed, r.cycleIndex + 1, r.note || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(reviewRows), '주제회독');
 
-// [7] Books
-const bookRows = [[`제목`, `과목`, `현재`, `목표`, `진행률(%)`, `메모`]];
-books.forEach(b => {
-const pct = b.target > 0 ? Math.round((b.current / b.target) * 100) : 0;
-bookRows.push([b.title, b.subject, b.current, b.target, pct, b.note || ``]);
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bookRows), `문제집`);
+  // [7] Books
+  const bookRows = [['제목', '과목', '현재', '목표', '진행률(%)', '메모']];
+  books.forEach(b => {
+    const pct = b.target > 0 ? Math.round((b.current / b.target) * 100) : 0;
+    bookRows.push([b.title, b.subject, b.current, b.target, pct, b.note || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bookRows), '문제집');
 
-// [8] Schedules
-const schedRows = [[`종류`, `제목`, `시작일`, `종료일`, `기간(일)`, `색상`]];
-if (settings.examDate) {
-schedRows.push([`본시험`, settings.examLabel || `, settings.examDate, settings.examDate, 1, `]);
+  // [8] Schedules
+  const schedRows = [['종류', '제목', '시작일', '종료일', '기간(일)', '색상']];
+  if (settings.examDate) {
+    schedRows.push(['본시험', settings.examLabel || '', settings.examDate, settings.examDate, 1, '']);
+  }
+  (settings.mockExams || []).forEach(m => {
+    schedRows.push(['모의고사', m.label, m.start, m.end, daysDiff(m.start, m.end) + 1, '']); 
+  }); 
+  schedules.forEach(s => { 
+    schedRows.push(['일정', s.title, s.start, s.end, daysDiff(s.start, s.end) + 1, s.color || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(schedRows), '일정');
+
+  // [9] Todos
+  const todoRows = [['날짜', '제목', '완료', '비고']];
+  Object.keys(todos).sort().forEach(d => {
+    (todos[d] || []).filter(t => !t.hidden).forEach(t => {
+      todoRows.push([d, t.title, t.done ? '✓' : '', t.fromMock ? '모의고사 자동생성' : '']);
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(todoRows), '할일');
+
+  // [10] Checklists
+  const clRows = [['카테고리', '과목', '마지막 회독일', '★', '항목']];
+  (state.checklists || []).forEach(c => {
+    if (c.items.length === 0) {
+      clRows.push([c.name, c.subject, c.lastReviewed || '미회독', '', '(빈 카테고리)']);
+    } else {
+      c.items.forEach(it => {
+        clRows.push([c.name, c.subject, c.lastReviewed || '미회독', '★'.repeat(it.stars || 1), it.text]);
+      });
+    }
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clRows), '체크리스트');
+
+  // Column width auto-adjust
+  wb.SheetNames.forEach(name => {
+    const ws = wb.Sheets[name];
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    const cols = [];
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      let max = 8;
+      for (let R = range.s.r; R <= range.e.r; R++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+        if (cell && cell.v != null) {
+          const len = String(cell.v).length;
+          if (len > max) max = Math.min(40, len + 2);
+        }
+      }
+      cols.push({ wch: max });
+    }
+    ws['!cols'] = cols;
+  });
+
+  XLSX.writeFile(wb, filename);
 }
-(settings.mockExams || []).forEach(m => {
-schedRows.push([`모의고사`, m.label, m.start, m.end, daysDiff(m.start, m.end) + 1, `]); }); schedules.forEach(s => { schedRows.push([`일정`, s.title, s.start, s.end, daysDiff(s.start, s.end) + 1, s.color || `]);
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(schedRows), `일정`);
 
-// [9] Todos
-const todoRows = [[`날짜`, `제목`, `완료`, `비고`]];
-Object.keys(todos).sort().forEach(d => {
-(todos[d] || []).filter(t => !t.hidden).forEach(t => {
-todoRows.push([d, t.title, t.done ? ‘✓’ : `, t.fromMock ? '모의고사 자동생성' : `]);
-});
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(todoRows), `할일`);
-
-// [10] Checklists
-const clRows = [[`카테고리`, `과목`, `마지막 회독일`, `★`, `항목`]];
-(state.checklists || []).forEach(c => {
-if (c.items.length === 0) {
-clRows.push([c.name, c.subject, c.lastReviewed || `미회독`, ``, `(빈 카테고리)`]);
-} else {
-c.items.forEach(it => {
-clRows.push([c.name, c.subject, c.lastReviewed || `미회독`, `★`.repeat(it.stars || 1), it.text]);
-});
-}
-});
-XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clRows), `체크리스트`);
-
-// Column width auto-adjust
-wb.SheetNames.forEach(name => {
-const ws = wb.Sheets[name];
-const range = XLSX.utils.decode_range(ws[`!ref`] || `A1`);
-const cols = [];
-for (let C = range.s.c; C <= range.e.c; C++) {
-let max = 8;
-for (let R = range.s.r; R <= range.e.r; R++) {
-const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
-if (cell && cell.v != null) {
-const len = String(cell.v).length;
-if (len > max) max = Math.min(40, len + 2);
-}
-}
-cols.push({ wch: max });
-}
-ws[`!cols`] = cols;
-});
-
-XLSX.writeFile(wb, filename);
-}
 
 function weekStartOf(iso) {
 const d = new Date(iso + `T00:00:00`);
