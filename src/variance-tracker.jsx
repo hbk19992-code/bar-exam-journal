@@ -744,6 +744,50 @@ function getCycleInfo(dateISO, settings) {
   return null;
 }
 
+/* ICS (Apple/Google Calendar) Import Parser */
+function parseICS(icsData) {
+  const lines = icsData.split(/\r\n|\n|\r/);
+  const events = [];
+  let currentEvent = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    while (i + 1 < lines.length && (lines[i + 1].startsWith(' ') || lines[i + 1].startsWith('\t'))) {
+      line += lines[i + 1].substring(1);
+      i++;
+    }
+
+    if (line === 'BEGIN:VEVENT') {
+      currentEvent = {};
+    } else if (line === 'END:VEVENT') {
+      if (currentEvent && currentEvent.start && currentEvent.title) {
+        if (!currentEvent.end) currentEvent.end = currentEvent.start;
+        events.push(currentEvent);
+      }
+      currentEvent = null;
+    } else if (currentEvent) {
+      if (line.startsWith('SUMMARY:')) {
+        currentEvent.title = line.substring(8).replace(/\\,/g, ',').replace(/\\;/g, ';');
+      } else if (line.startsWith('DTSTART')) {
+        const match = line.match(/:(\d{4})(\d{2})(\d{2})/);
+        if (match) currentEvent.start = `${match[1]}-${match[2]}-${match[3]}`;
+      } else if (line.startsWith('DTEND')) {
+        const match = line.match(/:(\d{4})(\d{2})(\d{2})/);
+        if (match) {
+          const rawEnd = `${match[1]}-${match[2]}-${match[3]}`;
+          if (line.includes('VALUE=DATE')) {
+            currentEvent.end = addDays(rawEnd, -1);
+          } else {
+            currentEvent.end = rawEnd;
+          }
+        }
+      }
+    }
+  }
+  return events;
+}
+
+
 /* ============================================================ FIRESTORE STORAGE ============================================================ */
 
 const DEFAULT_STATE = {
@@ -1800,6 +1844,50 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
     }]);
     cancelAddMode();
   }
+    function handleICSImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsedEvents = parseICS(event.target.result);
+        if (parsedEvents.length === 0) {
+          alert('일정을 찾을 수 없거나 지원하지 않는 포맷입니다.');
+          return;
+        }
+        
+        // 중복 방지: 제목, 시작일, 종료일이 모두 같은 일정이 이미 존재하는지 검사
+        const newEvents = parsedEvents.filter(ev => {
+          return !schedules.some(s => 
+            s.title === ev.title && 
+            s.start === ev.start && 
+            s.end === ev.end
+          );
+        });
+
+        if (newEvents.length === 0) {
+          alert('모든 일정이 이미 동기화되어 있습니다 (중복 일정 없음).');
+          return;
+        }
+
+        if (confirm(`중복을 제외한 새로운 일정 ${newEvents.length}개를 캘린더에 추가할까요?`)) {
+          const newSchedules = newEvents.map(ev => ({
+            id: uid(), 
+            title: ev.title, 
+            start: ev.start, 
+            end: ev.end, 
+            color: SCHEDULE_PALETTE[Math.floor(Math.random() * SCHEDULE_PALETTE.length)]
+          }));
+          setSchedules([...(schedules || []), ...newSchedules]);
+        }
+      } catch (err) {
+        alert('파일을 읽는 중 오류가 발생했습니다.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // 초기화하여 같은 파일 다시 선택 가능하도록 처리
+  }
+
   function handleDayTap(d) {
     if (addMode === 'start') {
       setPendingStart(d); setPendingEnd(d); setAddMode('end');
@@ -1912,13 +2000,21 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
         <button onClick={nextMonth} style={{ background:'none', border:'none', padding:6, cursor:'pointer', color:C.ink }}><ChevronRight size={18} /></button>
       </div>
 
-      {/* 일정 추가 토글바 */}
+            {/* 일정 추가 / 동기화 토글바 */}
       {addMode === null ? (
-        <button onClick={startAddMode}
-          style={{ width:'100%', background:C.paper, border:`1px dashed ${C.line}`, color:C.muted, padding:'8px', cursor:'pointer', fontSize:11, marginBottom:8, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
-          <Plus size={12} /> 일정 추가 (시작일·종료일 두 번 탭)
-        </button>
-      ) : addMode === 'form' ? (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <button onClick={startAddMode}
+            style={{ flex: 1, background:C.paper, border:`1px dashed ${C.line}`, color:C.muted, padding:'8px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+            <Plus size={12} /> 일정 추가
+          </button>
+          
+          <label style={{ flex: 1, background:C.paper, border:`1px dashed ${C.line}`, color:C.muted, padding:'8px', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+            <RefreshCw size={12} /> 일정 가져오기 (.ics)
+            <input type="file" accept=".ics" style={{ display: 'none' }} onChange={handleICSImport} />
+          </label>
+        </div>
+      ) : addMode === 'form' ? ( ... )
+
         <div style={{ background:C.ink, color:'#fff', padding:'12px 14px', marginBottom:8 }}>
           <div className="kserif" style={{ fontSize:10, letterSpacing:'0.22em', opacity:0.7, marginBottom:8, fontWeight:600 }}>
             새 일정 · {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace('-','/')} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace('-','/')}
