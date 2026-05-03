@@ -406,7 +406,11 @@ function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
 const BS = String.fromCharCode(92);
 const NL = String.fromCharCode(10);
 const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
-const pad2 = n => (n < 10 ? `0` : `) + n; const d = new Date(); const stamp = `${d.getUTCFullYear()}${pad2(d.getUTCMonth()+1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`; const dOnly = iso => iso.split(`-`).join(`);
+const pad2 = n => (n < 10 ? '0' : '') + n; 
+const d = new Date(); 
+const stamp = `${d.getUTCFullYear()}${pad2(d.getUTCMonth()+1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`; 
+const dOnly = iso => iso.split('-').join('');
+
 const esc = s => {
 let o = String(s == null ? `` : s);
 o = o.split(BS).join(BS + BS);
