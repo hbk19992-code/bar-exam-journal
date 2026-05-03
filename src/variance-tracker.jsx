@@ -408,7 +408,13 @@ const stamp = (() => {
 const d = new Date();
 return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
 })();
-const dateOnly = iso => iso.replaceAll(`-`, `); // ICS 줄바꿈은 CRLF, 텍스트 안 콤마/세미콜론은 백슬래시 이스케이프 const esc = s => String(s || `).replace(/\/g, ‘\\’).replace(/\n/g, ‘\n’).replace(/,/g, ‘\,’).replace(/;/g, ‘\;’);
+const dateOnly = iso => iso.split(`-`).join(`); // ICS 줄바꿈은 CRLF, 텍스트 안 콤마/세미콜론은 백슬래시 이스케이프 const BS = String.fromCharCode(92);  // \ const NL = String.fromCharCode(10);  // newline const esc = s => { let out = String(s || `);
+out = out.split(BS).join(BS + BS);
+out = out.split(NL).join(BS + `n`);
+out = out.split(`,`).join(BS + `,`);
+out = out.split(`;`).join(BS + `;`);
+return out;
+};
 
 const events = [];
 // 본시험
@@ -466,7 +472,8 @@ lines.push(
 );
 });
 lines.push(`END:VCALENDAR`);
-return lines.join(`\r\n`);
+const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
+return lines.join(CRLF);
 }
 
 function downloadICS(content, filename = `변시일정.ics`) {
@@ -1076,7 +1083,7 @@ return (
         user={user}
         onLogout={async () => { await signOut(fbAuth); }}
         onReset={() => {
-          if (confirm('모든 데이터를 지울까요? (설정 포함)\n클라우드의 본인 데이터도 함께 초기화됩니다.')) {
+          if (confirm(`모든 데이터를 지울까요? (설정 포함) — 클라우드의 본인 데이터도 함께 초기화됩니다.`)) {
             setLogs({}); setReviews([]); setBooks([]); setTodos({});
             setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
             setExamScores([]); setMoods({}); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
