@@ -1606,7 +1606,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
             setMoods(prev => { const next = { ...prev }; delete next[today]; return next; });
           }
         }}
-        placeholder = `컨디션, 느낀점, 한줄메모 (예: 공동저당 어렵다, 노잼)`
+        placeholder={`컨디션, 느낀점, 한줄메모 (예: 공동저당 어렵다, 노잼)`}
         style={{
           width:`100%`, background:C.paper, border:`1px solid ${C.line}`,
           padding:`12px 14px`, fontSize:13, outline:`none`, marginBottom:22,
@@ -1926,7 +1926,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
             새 일정 · {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace(`-`,`/`)} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace(`-`,`/`)}
           </div>
           <input value={draftTitle} onChange={e => setDraftTitle(e.target.value)} autoFocus
-            placeholder = `일정 제목 (예: 김영환 헌법 인강)`
+            placeholder={`일정 제목 (예: 김영환 헌법 인강)`}
             style={{ width:`100%`, background:`rgba(255,255,255,0.1)`, border:`none`, borderBottom:`1px solid rgba(255,255,255,0.3)`, color:`#fff`, padding:`7px 4px`, fontSize:13, marginBottom:10, outline:`none` }} />
           <div style={{ display:`flex`, gap:5, marginBottom:10, alignItems:`center` }}>
             <span style={{ fontSize:10, opacity:0.7, marginRight:4 }}>색</span>
@@ -2253,7 +2253,7 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
           onChange={e => setMoodLocal(e.target.value)}
           onBlur={() => setMood(moodLocal.trim())}
           onKeyDown={e => { if (e.key === `Enter`) e.target.blur(); }}
-          placeholder = `컨디션·느낀점 메모`
+          placeholder={`컨디션·느낀점 메모`}
           style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:12, outline:`none`, fontFamily:`Noto Serif KR, serif` }}
         />
       </div>
@@ -2296,7 +2296,7 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
 
         <div style={{ display:`flex`, gap:6 }}>
           <input value={newTodo} onChange={e => setNewTodo(e.target.value)} onKeyDown={e => { if (e.key === `Enter`) submit(); }}
-            placeholder = `할 일 추가`
+            placeholder={`할 일 추가`}
             style={{ flex:1, border:`1px solid ${C.line}`, background:C.bg, padding:`8px 10px`, fontSize:12, outline:`none` }} />
           <button onClick={submit} disabled={!newTodo.trim()} className={`lift`}
             style={{ background: newTodo.trim() ? C.accent : C.line, color:`#fff`, border:`none`, padding:`0 12px`, fontSize:12, cursor: newTodo.trim() ? `pointer` : `default`, display:`flex`, alignItems:`center` }}>
@@ -3141,7 +3141,7 @@ function McqMatrix({ today, mcqProgress, setMcqProgress }) {
               <span style={{ fontSize:11, color:C.muted }}>목표 회독 (선택)</span>
               <input type={`number`} value={sel.cell.target || ``} min={0}
                 onChange={e => setCell(sel.area.id, sel.pillar, { target: parseInt(e.target.value) || 0 })}
-                placeholder = `0`
+                placeholder={`0`}
                 style={{ width:60, background:C.bg, border:`1px solid ${C.line}`, padding:`5px 8px`, fontSize:13, textAlign:`center`, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
             </div>
           </div>
@@ -3675,7 +3675,7 @@ function ChecklistView({ today, settings, checklists = [], setChecklists }) {
       {showAdd && (
         <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:12, marginBottom:12 }}>
           <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
-            placeholder = `카테고리 이름 (예: 공사례, 상법, 시험 직전)`
+            placeholder={`카테고리 이름 (예: 공사례, 상법, 시험 직전)`}
             style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
           <div style={{ display:`flex`, gap:6, marginBottom:8 }}>
             {Object.keys(SUBJECTS).map(s => (
@@ -3802,7 +3802,7 @@ function ChecklistDetail({ category, onAddItem, onDelItem, onUpdItem, onMoveItem
           <div style={{ display:`flex`, gap:6, marginBottom:6 }}>
             <input value={newText} onChange={e => setNewText(e.target.value)}
               onKeyDown={e => { if (e.key === `Enter`) submit(); }}
-              placeholder = `새 항목 (예: 공소시효 항변 검토)`
+              placeholder={`새 항목 (예: 공소시효 항변 검토)`}
               style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, fontSize:12, outline:`none` }} />
             <button onClick={submit}
               style={{ background:C.ink, color:`#fff`, border:`none`, padding:`0 14px`, fontSize:12, cursor:`pointer` }}>
@@ -4222,7 +4222,7 @@ function RoutineEditor({ routines, setRoutines }) {
               maxLength={2} placeholder=`🌅`
               style={{ width:36, textAlign:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 4px`, fontSize:14, outline:`none` }} />
             <input value={r.name} onChange={e => updRoutine(r.id, { name: e.target.value })}
-              placeholder = `루틴 이름`
+              placeholder={`루틴 이름`}
               style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, fontSize:11, outline:`none` }} />
             <button onClick={() => delRoutine(r.id)}
               style={{ background:`none`, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, cursor:`pointer`, color:C.muted, flexShrink:0 }}>
