@@ -430,7 +430,7 @@ function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
   return out.join(CRLF);
 }
 
-function downloadICS(content, filename=`변시일정.ics`) {
+function downloadICS(content, filename={`변시일정.ics`}) {
   const blob = new Blob([content], { type: `text/calendar;charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const a = document.createElement(`a`);
@@ -1873,7 +1873,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
     setSelected(today);
   }
 
-  const monthName=`${cursor.y}.${String(cursor.m + 1).padStart(2, `0`)}`;
+  const monthName = cursor.y + `.` + String(cursor.m + 1).padStart(2, `0`);
   const selDate = selected;
   const selLog = logs[selDate] || {};
   const selMinutes = Object.values(selLog).reduce((s, v) => s + (v || 0), 0);
@@ -2759,13 +2759,13 @@ function ScoresSection({ date, examScores, setExamScores }) {
         <div style={{ display:`flex`, gap:5, marginBottom:6, alignItems:`stretch` }}>
           <div style={{ flex:1, display:`flex`, alignItems:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`0 8px` }}>
             <input value={round} onChange={e => setRound(e.target.value)} placeholder={`회차`}
-              type=`number` inputMode=`numeric`
+              type={`number`} inputMode={`numeric`}
               style={{ flex:1, background:`transparent`, border:`none`, outline:`none`, padding:`8px 0`, fontSize:12, fontFamily:`JetBrains Mono, monospace` }} />
             <span style={{ fontSize:10, color:C.muted }}>회</span>
           </div>
           <div style={{ flex:1.4, display:`flex`, alignItems:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`0 8px` }}>
             <input value={wrong} onChange={e => setWrong(e.target.value)}
-              placeholder=`틀린 개수` type=`number` inputMode=`numeric` min={0} max={total}
+              placeholder={`틀린 개수`} type={`number`} inputMode={`numeric`} min={0} max={total}
               style={{ flex:1, background:`transparent`, border:`none`, outline:`none`, padding:`8px 0`, fontSize:12, fontFamily:`JetBrains Mono, monospace`, color:C.accent, fontWeight:600 }} />
             <span style={{ fontSize:10, color:C.muted }}>/{total}</span>
           </div>
@@ -4219,7 +4219,7 @@ function RoutineEditor({ routines, setRoutines }) {
             </div>
 
             <input value={r.icon || ``} onChange={e => updRoutine(r.id, { icon: e.target.value.slice(0, 2) })}
-              maxLength={2} placeholder=`🌅`
+              maxLength={2} placeholder={`🌅`}
               style={{ width:36, textAlign:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 4px`, fontSize:14, outline:`none` }} />
             <input value={r.name} onChange={e => updRoutine(r.id, { name: e.target.value })}
               placeholder={`루틴 이름`}
