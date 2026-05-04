@@ -43,7 +43,7 @@ if (FIREBASE_OK) {
 
 /* ============================================================ THEME & DATA ============================================================ */
 
-const FONT_IMPORT = `@import url(https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap);`;
+const FONT_IMPORT={`@import url(https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap);`};
 
 const C = {
   bg: `#F4EEE1`, paper: `#FBF7EC`, ink: `#1A1915`, muted: `#6B6558`,
@@ -408,7 +408,7 @@ function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
   const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
   const pad2 = n => (n < 10 ? `0` : ``) + n;
   const d = new Date();
-  const stamp = `${d.getUTCFullYear()}${pad2(d.getUTCMonth()+1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`;
+  const stamp={`${d.getUTCFullYear()}${pad2(d.getUTCMonth()+1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`};
   const dOnly = iso => iso.split(`-`).join(``);
   const esc = s => {
     let o = String(s == null ? `` : s);
@@ -430,7 +430,7 @@ function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
   return out.join(CRLF);
 }
 
-function downloadICS(content, filename = `변시일정.ics`) {
+function downloadICS(content, filename={`변시일정.ics`}) {
   const blob = new Blob([content], { type: `text/calendar;charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const a = document.createElement(`a`);
@@ -445,7 +445,7 @@ function loadXLSX() {
   if (_xlsxPromise) return _xlsxPromise;
   _xlsxPromise = new Promise((resolve, reject) => {
     const s = document.createElement(`script`);
-    s.src = `https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js`;
+    s.src={`https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js`};
     s.onload = () => resolve(window.XLSX);
     s.onerror = () => reject(new Error(`XLSX 로드 실패`));
     document.head.appendChild(s);
@@ -512,8 +512,8 @@ async function exportXLSX(state, filename) {
     const row = [d, dows[dt.getDay()]];
     TRACK_TYPES.forEach(tt => {
       const v = t[tt.key] || {};
-      let cell = ``;
-      if (v.done) cell = `✓`;
+      let cell={``};
+      if (v.done) cell={`✓`};
       if (v.text) cell = (cell ? cell + ` ` : ``) + v.text;
       row.push(cell);
     });
@@ -901,7 +901,7 @@ export default function App() {
       // 2) For each mock, place if sentinel missing
       (settings.mockExams || []).forEach(m => {
         const sentinelDate = m.end;
-        const sentinelMark = `__mockreview__${m.id}`;
+        const sentinelMark={`__mockreview__${m.id}`};
         const existing = next[sentinelDate] || [];
         if (existing.some(t => t.title === sentinelMark)) return;
         if (today < m.end) return;
@@ -923,7 +923,7 @@ export default function App() {
   useEffect(() => {
     if (!loaded || !settings.examDate || !checklists?.length) return;
     setTodos(prev => {
-      const currentSentinelMark = `__checklist_premium__${settings.examDate}`;
+      const currentSentinelMark={`__checklist_premium__${settings.examDate}`};
       let next = {};
       // 1) Remove all fromChecklist todos and old sentinels
       Object.keys(prev).forEach(date => {
@@ -981,8 +981,8 @@ export default function App() {
       <div style={{ minHeight:`100vh`, background:C.bg, display:`grid`, placeItems:`center`, padding:24, fontFamily:`Noto Sans KR, sans-serif` }}>
         {globalStyles}
         <div style={{ maxWidth:420, background:C.paper, border:`1px solid ${C.accent}`, padding:`20px 22px` }}>
-          <div className=`kserif` style={{ fontSize:11, letterSpacing:`0.22em`, color:C.accent, fontWeight:600, marginBottom:8 }}>SETUP REQUIRED</div>
-          <div className=`serif` style={{ fontSize:18, fontWeight:600, color:C.ink, marginBottom:10 }}>Firebase 환경변수가 설정되지 않았습니다</div>
+          <div className={`kserif`} style={{ fontSize:11, letterSpacing:`0.22em`, color:C.accent, fontWeight:600, marginBottom:8 }}>SETUP REQUIRED</div>
+          <div className={`serif`} style={{ fontSize:18, fontWeight:600, color:C.ink, marginBottom:10 }}>Firebase 환경변수가 설정되지 않았습니다</div>
           <div style={{ fontSize:12, color:C.muted, lineHeight:1.7 }}>
             Vercel → Settings → Environment Variables 에 아래 6개를 등록한 뒤 재배포하세요:
             <pre style={{ background:C.bg, padding:`10px 12px`, marginTop:10, fontSize:10, fontFamily:`JetBrains Mono, monospace`, overflow:`auto` }}>{`VITE_FIREBASE_API_KEY
@@ -1020,8 +1020,8 @@ VITE_FIREBASE_APP_ID`}</pre>
       <div style={{ minHeight:`100vh`, background:C.bg, display:`grid`, placeItems:`center`, color:C.muted, fontFamily:`Noto Serif KR, serif` }}>
         {globalStyles}
         <div style={{ textAlign:`center` }}>
-          <div className=`kserif` style={{ fontSize:13, letterSpacing:`0.1em` }}>데이터 동기화 중…</div>
-          <div className=`mono` style={{ fontSize:10, marginTop:8, opacity:0.6 }}>{user.email}</div>
+          <div className={`kserif`} style={{ fontSize:13, letterSpacing:`0.1em` }}>데이터 동기화 중…</div>
+          <div className={`mono`} style={{ fontSize:10, marginTop:8, opacity:0.6 }}>{user.email}</div>
         </div>
       </div>
     );
@@ -1073,7 +1073,7 @@ VITE_FIREBASE_APP_ID`}</pre>
               const blob = new Blob([data], { type: `application/json` });
               const url = URL.createObjectURL(blob);
               const a = document.createElement(`a`);
-              a.href = url; a.download = `변시기록_${today}.json`; a.click();
+              a.href = url; a.download={`변시기록_${today}.json`}; a.click();
               URL.revokeObjectURL(url);
             }}
             onExportXLSX={async () => {
@@ -1125,8 +1125,8 @@ function LoginView() {
   return (
     <div style={{ minHeight:`100vh`, background:C.bg, display:`grid`, placeItems:`center`, padding:`30px 24px`, fontFamily:`Noto Sans KR, sans-serif` }}>
       <div style={{ maxWidth:380, width:`100%`, textAlign:`center` }}>
-        <div className=`kserif` style={{ fontSize:11, letterSpacing:`0.28em`, color:C.muted, textTransform:`uppercase`, marginBottom:14 }}>BAR EXAM JOURNAL</div>
-        <h1 className=`serif` style={{ fontSize:34, fontWeight:600, color:C.ink, margin:`0 0 10px`, letterSpacing:`-0.01em` }}>변호사시험 학습 기록장</h1>
+        <div className={`kserif`} style={{ fontSize:11, letterSpacing:`0.28em`, color:C.muted, textTransform:`uppercase`, marginBottom:14 }}>BAR EXAM JOURNAL</div>
+        <h1 className={`serif`} style={{ fontSize:34, fontWeight:600, color:C.ink, margin:`0 0 10px`, letterSpacing:`-0.01em` }}>변호사시험 학습 기록장</h1>
         <p style={{ fontSize:13, color:C.muted, lineHeight:1.7, margin:`0 0 36px` }}>
           시간 / 회독 / 사이클 / 모의고사를 한 곳에서.<br/>
           기록은 본인 Google 계정으로 클라우드에 저장됩니다.
@@ -1139,11 +1139,11 @@ function LoginView() {
             display:`flex`, alignItems:`center`, justifyContent:`center`, gap:10,
             opacity: signing ? 0.6 : 1,
           }}>
-          <svg width=`18` height=`18` viewBox=`0 0 24 24` fill=`none`>
-            <path fill=`#fff` d=`M21.35 11.1h-9.17v2.92h5.5c-.25 1.39-.99 2.56-2.11 3.34v2.78h3.41c2-1.84 3.16-4.55 3.16-7.79 0-.5-.05-.99-.13-1.45l-.66-.04z`/>
-            <path fill=`#fff` d=`M12.18 21.97c2.85 0 5.24-.94 6.99-2.55l-3.41-2.65c-.95.64-2.16 1.02-3.58 1.02-2.75 0-5.08-1.86-5.91-4.36H2.74v2.74C4.49 19.5 8.05 21.97 12.18 21.97z`/>
-            <path fill=`#fff` d=`M6.27 13.43c-.21-.64-.33-1.31-.33-2 0-.69.13-1.36.33-2v-2.74H2.74C1.99 8.18 1.5 9.78 1.5 11.43c0 1.65.49 3.25 1.24 4.74l3.53-2.74z`/>
-            <path fill=`#fff` d=`M12.18 5.07c1.55 0 2.93.53 4.03 1.58l3.02-3.02C17.42 1.84 15.03 1 12.18 1 8.05 1 4.49 3.47 2.74 7.69l3.53 2.74c.83-2.5 3.16-4.36 5.91-4.36z`/>
+          <svg width={`18`} height={`18`} viewBox={`0 0 24 24`} fill={`none`}>
+            <path fill={`#fff`} d={`M21.35 11.1h-9.17v2.92h5.5c-.25 1.39-.99 2.56-2.11 3.34v2.78h3.41c2-1.84 3.16-4.55 3.16-7.79 0-.5-.05-.99-.13-1.45l-.66-.04z`}/>
+            <path fill={`#fff`} d={`M12.18 21.97c2.85 0 5.24-.94 6.99-2.55l-3.41-2.65c-.95.64-2.16 1.02-3.58 1.02-2.75 0-5.08-1.86-5.91-4.36H2.74v2.74C4.49 19.5 8.05 21.97 12.18 21.97z`}/>
+            <path fill={`#fff`} d={`M6.27 13.43c-.21-.64-.33-1.31-.33-2 0-.69.13-1.36.33-2v-2.74H2.74C1.99 8.18 1.5 9.78 1.5 11.43c0 1.65.49 3.25 1.24 4.74l3.53-2.74z`}/>
+            <path fill={`#fff`} d={`M12.18 5.07c1.55 0 2.93.53 4.03 1.58l3.02-3.02C17.42 1.84 15.03 1 12.18 1 8.05 1 4.49 3.47 2.74 7.69l3.53 2.74c.83-2.5 3.16-4.36 5.91-4.36z`}/>
           </svg>
           {signing ? `로그인 중…` : `Google로 로그인`}
         </button>
@@ -1172,18 +1172,18 @@ function TopBar({ dday, examLabel, examDate, user, syncStatus }) {
       <div style={{ maxWidth:720, margin:`0 auto`, display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:12 }}>
         <div style={{ minWidth:0, flex:1 }}>
           <div style={{ display:`flex`, alignItems:`center`, gap:8 }}>
-            <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.22em`, color:C.muted, textTransform:`uppercase` }}>BAR EXAM JOURNAL · {displayName}</div>
+            <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.22em`, color:C.muted, textTransform:`uppercase` }}>BAR EXAM JOURNAL · {displayName}</div>
             {syncStatus === `saving` && <Cloud size={11} color={C.muted} />}
             {syncStatus === `saved` && <Cloud size={11} color={C.good} />}
             {syncStatus === `error` && <CloudOff size={11} color={C.accent} />}
           </div>
-          <div className=`kserif` style={{ fontSize:16, fontWeight:600, marginTop:3, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{examLabel}</div>
+          <div className={`kserif`} style={{ fontSize:16, fontWeight:600, marginTop:3, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{examLabel}</div>
         </div>
         <div style={{ textAlign:`right`, flexShrink:0 }}>
-          <div className=`serif` style={{ fontSize:32, fontWeight:600, lineHeight:1, color: overdue ? C.muted : C.accent }}>
+          <div className={`serif`} style={{ fontSize:32, fontWeight:600, lineHeight:1, color: overdue ? C.muted : C.accent }}>
             D{overdue ? `+` : `−`}{Math.abs(dday)}
           </div>
-          <div className=`mono` style={{ fontSize:10, color:C.muted, marginTop:3, letterSpacing:`0.05em` }}>{examDate.replaceAll(`-`,`.`)}</div>
+          <div className={`mono`} style={{ fontSize:10, color:C.muted, marginTop:3, letterSpacing:`0.05em` }}>{examDate.replaceAll(`-`,`.`)}</div>
         </div>
       </div>
     </header>
@@ -1221,7 +1221,7 @@ function BottomNav({ view, setView }) {
             }}>
             {active && <span style={{ position:`absolute`, top:0, left:`50%`, transform:`translateX(-50%)`, width:18, height:2, background:C.accent }} />}
             <Icon size={17} strokeWidth={active ? 2.2 : 1.6} />
-            <span className=`kserif` style={{ fontSize:9, letterSpacing:0, fontWeight: active ? 600 : 400 }}>{it.label}</span>
+            <span className={`kserif`} style={{ fontSize:9, letterSpacing:0, fontWeight: active ? 600 : 400 }}>{it.label}</span>
           </button>
         );
       })}
@@ -1235,7 +1235,7 @@ function Stat({ icon: Icon, label, value, color }) {
   return (
     <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 12px 14px`, display:`flex`, flexDirection:`column`, gap:6 }}>
       <Icon size={14} color={color || C.muted} strokeWidth={1.5} />
-      <div className=`serif` style={{ fontSize:20, fontWeight:600, color:C.ink, lineHeight:1 }}>{value}</div>
+      <div className={`serif`} style={{ fontSize:20, fontWeight:600, color:C.ink, lineHeight:1 }}>{value}</div>
       <div style={{ fontSize:10, color:C.muted }}>{label}</div>
     </div>
   );
@@ -1244,7 +1244,7 @@ function Stat({ icon: Icon, label, value, color }) {
 function SectionTitle({ children, action }) {
   return (
     <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, marginBottom:10 }}>
-      <h2 className=`kserif` style={{ margin:0, fontSize:11, letterSpacing:`0.24em`, color:C.muted, textTransform:`uppercase`, fontWeight:600 }}>{children}</h2>
+      <h2 className={`kserif`} style={{ margin:0, fontSize:11, letterSpacing:`0.24em`, color:C.muted, textTransform:`uppercase`, fontWeight:600 }}>{children}</h2>
       {action && (
         <button onClick={action.onClick} style={{ background:`none`, border:`none`, color:C.accent, fontSize:11, cursor:`pointer`, letterSpacing:`0.05em` }}>
           {action.label} ›
@@ -1269,15 +1269,15 @@ function CycleCard({ info, today, withMinor = true }) {
       </div>
       <div style={{ position:`relative` }}>
         <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`flex-start`, gap:8 }}>
-          <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.22em`, opacity:0.85, fontWeight:500 }}>오늘의 사이클</div>
+          <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.22em`, opacity:0.85, fontWeight:500 }}>오늘의 사이클</div>
           {info.anchorLabel && (
-            <div className=`mono` style={{ fontSize:10, opacity:0.85, letterSpacing:`0.03em` }}>
+            <div className={`mono`} style={{ fontSize:10, opacity:0.85, letterSpacing:`0.03em` }}>
               {info.anchorLabel} D-{info.daysToAnchor}
             </div>
           )}
         </div>
         <div style={{ display:`flex`, alignItems:`baseline`, gap:10, marginTop:6 }}>
-          <div className=`serif` style={{ fontSize:26, fontWeight:600, letterSpacing:`-0.01em` }}>
+          <div className={`serif`} style={{ fontSize:26, fontWeight:600, letterSpacing:`-0.01em` }}>
             {info.subject}{isMinSubj && withMinor && <span style={{ fontSize:13, opacity:0.85, marginLeft:6 }}>+ 선택법</span>}
           </div>
         </div>
@@ -1285,7 +1285,7 @@ function CycleCard({ info, today, withMinor = true }) {
           <span style={{ background:`rgba(255,255,255,0.18)`, padding:`2px 7px`, fontFamily:`Noto Serif KR, serif`, fontWeight:600, letterSpacing:`0.05em` }}>
             {info.cycleLabel}
           </span>
-          <span className=`mono` style={{ opacity:0.9 }}>블록 {info.dayInBlock}/{info.blockDays}일</span>
+          <span className={`mono`} style={{ opacity:0.9 }}>블록 {info.dayInBlock}/{info.blockDays}일</span>
         </div>
         <div style={{ marginTop:10, height:3, background:`rgba(255,255,255,0.2)`, position:`relative` }}>
           <div style={{ position:`absolute`, left:0, top:0, bottom:0, width: `${(info.dayInBlock / info.blockDays) * 100}%`, background:`#fff` }} />
@@ -1304,8 +1304,8 @@ function PrevScoreCard({ user }) {
       <button onClick={() => setOpen(o => !o)}
         style={{ width:`100%`, background:`none`, border:`none`, padding:`14px 16px`, display:`flex`, justifyContent:`space-between`, alignItems:`center`, cursor:`pointer` }}>
         <div style={{ textAlign:`left` }}>
-          <div className=`kserif` style={{ fontSize:11, letterSpacing:`0.22em`, color:C.muted, fontWeight:600 }}>15회 변시 기준점</div>
-          <div className=`serif` style={{ fontSize:22, fontWeight:600, color:C.ink, marginTop:4 }}>
+          <div className={`kserif`} style={{ fontSize:11, letterSpacing:`0.22em`, color:C.muted, fontWeight:600 }}>15회 변시 기준점</div>
+          <div className={`serif`} style={{ fontSize:22, fontWeight:600, color:C.ink, marginTop:4 }}>
             {PREV_SCORES.grandTotal.toFixed(2)}
             <span style={{ fontSize:12, color:C.muted, marginLeft:6, fontWeight:400 }}>/ {PREV_SCORES.grandMax}</span>
           </div>
@@ -1320,8 +1320,8 @@ function PrevScoreCard({ user }) {
             return (
               <div key={sub} style={{ marginBottom:12 }}>
                 <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, marginBottom:4 }}>
-                  <span className=`kserif` style={{ fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
-                  <span className=`mono` style={{ color:C.muted, fontSize:11 }}>{s.total.toFixed(2)} / {s.max} ({pct}%)</span>
+                  <span className={`kserif`} style={{ fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+                  <span className={`mono`} style={{ color:C.muted, fontSize:11 }}>{s.total.toFixed(2)} / {s.max} ({pct}%)</span>
                 </div>
                 <div style={{ height:3, background:C.lineSoft, position:`relative`, marginBottom:6 }}>
                   <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background:SUBJECTS[sub].color }} />
@@ -1329,7 +1329,7 @@ function PrevScoreCard({ user }) {
                 <div style={{ display:`flex`, flexWrap:`wrap`, gap:10, fontSize:10, color:C.muted }}>
                   {SUBJECTS[sub].types.map(t => {
                     const v = s[t.key]; if (v === undefined) return null;
-                    return <span key={t.key} className=`mono`><span style={{ color:C.muted }}>{t.label}</span> <span style={{ color:C.ink }}>{v.toFixed(2)}</span></span>;
+                    return <span key={t.key} className={`mono`}><span style={{ color:C.muted }}>{t.label}</span> <span style={{ color:C.ink }}>{v.toFixed(2)}</span></span>;
                   })}
                 </div>
               </div>
@@ -1417,16 +1417,16 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
   const inD7 = dday > 0 && dday <= 7;
 
   return (
-    <div className=`fadeIn` style={{ paddingTop:20 }}>
+    <div className={`fadeIn`} style={{ paddingTop:20 }}>
       <section style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`28px 22px`, marginBottom:14, position:`relative`, overflow:`hidden` }}>
         <div style={{ display:`flex`, alignItems:`center`, gap:8, marginBottom:6 }}>
           <span style={{ width:18, height:1, background:C.accent }} />
-          <span className=`kserif` style={{ fontSize:10, letterSpacing:`0.25em`, color:C.accent, fontWeight:600 }}>시험까지</span>
+          <span className={`kserif`} style={{ fontSize:10, letterSpacing:`0.25em`, color:C.accent, fontWeight:600 }}>시험까지</span>
         </div>
-        <div className=`serif` style={{ fontSize:72, fontWeight:500, lineHeight:0.95, color:C.ink, letterSpacing:`-0.03em` }}>
+        <div className={`serif`} style={{ fontSize:72, fontWeight:500, lineHeight:0.95, color:C.ink, letterSpacing:`-0.03em` }}>
           {Math.abs(dday)}<span style={{ fontSize:28, color:C.muted, marginLeft:6 }}>일</span>
         </div>
-        <div className=`kserif` style={{ marginTop:14, fontSize:13, color:C.muted, lineHeight:1.6 }}>
+        <div className={`kserif`} style={{ marginTop:14, fontSize:13, color:C.muted, lineHeight:1.6 }}>
           {fmtKDate(settings.examDate)} · {settings.examLabel}<br />
           누적 <span style={{ color:C.ink, fontWeight:600 }}>{daysStudied}일</span> · 연속 <span style={{ color:C.accent, fontWeight:600 }}>{streak}일</span> · 이번 주 <span style={{ color:C.ink, fontWeight:600 }}>{fmtMin(weekTotalMin)}</span>
         </div>
@@ -1438,8 +1438,8 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
       {inD7 && (
         <div style={{ background:C.accent, color:`#fff`, padding:`12px 16px`, marginBottom:14, fontSize:12, lineHeight:1.5 }}>
           <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline` }}>
-            <span className=`kserif` style={{ fontWeight:600, fontSize:13 }}>벼락치기 모드 · D-{dday}</span>
-            <span className=`mono` style={{ fontSize:10, opacity:0.85 }}>D-7 진입</span>
+            <span className={`kserif`} style={{ fontWeight:600, fontSize:13 }}>벼락치기 모드 · D-{dday}</span>
+            <span className={`mono`} style={{ fontSize:10, opacity:0.85 }}>D-7 진입</span>
           </div>
           <div style={{ marginTop:6, opacity:0.9 }}>핸드북·찌라시·빈출쟁점·요사 위주 · 새 자료 No</div>
         </div>
@@ -1447,8 +1447,8 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
       {!inD7 && inD30 && (
         <div style={{ background:`#1A1915`, color:`#fff`, padding:`12px 16px`, marginBottom:14, fontSize:12, lineHeight:1.5 }}>
           <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline` }}>
-            <span className=`kserif` style={{ fontWeight:600, fontSize:13 }}>회독 압축 모드 · D-{dday}</span>
-            <span className=`mono` style={{ fontSize:10, opacity:0.7 }}>D-30 진입</span>
+            <span className={`kserif`} style={{ fontWeight:600, fontSize:13 }}>회독 압축 모드 · D-{dday}</span>
+            <span className={`mono`} style={{ fontSize:10, opacity:0.7 }}>D-30 진입</span>
           </div>
           <div style={{ marginTop:6, opacity:0.85 }}>회차 회독 위주로 · 객관식 복수 회차/일</div>
         </div>
@@ -1459,10 +1459,10 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           <div style={{ background: C.accent, color:`#fff`, padding:`18px 20px`, position:`relative`, overflow:`hidden`, border:`1px solid ${C.accent}` }}>
             <div style={{ position:`absolute`, right:-10, top:-12, opacity:0.14, fontSize:120, fontWeight:700, fontFamily:`Fraunces, serif`, lineHeight:1 }}>!</div>
             <div style={{ position:`relative` }}>
-              <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.22em`, opacity:0.85, fontWeight:500 }}>오늘은 모의고사</div>
-              <div className=`serif` style={{ fontSize:26, fontWeight:600, letterSpacing:`-0.01em`, marginTop:6 }}>{todayMock.label}</div>
+              <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.22em`, opacity:0.85, fontWeight:500 }}>오늘은 모의고사</div>
+              <div className={`serif`} style={{ fontSize:26, fontWeight:600, letterSpacing:`-0.01em`, marginTop:6 }}>{todayMock.label}</div>
               <div style={{ marginTop:8, fontSize:12 }}>
-                <span className=`mono` style={{ opacity:0.9 }}>
+                <span className={`mono`} style={{ opacity:0.9 }}>
                   {todayMock.dayNum}/{todayMock.totalDays}일차 · {todayMock.start.slice(5)} ~ {todayMock.end.slice(5)}
                 </span>
               </div>
@@ -1478,9 +1478,9 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           {tomorrowInfo && tomorrowInfo.subject !== cycleInfo.subject && (
             <div style={{ background:C.paper, border:`1px solid ${C.line}`, borderTop:`none`, padding:`10px 16px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, fontSize:12 }}>
               <span style={{ color:C.muted, letterSpacing:`0.05em` }}>내일부터 →</span>
-              <span className=`kserif` style={{ color: SUBJECTS[tomorrowInfo.subject].color, fontWeight:600 }}>
+              <span className={`kserif`} style={{ color: SUBJECTS[tomorrowInfo.subject].color, fontWeight:600 }}>
                 {tomorrowInfo.subject}{tomorrowInfo.subject === `민사법` && ` + 선택법`}
-                <span className=`mono` style={{ color:C.muted, fontWeight:400, marginLeft:6, fontSize:10 }}>
+                <span className={`mono`} style={{ color:C.muted, fontWeight:400, marginLeft:6, fontSize:10 }}>
                   {tomorrowInfo.cycleLabel} · {tomorrowInfo.blockDays}일
                 </span>
               </span>
@@ -1489,9 +1489,9 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           {upcomingMock && (
             <div style={{ background:C.paper, border:`1px solid ${C.line}`, borderTop:`none`, padding:`10px 16px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, fontSize:12 }}>
               <span style={{ color:C.muted, letterSpacing:`0.05em` }}>다음 모의고사</span>
-              <span className=`kserif` style={{ color: C.accent, fontWeight:600 }}>
+              <span className={`kserif`} style={{ color: C.accent, fontWeight:600 }}>
                 {upcomingMock.label}
-                <span className=`mono` style={{ color:C.muted, fontWeight:400, marginLeft:6, fontSize:10 }}>
+                <span className={`mono`} style={{ color:C.muted, fontWeight:400, marginLeft:6, fontSize:10 }}>
                   D-{daysDiff(today, upcomingMock.start)} · {upcomingMock.start.slice(5)}
                 </span>
               </span>
@@ -1518,8 +1518,8 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
                 display:`grid`, placeItems:`center`, fontSize:11, fontWeight:700,
                 fontFamily:`Noto Serif KR, serif`, flexShrink:0,
               }}>{tt.short}</span>
-              <span className=`kserif` style={{ fontSize:11.5, color:C.muted, minWidth:74 }}>{tt.label}</span>
-              <span className=`kserif` style={{
+              <span className={`kserif`} style={{ fontSize:11.5, color:C.muted, minWidth:74 }}>{tt.label}</span>
+              <span className={`kserif`} style={{
                 fontSize:12, flex:1, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`,
                 color: slot.done ? C.ink : C.muted, fontWeight: slot.done ? 500 : 400,
                 fontStyle: slot.text ? `normal` : `italic`,
@@ -1580,7 +1580,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
                       transition:`all .15s ease`,
                     }}>
                     <span style={{ fontSize:18, lineHeight:1 }}>{r.icon || `✓`}</span>
-                    <span className=`kserif` style={{ fontSize:9, fontWeight: done ? 600 : 400, lineHeight:1.2, textAlign:`center` }}>{r.name}</span>
+                    <span className={`kserif`} style={{ fontSize:9, fontWeight: done ? 600 : 400, lineHeight:1.2, textAlign:`center` }}>{r.name}</span>
                   </button>
                 );
               })}
@@ -1591,10 +1591,10 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
 
       <SectionTitle>오늘 {fmtKDate(today).slice(5)}</SectionTitle>
       <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, 1fr)`, gap:8, marginBottom:22 }}>
-        <Stat icon={Clock} label=`공부 시간` value={fmtMin(todayMinutes)} />
-        <Stat icon={Layers} label=`트랙` value={`${tracksDone}/5`} />
-        <Stat icon={RotateCw} label=`회독` value={`${dueReviews.length}`} />
-        <Stat icon={CheckSquare} label=`할일` value={`${todayTodosOpen}`} />
+        <Stat icon={Clock} label={`공부 시간`} value={fmtMin(todayMinutes)} />
+        <Stat icon={Layers} label={`트랙`} value={`${tracksDone}/5`} />
+        <Stat icon={RotateCw} label={`회독`} value={`${dueReviews.length}`} />
+        <Stat icon={CheckSquare} label={`할일`} value={`${todayTodosOpen}`} />
       </div>
 
       <SectionTitle>오늘 한 줄</SectionTitle>
@@ -1606,7 +1606,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
             setMoods(prev => { const next = { ...prev }; delete next[today]; return next; });
           }
         }}
-        placeholder=`컨디션, 느낀점, 한줄메모 (예: 공동저당 어렵다, 노잼)`
+        placeholder={`컨디션, 느낀점, 한줄메모 (예: 공동저당 어렵다, 노잼)`}
         style={{
           width:`100%`, background:C.paper, border:`1px solid ${C.line}`,
           padding:`12px 14px`, fontSize:13, outline:`none`, marginBottom:22,
@@ -1617,8 +1617,8 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
       <SectionTitle action={{ label:`리포트`, onClick: () => onGoTo(`report`) }}>이번 주 목표 · {weekPct}%</SectionTitle>
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`14px 16px`, marginBottom:22 }}>
         <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, marginBottom:10 }}>
-          <span className=`mono` style={{ fontSize:11, color:C.muted }}>{weekStart.slice(5)} ~ {addDays(weekStart, 6).slice(5)}</span>
-          <span className=`serif` style={{ fontSize:15, fontWeight:600 }}>
+          <span className={`mono`} style={{ fontSize:11, color:C.muted }}>{weekStart.slice(5)} ~ {addDays(weekStart, 6).slice(5)}</span>
+          <span className={`serif`} style={{ fontSize:15, fontWeight:600 }}>
             {fmtHour(weekTotalMin)}<span style={{ color:C.muted, fontSize:11, fontWeight:400 }}> / {fmtHour(weekTargetMin)}</span>
           </span>
         </div>
@@ -1630,8 +1630,8 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           return (
             <div key={sub} style={{ marginBottom:10 }}>
               <div style={{ display:`flex`, justifyContent:`space-between`, fontSize:12, marginBottom:4 }}>
-                <span className=`kserif` style={{ color:SUBJECTS[sub].color, fontWeight:600 }}>{sub}</span>
-                <span className=`mono` style={{ color:C.muted, fontSize:11 }}>
+                <span className={`kserif`} style={{ color:SUBJECTS[sub].color, fontWeight:600 }}>{sub}</span>
+                <span className={`mono`} style={{ color:C.muted, fontSize:11 }}>
                   {fmtHour(cur)} / {fmtHour(tgt)} <span style={{ color: over ? C.good : pct >= 80 ? C.ink : C.muted, fontWeight:600 }}>{pct}%</span>
                 </span>
               </div>
@@ -1649,10 +1649,10 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 14px`, marginBottom:22 }}>
             {recentScores.map(s => (
               <div key={s.id} style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, padding:`6px 0`, fontSize:12, borderBottom:`1px dashed ${C.lineSoft}` }}>
-                <span className=`kserif` style={{ color: SUBJECTS[s.subject]?.color, fontWeight:600 }}>
+                <span className={`kserif`} style={{ color: SUBJECTS[s.subject]?.color, fontWeight:600 }}>
                   {s.round}회 {s.subject.replace(`법`, ``)}
                 </span>
-                <span className=`mono` style={{ color: C.ink }}>
+                <span className={`mono`} style={{ color: C.ink }}>
                   <span style={{ color: C.accent, fontWeight:600 }}>{s.wrong}</span>
                   <span style={{ color: C.muted }}> 틀림 · {s.date.slice(5)}</span>
                 </span>
@@ -1666,13 +1666,13 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`16px 10px 8px`, marginBottom:22 }}>
         <div style={{ width:`100%`, height:170 }}>
           <ResponsiveContainer>
-            <BarChart data={weekData} barCategoryGap=`25%`>
-              <XAxis dataKey=`day` tick={{ fill:C.muted, fontSize:11, fontFamily:`JetBrains Mono` }} axisLine={{ stroke:C.line }} tickLine={false} />
-              <YAxis tick={{ fill:C.muted, fontSize:10, fontFamily:`JetBrains Mono` }} axisLine={false} tickLine={false} width={28} unit=`h` />
+            <BarChart data={weekData} barCategoryGap={`25%`}>
+              <XAxis dataKey={`day`} tick={{ fill:C.muted, fontSize:11, fontFamily:`JetBrains Mono` }} axisLine={{ stroke:C.line }} tickLine={false} />
+              <YAxis tick={{ fill:C.muted, fontSize:10, fontFamily:`JetBrains Mono` }} axisLine={false} tickLine={false} width={28} unit={`h`} />
               <Tooltip cursor={{ fill:C.lineSoft }}
                 contentStyle={{ background:C.paper, border:`1px solid ${C.line}`, borderRadius:0, fontSize:12 }}
                 formatter={(v, name) => [`${v}h`, name]} labelFormatter={(l) => `${l}일`} />
-              {Object.keys(SUBJECTS).map(sub => <Bar key={sub} dataKey={sub} stackId=`a` fill={SUBJECTS[sub].color} />)}
+              {Object.keys(SUBJECTS).map(sub => <Bar key={sub} dataKey={sub} stackId={`a`} fill={SUBJECTS[sub].color} />)}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -1690,16 +1690,16 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           <SectionTitle action={{ label:`전체`, onClick: () => onGoTo(`review`) }}>오늘 회독</SectionTitle>
           <div style={{ display:`flex`, flexDirection:`column`, gap:8, marginBottom:22 }}>
             {dueReviews.slice(0, 4).map(r => (
-              <button key={r.id} onClick={() => onGoTo(`review`)} className=`lift`
+              <button key={r.id} onClick={() => onGoTo(`review`)} className={`lift`}
                 style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10, cursor:`pointer`, textAlign:`left` }}>
                 <div style={{ display:`flex`, alignItems:`center`, gap:10, minWidth:0, flex:1 }}>
                   <span style={{ width:3, alignSelf:`stretch`, background:SUBJECTS[r.subject]?.color || C.muted }} />
                   <div style={{ minWidth:0 }}>
-                    <div className=`kserif` style={{ fontSize:14, fontWeight:500, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{r.title}</div>
+                    <div className={`kserif`} style={{ fontSize:14, fontWeight:500, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{r.title}</div>
                     <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{r.subject} · {r.roundNum}회독</div>
                   </div>
                 </div>
-                <span className=`serif` style={{ fontSize:13, color:C.accent, fontWeight:600 }}>
+                <span className={`serif`} style={{ fontSize:13, color:C.accent, fontWeight:600 }}>
                   {r.dueDate === today ? `TODAY` : `${daysDiff(r.dueDate, today)}일 지남`}
                 </span>
               </button>
@@ -1722,13 +1722,13 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
               {stale.slice(0, 4).map(c => {
                 const since = c.lastReviewed ? daysDiff(c.lastReviewed, today) : null;
                 return (
-                  <button key={c.id} onClick={() => onGoTo(`check`)} className=`lift`
+                  <button key={c.id} onClick={() => onGoTo(`check`)} className={`lift`}
                     style={{ background:C.paper, border:`1px solid ${C.line}`, borderLeft:`3px solid ${c.color}`, padding:`10px 12px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10, cursor:`pointer`, textAlign:`left` }}>
                     <div style={{ minWidth:0 }}>
-                      <div className=`kserif` style={{ fontSize:13, fontWeight:600, color:C.ink }}>{c.name}</div>
+                      <div className={`kserif`} style={{ fontSize:13, fontWeight:600, color:C.ink }}>{c.name}</div>
                       <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>{c.items.length}개 항목</div>
                     </div>
-                    <span className=`mono` style={{ fontSize:11, color:C.accent, fontWeight:600 }}>
+                    <span className={`mono`} style={{ fontSize:11, color:C.accent, fontWeight:600 }}>
                       {since === null ? `미회독` : `${since}일 전`}
                     </span>
                   </button>
@@ -1873,7 +1873,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
     setSelected(today);
   }
 
-  const monthName = `${cursor.y}.${String(cursor.m + 1).padStart(2, `0`)}`;
+  const monthName={`${cursor.y}.${String(cursor.m + 1).padStart(2, `}0`)}`;
   const selDate = selected;
   const selLog = logs[selDate] || {};
   const selMinutes = Object.values(selLog).reduce((s, v) => s + (v || 0), 0);
@@ -1901,11 +1901,11 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
   }
 
   return (
-    <div className=`fadeIn` style={{ paddingTop:20 }}>
+    <div className={`fadeIn`} style={{ paddingTop:20 }}>
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, padding:`10px 14px`, marginBottom:8 }}>
         <button onClick={prevMonth} style={{ background:`none`, border:`none`, padding:6, cursor:`pointer`, color:C.ink }}><ChevronLeft size={18} /></button>
         <div style={{ display:`flex`, alignItems:`center`, gap:10 }}>
-          <div className=`serif` style={{ fontSize:18, fontWeight:600, letterSpacing:`-0.01em` }}>{monthName}</div>
+          <div className={`serif`} style={{ fontSize:18, fontWeight:600, letterSpacing:`-0.01em` }}>{monthName}</div>
           <button onClick={jumpToday}
             style={{ background:`transparent`, border:`1px solid ${C.line}`, color:C.muted, padding:`3px 8px`, fontSize:10, cursor:`pointer`, letterSpacing:`0.1em`, fontFamily:`Noto Serif KR, serif` }}>
             오늘
@@ -1922,11 +1922,11 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
         </button>
       ) : addMode === `form` ? (
         <div style={{ background:C.ink, color:`#fff`, padding:`12px 14px`, marginBottom:8 }}>
-          <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.22em`, opacity:0.7, marginBottom:8, fontWeight:600 }}>
+          <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.22em`, opacity:0.7, marginBottom:8, fontWeight:600 }}>
             새 일정 · {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace(`-`,`/`)} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace(`-`,`/`)}
           </div>
           <input value={draftTitle} onChange={e => setDraftTitle(e.target.value)} autoFocus
-            placeholder=`일정 제목 (예: 김영환 헌법 인강)`
+            placeholder={`일정 제목 (예: 김영환 헌법 인강)`}
             style={{ width:`100%`, background:`rgba(255,255,255,0.1)`, border:`none`, borderBottom:`1px solid rgba(255,255,255,0.3)`, color:`#fff`, padding:`7px 4px`, fontSize:13, marginBottom:10, outline:`none` }} />
           <div style={{ display:`flex`, gap:5, marginBottom:10, alignItems:`center` }}>
             <span style={{ fontSize:10, opacity:0.7, marginRight:4 }}>색</span>
@@ -1943,7 +1943,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
         </div>
       ) : (
         <div style={{ background:C.accent, color:`#fff`, padding:`10px 14px`, marginBottom:8, display:`flex`, alignItems:`center`, justifyContent:`space-between` }}>
-          <div className=`kserif` style={{ fontSize:12, fontWeight:600 }}>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:600 }}>
             {addMode === `start` ? `시작일을 탭하세요` : `종료일을 탭하세요 · 시작 ${pendingStart.slice(5).replace( `-`, `/`)}`}
           </div>
           <button onClick={cancelAddMode} style={{ background:`rgba(255,255,255,0.2)`, border:`none`, color:`#fff`, padding:`4px 10px`, fontSize:11, cursor:`pointer` }}>취소</button>
@@ -1953,7 +1953,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 8px`, marginBottom:14 }}>
         <div style={{ display:`grid`, gridTemplateColumns:`repeat(7, 1fr)`, marginBottom:6 }}>
           {[`일`,`월`,`화`,`수`,`목`,`금`,`토`].map((d, i) => (
-            <div key={d} className=`kserif` style={{
+            <div key={d} className={`kserif`} style={{
               textAlign:`center`, fontSize:10, padding:`4px 0`,
               color: i === 0 ? C.accent : i === 6 ? `#1E3A5F` : C.muted,
               letterSpacing:`0.1em`, fontWeight:600,
@@ -2137,20 +2137,20 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
     <div style={{ background:C.paper, border:`1px solid ${C.line}` }}>
       <div style={{ padding:`14px 16px`, borderBottom:`1px solid ${C.lineSoft}`, display:`flex`, alignItems:`baseline`, justifyContent:`space-between` }}>
         <div>
-          <div className=`kserif` style={{ fontSize:15, fontWeight:600 }}>{fmtKDate(date)}</div>
-          {isToday && <span className=`kserif` style={{ fontSize:10, color:C.accent, marginLeft:6, letterSpacing:`0.1em`, fontWeight:600 }}>TODAY</span>}
+          <div className={`kserif`} style={{ fontSize:15, fontWeight:600 }}>{fmtKDate(date)}</div>
+          {isToday && <span className={`kserif`} style={{ fontSize:10, color:C.accent, marginLeft:6, letterSpacing:`0.1em`, fontWeight:600 }}>TODAY</span>}
         </div>
-        <span className=`serif mono` style={{ fontSize:14, fontWeight:600, color: minutes > 0 ? C.ink : C.muted }}>{fmtMin(minutes)}</span>
+        <span className={`serif mono`} style={{ fontSize:14, fontWeight:600, color: minutes > 0 ? C.ink : C.muted }}>{fmtMin(minutes)}</span>
       </div>
 
       {examWeek && (
         <div style={{ padding:`14px 16px`, borderBottom:`1px solid ${C.lineSoft}`, background: C.accent, color:`#fff`, display:`flex`, alignItems:`center`, gap:12 }}>
           <div style={{ width:40, height:40, background:`rgba(255,255,255,0.2)`, display:`grid`, placeItems:`center`, flexShrink:0 }}>
-            <span className=`serif` style={{ fontSize:18, fontWeight:700, lineHeight:1 }}>!</span>
+            <span className={`serif`} style={{ fontSize:18, fontWeight:700, lineHeight:1 }}>!</span>
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className=`kserif` style={{ fontSize:14, fontWeight:600 }}>{examWeek.label}</div>
-            <div className=`mono` style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{examWeek.dayNum}/{examWeek.totalDays}일차 · {examWeek.start.slice(5)} ~ {examWeek.end.slice(5)}</div>
+            <div className={`kserif`} style={{ fontSize:14, fontWeight:600 }}>{examWeek.label}</div>
+            <div className={`mono`} style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{examWeek.dayNum}/{examWeek.totalDays}일차 · {examWeek.start.slice(5)} ~ {examWeek.end.slice(5)}</div>
           </div>
         </div>
       )}
@@ -2158,11 +2158,11 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
       {mock && !examWeek && (
         <div style={{ padding:`14px 16px`, borderBottom:`1px solid ${C.lineSoft}`, background: C.accent, color:`#fff`, display:`flex`, alignItems:`center`, gap:12 }}>
           <div style={{ width:40, height:40, background:`rgba(255,255,255,0.2)`, display:`grid`, placeItems:`center`, flexShrink:0 }}>
-            <span className=`serif` style={{ fontSize:18, fontWeight:700, lineHeight:1 }}>{mock.label.match(/\d/)?.[0] || `!`}</span>
+            <span className={`serif`} style={{ fontSize:18, fontWeight:700, lineHeight:1 }}>{mock.label.match(/\d/)?.[0] || `!`}</span>
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className=`kserif` style={{ fontSize:14, fontWeight:600 }}>{mock.label}</div>
-            <div className=`mono` style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{mock.dayNum}/{mock.totalDays}일차 · {mock.start.slice(5)} ~ {mock.end.slice(5)}</div>
+            <div className={`kserif`} style={{ fontSize:14, fontWeight:600 }}>{mock.label}</div>
+            <div className={`mono`} style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{mock.dayNum}/{mock.totalDays}일차 · {mock.start.slice(5)} ~ {mock.end.slice(5)}</div>
           </div>
         </div>
       )}
@@ -2170,13 +2170,13 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
       {cycleInfo && !mock && (
         <div style={{ padding:`12px 16px`, borderBottom:`1px solid ${C.lineSoft}`, background: SUBJECTS[cycleInfo.subject].color, color:`#fff`, display:`flex`, alignItems:`center`, gap:12 }}>
           <div style={{ width:36, height:36, borderRadius:`50%`, background:`rgba(255,255,255,0.2)`, display:`grid`, placeItems:`center`, flexShrink:0 }}>
-            <span className=`serif` style={{ fontSize:18, fontWeight:700 }}>{SUBJECTS[cycleInfo.subject].short}</span>
+            <span className={`serif`} style={{ fontSize:18, fontWeight:700 }}>{SUBJECTS[cycleInfo.subject].short}</span>
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div className=`kserif` style={{ fontSize:14, fontWeight:600 }}>
+            <div className={`kserif`} style={{ fontSize:14, fontWeight:600 }}>
               {cycleInfo.subject}{cycleInfo.subject === `민사법` && ` + 선택법`}
             </div>
-            <div className=`mono` style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{cycleInfo.cycleLabel} · 블록 {cycleInfo.dayInBlock}/{cycleInfo.blockDays}일</div>
+            <div className={`mono`} style={{ fontSize:10.5, opacity:0.9, marginTop:2 }}>{cycleInfo.cycleLabel} · 블록 {cycleInfo.dayInBlock}/{cycleInfo.blockDays}일</div>
           </div>
           {cycleInfo.isBlockLast && (
             <div style={{ fontSize:10, padding:`3px 8px`, background:`rgba(255,255,255,0.2)`, fontFamily:`Noto Serif KR, serif`, fontWeight:600, letterSpacing:`0.05em` }}>블록 마지막날</div>
@@ -2186,7 +2186,7 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
 
       {schedules.length > 0 && (
         <div style={{ padding:`10px 16px`, borderBottom:`1px solid ${C.lineSoft}` }}>
-          <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:6 }}>일정</div>
+          <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:6 }}>일정</div>
           <div style={{ display:`flex`, flexDirection:`column`, gap:4 }}>
             {schedules.map(s => {
               const dayIdx = daysDiff(s.start, date) + 1;
@@ -2195,7 +2195,7 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
                 <div key={s.id} style={{ display:`flex`, alignItems:`center`, gap:8 }}>
                   <span style={{ width:3, height:14, background: s.color || C.accent, flexShrink:0 }} />
                   <span style={{ fontSize:12, fontWeight:600, color:C.ink, flex:1, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{s.title}</span>
-                  <span className=`mono` style={{ fontSize:10, color:C.muted, flexShrink:0 }}>{dayIdx}/{total}일</span>
+                  <span className={`mono`} style={{ fontSize:10, color:C.muted, flexShrink:0 }}>{dayIdx}/{total}일</span>
                 </div>
               );
             })}
@@ -2205,9 +2205,9 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
 
       {hasTrackData && (
         <div style={{ padding:`12px 16px`, borderBottom:`1px solid ${C.lineSoft}` }}>
-          <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:8, display:`flex`, justifyContent:`space-between` }}>
+          <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:8, display:`flex`, justifyContent:`space-between` }}>
             <span>오늘 트랙</span>
-            <span className=`mono` style={{ letterSpacing:0, fontSize:10 }}>{tracksDoneCount}/5</span>
+            <span className={`mono`} style={{ letterSpacing:0, fontSize:10 }}>{tracksDoneCount}/5</span>
           </div>
           <div style={{ display:`flex`, flexDirection:`column`, gap:4 }}>
             {TRACK_TYPES.map(tt => {
@@ -2221,7 +2221,7 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
                     display:`grid`, placeItems:`center`, fontSize:9, fontWeight:700,
                     fontFamily:`Noto Serif KR, serif`, flexShrink:0,
                   }}>{tt.short}</span>
-                  <span className=`kserif` style={{ flex:1, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, color: slot.done ? C.ink : C.muted }}>
+                  <span className={`kserif`} style={{ flex:1, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, color: slot.done ? C.ink : C.muted }}>
                     {slot.text || tt.label}
                   </span>
                 </div>
@@ -2234,33 +2234,33 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
       {Object.keys(subjectMin).length > 0 && (
         <div style={{ padding:`12px 16px`, borderBottom:`1px solid ${C.lineSoft}`, display:`flex`, flexWrap:`wrap`, gap:6 }}>
           {Object.entries(subjectMin).map(([sub, m]) => (
-            <span key={sub} className=`kserif` style={{
+            <span key={sub} className={`kserif`} style={{
               fontSize:11, padding:`3px 8px`,
               border:`1px solid ${SUBJECTS[sub].color}`,
               color: SUBJECTS[sub].color, fontWeight:600,
               display:`inline-flex`, alignItems:`center`, gap:5,
             }}>
-              {sub}<span className=`mono` style={{ fontWeight:400, opacity:0.85 }}>{fmtHour(m)}</span>
+              {sub}<span className={`mono`} style={{ fontWeight:400, opacity:0.85 }}>{fmtHour(m)}</span>
             </span>
           ))}
         </div>
       )}
 
       <div style={{ padding:`12px 16px`, borderBottom:`1px solid ${C.lineSoft}` }}>
-        <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:6 }}>한 줄</div>
+        <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:6 }}>한 줄</div>
         <input
           value={moodLocal}
           onChange={e => setMoodLocal(e.target.value)}
           onBlur={() => setMood(moodLocal.trim())}
           onKeyDown={e => { if (e.key === `Enter`) e.target.blur(); }}
-          placeholder=`컨디션·느낀점 메모`
+          placeholder={`컨디션·느낀점 메모`}
           style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:12, outline:`none`, fontFamily:`Noto Serif KR, serif` }}
         />
       </div>
 
       {dueReviews.length > 0 && (
         <div style={{ padding:`12px 16px`, borderBottom:`1px solid ${C.lineSoft}` }}>
-          <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:8 }}>회독</div>
+          <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:8 }}>회독</div>
           <div style={{ display:`flex`, flexDirection:`column`, gap:6 }}>
             {dueReviews.map((r, i) => (
               <div key={`due-${r.id}-${r.num}-${i}`} style={{
@@ -2268,12 +2268,12 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
                 padding:`7px 10px`, background:C.bg, border:`1px solid ${C.lineSoft}`,
                 borderLeft:`3px solid ${SUBJECTS[r.subject]?.color || C.muted}`,
               }}>
-                <span className=`serif` style={{
+                <span className={`serif`} style={{
                   fontSize:11, fontWeight:600, color:`#fff`,
                   background:SUBJECTS[r.subject]?.color || C.muted,
                   padding:`2px 6px`, minWidth:36, textAlign:`center`,
                 }}>{r.num}회독</span>
-                <span className=`kserif` style={{ flex:1, fontSize:13, fontWeight:500, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                <span className={`kserif`} style={{ flex:1, fontSize:13, fontWeight:500, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
                   {r.title}
                 </span>
               </div>
@@ -2283,9 +2283,9 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
       )}
 
       <div style={{ padding:`12px 16px` }}>
-        <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:8, display:`flex`, justifyContent:`space-between` }}>
+        <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:8, display:`flex`, justifyContent:`space-between` }}>
           <span>할 일</span>
-          {todos.length > 0 && <span className=`mono` style={{ letterSpacing:0, fontSize:10 }}>{doneTodos.length}/{todos.length}</span>}
+          {todos.length > 0 && <span className={`mono`} style={{ letterSpacing:0, fontSize:10 }}>{doneTodos.length}/{todos.length}</span>}
         </div>
 
         <div style={{ display:`flex`, flexDirection:`column`, gap:4, marginBottom:10 }}>
@@ -2296,9 +2296,9 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
 
         <div style={{ display:`flex`, gap:6 }}>
           <input value={newTodo} onChange={e => setNewTodo(e.target.value)} onKeyDown={e => { if (e.key === `Enter`) submit(); }}
-            placeholder=`할 일 추가`
+            placeholder={`할 일 추가`}
             style={{ flex:1, border:`1px solid ${C.line}`, background:C.bg, padding:`8px 10px`, fontSize:12, outline:`none` }} />
-          <button onClick={submit} disabled={!newTodo.trim()} className=`lift`
+          <button onClick={submit} disabled={!newTodo.trim()} className={`lift`}
             style={{ background: newTodo.trim() ? C.accent : C.line, color:`#fff`, border:`none`, padding:`0 12px`, fontSize:12, cursor: newTodo.trim() ? `pointer` : `default`, display:`flex`, alignItems:`center` }}>
             <Plus size={14} />
           </button>
@@ -2321,7 +2321,7 @@ function TodoRow({ todo, onToggle, onRemove }) {
       <button onClick={onToggle} style={{ background:`none`, border:`none`, padding:2, cursor:`pointer`, color: todo.done ? C.good : C.muted, display:`flex` }}>
         {todo.done ? <CheckSquare size={16} strokeWidth={2} /> : <Square size={16} strokeWidth={1.5} />}
       </button>
-      <span className=`kserif` style={{
+      <span className={`kserif`} style={{
         flex:1, fontSize:13, minWidth:0,
         textDecoration: todo.done ? `line-through` : `none`,
         color: todo.done ? C.muted : C.ink, wordBreak:`keep-all`,
@@ -2342,12 +2342,12 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
   const [date, setDate] = useState(initialDate || today);
 
   return (
-    <div className=`fadeIn` style={{ padding:`18px 0 24px` }}>
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
       <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, marginBottom:14, gap:8 }}>
         <button onClick={() => setDate(addDays(date, -1))} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`7px 10px`, cursor:`pointer` }}>
           <ChevronLeft size={14} />
         </button>
-        <input type=`date` value={date} onChange={e => setDate(e.target.value)}
+        <input type={`date`} value={date} onChange={e => setDate(e.target.value)}
           style={{ flex:1, background:C.paper, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:13, textAlign:`center`, outline:`none` }} />
         <button onClick={() => setDate(addDays(date, 1))} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`7px 10px`, cursor:`pointer` }}>
           <ChevronRight size={14} />
@@ -2406,7 +2406,7 @@ function TimerSection({ today, logs, setLogs }) {
   const hh = Math.floor(elapsedSec / 3600);
   const mm = Math.floor((elapsedSec % 3600) / 60);
   const ss = elapsedSec % 60;
-  const timeStr = `${String(hh).padStart(2, `0`)}:${String(mm).padStart(2, `0`)}:${String(ss).padStart(2, `0`)}`;
+  const timeStr={`${String(hh).padStart(2, `}0`)}:${String(mm).padStart(2, `0`)}:${String(ss).padStart(2, `0`)}`;
 
   const subjectColor = SUBJECTS[subject]?.color || C.ink;
 
@@ -2424,7 +2424,7 @@ function TimerSection({ today, logs, setLogs }) {
   }
   function stop(saveIt = true) {
     if (saveIt && startedAt) {
-      const key = `${subject}::${type}`;
+      const key={`${subject}::${type}`};
       const now = Date.now();
       const totalMin = Math.max(1, Math.round((now - startedAt) / 60000));
 
@@ -2485,15 +2485,15 @@ function TimerSection({ today, logs, setLogs }) {
         transition:`background .3s, color .3s`,
       }}>
         <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, marginBottom:10 }}>
-          <div className=`kserif` style={{ fontSize:10, letterSpacing:`0.22em`, opacity: running ? 0.85 : 0.6, fontWeight:600 }}>
+          <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.22em`, opacity: running ? 0.85 : 0.6, fontWeight:600 }}>
             {running ? `측정 중` : `대기`}
           </div>
           {running && elapsedMin > 0 && (
-            <div className=`mono` style={{ fontSize:10, opacity:0.85 }}>≈ {fmtMin(elapsedMin)}</div>
+            <div className={`mono`} style={{ fontSize:10, opacity:0.85 }}>≈ {fmtMin(elapsedMin)}</div>
           )}
         </div>
 
-        <div className=`serif mono` style={{
+        <div className={`serif mono`} style={{
           fontSize:42, fontWeight:600, letterSpacing:`-0.02em`, lineHeight:1,
           textAlign:`center`, marginBottom:14, fontFamily:`JetBrains Mono, monospace`,
           opacity: running ? 1 : 0.85,
@@ -2612,7 +2612,7 @@ function TimeSection({ date, logs, setLogs, settings }) {
   const dl = logs[date] || {};
 
   function setMin(subj, type, val) {
-    const key = `${subj}::${type}`;
+    const key={`${subj}::${type}`};
     const next = { ...dl };
     if (val > 0) next[key] = val;
     else delete next[key];
@@ -2639,12 +2639,12 @@ function TimeSection({ date, logs, setLogs, settings }) {
           return (
             <div key={sub} style={{ borderTop: si > 0 ? `1px solid ${C.lineSoft}` : `none`, padding:`10px 14px` }}>
               <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, marginBottom:6 }}>
-                <span className=`kserif` style={{ fontSize:13, fontWeight:600, color:meta.color }}>{sub}</span>
-                <span className=`mono` style={{ fontSize:11, color:C.muted }}>{fmtMin(sTot)}</span>
+                <span className={`kserif`} style={{ fontSize:13, fontWeight:600, color:meta.color }}>{sub}</span>
+                <span className={`mono`} style={{ fontSize:11, color:C.muted }}>{fmtMin(sTot)}</span>
               </div>
               <div style={{ display:`grid`, gridTemplateColumns:`repeat(2, 1fr)`, gap:6 }}>
                 {meta.types.map(t => {
-                  const key = `${sub}::${t.key}`;
+                  const key={`${sub}::${t.key}`};
                   return <TypeEntry key={key} label={t.label} value={dl[key] || 0} onChange={v => setMin(sub, t.key, v)} color={meta.color} />;
                 })}
               </div>
@@ -2654,7 +2654,7 @@ function TimeSection({ date, logs, setLogs, settings }) {
       </div>
       {grandTotal > 0 && (
         <div style={{ textAlign:`right`, marginTop:8, fontSize:12, color:C.muted }}>
-          합계 <span className=`mono` style={{ color:C.ink, fontWeight:600 }}>{fmtMin(grandTotal)}</span>
+          합계 <span className={`mono`} style={{ color:C.ink, fontWeight:600 }}>{fmtMin(grandTotal)}</span>
         </div>
       )}
     </div>
@@ -2669,7 +2669,7 @@ function TypeEntry({ label, value, onChange, color }) {
       <button onClick={() => bump(-15)} style={{ background:`none`, border:`none`, cursor:`pointer`, padding:`2px 4px`, color:C.muted }}>
         <Minus size={11} />
       </button>
-      <input type=`number` inputMode=`numeric` value={value || ``} onChange={e => onChange(parseInt(e.target.value) || 0)}
+      <input type={`number`} inputMode={`numeric`} value={value || ``} onChange={e => onChange(parseInt(e.target.value) || 0)}
         style={{ width:36, textAlign:`center`, background:`transparent`, border:`none`, outline:`none`, fontSize:11, fontFamily:`JetBrains Mono, monospace`, color:value > 0 ? color : C.muted, fontWeight:600 }} />
       <button onClick={() => bump(15)} style={{ background:`none`, border:`none`, cursor:`pointer`, padding:`2px 4px`, color:C.muted }}>
         <Plus size={11} />
@@ -2727,9 +2727,9 @@ function ScoresSection({ date, examScores, setExamScores }) {
               return (
                 <div key={s.id} style={{ display:`flex`, alignItems:`center`, gap:8, padding:`6px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:12 }}>
                   <span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:30 }}>{SUBJECTS[s.subject].short}</span>
-                  <span className=`mono` style={{ color:C.muted, minWidth:34 }}>{s.round}회</span>
-                  <span className=`mono` style={{ color:C.good, fontWeight:600, minWidth:48 }}>+{correct ?? `-`}</span>
-                  <span className=`mono` style={{ color:C.accent, minWidth:36 }}>-{s.wrong}</span>
+                  <span className={`mono`} style={{ color:C.muted, minWidth:34 }}>{s.round}회</span>
+                  <span className={`mono`} style={{ color:C.good, fontWeight:600, minWidth:48 }}>+{correct ?? `-`}</span>
+                  <span className={`mono`} style={{ color:C.accent, minWidth:36 }}>-{s.wrong}</span>
                   <span style={{ flex:1, color:C.muted, fontSize:10, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{s.note || ``}</span>
                   <button onClick={() => del(s.id)} style={{ background:`none`, border:`none`, cursor:`pointer`, padding:0, flexShrink:0 }}>
                     <X size={12} color={C.muted} />
@@ -2758,14 +2758,14 @@ function ScoresSection({ date, examScores, setExamScores }) {
         {/* 2행: 회차 / 틀림 입력 */}
         <div style={{ display:`flex`, gap:5, marginBottom:6, alignItems:`stretch` }}>
           <div style={{ flex:1, display:`flex`, alignItems:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`0 8px` }}>
-            <input value={round} onChange={e => setRound(e.target.value)} placeholder=`회차`
-              type=`number` inputMode=`numeric`
+            <input value={round} onChange={e => setRound(e.target.value)} placeholder={`회차`}
+              type={`number`} inputMode={`numeric`}
               style={{ flex:1, background:`transparent`, border:`none`, outline:`none`, padding:`8px 0`, fontSize:12, fontFamily:`JetBrains Mono, monospace` }} />
             <span style={{ fontSize:10, color:C.muted }}>회</span>
           </div>
           <div style={{ flex:1.4, display:`flex`, alignItems:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`0 8px` }}>
             <input value={wrong} onChange={e => setWrong(e.target.value)}
-              placeholder=`틀린 개수` type=`number` inputMode=`numeric` min={0} max={total}
+              placeholder={`틀린 개수`} type={`number`} inputMode={`numeric`} min={0} max={total}
               style={{ flex:1, background:`transparent`, border:`none`, outline:`none`, padding:`8px 0`, fontSize:12, fontFamily:`JetBrains Mono, monospace`, color:C.accent, fontWeight:600 }} />
             <span style={{ fontSize:10, color:C.muted }}>/{total}</span>
           </div>
@@ -2778,13 +2778,13 @@ function ScoresSection({ date, examScores, setExamScores }) {
         {/* 미리보기: 맞은 개수 */}
         {correctPreview !== null && (
           <div style={{ fontSize:11, color:C.muted, marginBottom:6, textAlign:`right` }}>
-            맞은 개수 <span className=`mono` style={{ color:C.good, fontWeight:600, fontSize:13 }}>{correctPreview}</span>
-            <span className=`mono` style={{ color:C.muted, fontSize:10 }}> / {total} ({Math.round((correctPreview/total)*100)}%)</span>
+            맞은 개수 <span className={`mono`} style={{ color:C.good, fontWeight:600, fontSize:13 }}>{correctPreview}</span>
+            <span className={`mono`} style={{ color:C.muted, fontSize:10 }}> / {total} ({Math.round((correctPreview/total)*100)}%)</span>
           </div>
         )}
 
         {/* 3행: 메모 */}
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder=`메모 (선택)`
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder={`메모 (선택)`}
           style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:11, outline:`none` }} />
       </div>
     </div>
@@ -2838,9 +2838,9 @@ function ExamsView({ examScores }) {
   const sortedScores = [...filteredScores].sort((a,b) => b.date.localeCompare(a.date));
 
   return (
-    <div className=`fadeIn` style={{ padding:`18px 0 24px` }}>
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
       <div style={{ marginBottom:6 }}>
-        <h1 className=`serif` style={{ margin:0, fontSize:22, fontWeight:600 }}>기출 회차</h1>
+        <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>기출 회차</h1>
         <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>객관식 회차별 점수 추이</div>
       </div>
 
@@ -2853,7 +2853,7 @@ function ExamsView({ examScores }) {
           {/* Trend chart */}
           <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`14px 12px 12px`, margin:`14px 0 18px` }}>
             <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, marginBottom:10, paddingLeft:4 }}>
-              <span className=`kserif` style={{ fontSize:10, color:C.muted, letterSpacing:`0.18em`, fontWeight:600 }}>
+              <span className={`kserif`} style={{ fontSize:10, color:C.muted, letterSpacing:`0.18em`, fontWeight:600 }}>
                 {chartMode === `correct` ? `맞은 개수 추이` : `틀린 개수 추이`}
               </span>
               <div style={{ display:`flex`, gap:0, border:`1px solid ${C.line}` }}>
@@ -2867,21 +2867,21 @@ function ExamsView({ examScores }) {
                 </button>
               </div>
             </div>
-            <ResponsiveContainer width=`100%` height={200}>
+            <ResponsiveContainer width={`100%`} height={200}>
               <LineChart data={chartData} margin={{ top:5, right:10, bottom:5, left:-10 }}>
-                <CartesianGrid stroke={C.lineSoft} strokeDasharray=`3 3` />
-                <XAxis dataKey=`round` tick={{ fontSize:10, fill:C.muted }} />
+                <CartesianGrid stroke={C.lineSoft} strokeDasharray={`3 3`} />
+                <XAxis dataKey={`round`} tick={{ fontSize:10, fill:C.muted }} />
                 <YAxis reversed={chartMode === `wrong`} tick={{ fontSize:10, fill:C.muted }} />
                 <Tooltip contentStyle={{ background:C.paper, border:`1px solid ${C.line}`, fontSize:11 }} />
                 {subjects.map(sub => (
-                  <Line key={sub} type=`monotone` dataKey={sub} stroke={SUBJECTS[sub].color} strokeWidth={2} dot={{ r:3 }} connectNulls />
+                  <Line key={sub} type={`monotone`} dataKey={sub} stroke={SUBJECTS[sub].color} strokeWidth={2} dot={{ r:3 }} connectNulls />
                 ))}
               </LineChart>
             </ResponsiveContainer>
             <div style={{ display:`flex`, gap:12, justifyContent:`center`, marginTop:6, flexWrap:`wrap` }}>
               {subjects.map(sub => (
                 <span key={sub} style={{ fontSize:10, color:C.muted, display:`inline-flex`, alignItems:`center`, gap:4 }}>
-                  <span style={{ width:10, height:2, background:SUBJECTS[sub].color, display:`inline-block` }} /> {sub}<span className=`mono` style={{ opacity:0.6, marginLeft:2 }}>({MCQ_TOTAL[sub]})</span>
+                  <span style={{ width:10, height:2, background:SUBJECTS[sub].color, display:`inline-block` }} /> {sub}<span className={`mono`} style={{ opacity:0.6, marginLeft:2 }}>({MCQ_TOTAL[sub]})</span>
                 </span>
               ))}
             </div>
@@ -2904,13 +2904,13 @@ function ExamsView({ examScores }) {
               <tbody>
                 {allRounds.map(r => (
                   <tr key={r}>
-                    <td className=`mono` style={{ padding:`6px 10px`, color:C.ink, borderBottom:`1px dashed ${C.lineSoft}` }}>{r}회</td>
+                    <td className={`mono`} style={{ padding:`6px 10px`, color:C.ink, borderBottom:`1px dashed ${C.lineSoft}` }}>{r}회</td>
                     {subjects.map(sub => {
                       const s = matrix[sub][r];
                       const totalQ = MCQ_TOTAL[sub];
                       const correct = s ? (s.total || totalQ) - s.wrong : null;
                       return (
-                        <td key={sub} className=`mono` style={{ padding:`6px 10px`, textAlign:`center`, borderBottom:`1px dashed ${C.lineSoft}`, fontWeight: s ? 600 : 400 }}>
+                        <td key={sub} className={`mono`} style={{ padding:`6px 10px`, textAlign:`center`, borderBottom:`1px dashed ${C.lineSoft}`, fontWeight: s ? 600 : 400 }}>
                           {s ? (
                             <span>
                               <span style={{ color: SUBJECTS[sub].color }}>{correct}</span>
@@ -2951,11 +2951,11 @@ function ExamsView({ examScores }) {
             const correct = totalQ - s.wrong;
             return (
               <div key={s.id} style={{ display:`flex`, alignItems:`center`, gap:8, padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:12 }}>
-                <span className=`mono` style={{ color:C.muted, fontSize:10, minWidth:48 }}>{s.date.slice(5)}</span>
+                <span className={`mono`} style={{ color:C.muted, fontSize:10, minWidth:48 }}>{s.date.slice(5)}</span>
                 <span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:42 }}>{s.subject}</span>
-                <span className=`mono` style={{ color:C.muted, minWidth:30 }}>{s.round}회</span>
-                <span className=`mono` style={{ color:C.good, fontWeight:600, minWidth:34 }}>+{correct}</span>
-                <span className=`mono` style={{ color:C.accent, minWidth:30 }}>-{s.wrong}</span>
+                <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{s.round}회</span>
+                <span className={`mono`} style={{ color:C.good, fontWeight:600, minWidth:34 }}>+{correct}</span>
+                <span className={`mono`} style={{ color:C.accent, minWidth:30 }}>-{s.wrong}</span>
                 {s.note && <span style={{ flex:1, fontSize:10, color:C.muted, fontStyle:`italic`, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, minWidth:0 }}>{s.note}</span>}
               </div>
             );
@@ -2979,12 +2979,12 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
   ];
 
   return (
-    <div className=`fadeIn` style={{ padding:`18px 0 24px` }}>
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
       <div style={{ marginBottom:14 }}>
-        <h1 className=`serif` style={{ margin:0, fontSize:22, fontWeight:600 }}>회독</h1>
+        <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>회독</h1>
       </div>
 
-      <div style={{ display:`flex`, gap:6, marginBottom:14, borderBottom:`1px solid ${C.line}`, overflowX:`auto` }} className=`hide-scroll`>
+      <div style={{ display:`flex`, gap:6, marginBottom:14, borderBottom:`1px solid ${C.line}`, overflowX:`auto` }} className={`hide-scroll`}>
         {tabs.map(t => {
           const Icon = t.icon;
           const active = tab === t.key;
@@ -3014,7 +3014,7 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
 
 /* 객관식 3요소 × 7과목 매트릭스 — 최민하 합격수기 기반 권장 별점 */
 function McqMatrix({ today, mcqProgress, setMcqProgress }) {
-  const STAR_COLOR = `#D4A437`;
+  const STAR_COLOR={`#D4A437`};
   const [selected, setSelected] = useState(null); // { areaId, pillar }
 
   function k(areaId, pillar) { return `${areaId}__${pillar}`; }
@@ -3092,7 +3092,7 @@ function McqMatrix({ today, mcqProgress, setMcqProgress }) {
                       <div style={{ fontSize:10, color: isSel ? `#fff` : STAR_COLOR, fontWeight:700, letterSpacing:`-0.06em` }}>
                         {`★`.repeat(w)}<span style={{ color: isSel ? `rgba(255,255,255,0.4)` : `#E8DFC4` }}>{`★`.repeat(5 - w)}</span>
                       </div>
-                      <div className=`mono` style={{ fontSize:11, color: isSel ? `#fff` : (c.rounds > 0 ? area.color : C.muted), fontWeight:600, marginTop:3 }}>
+                      <div className={`mono`} style={{ fontSize:11, color: isSel ? `#fff` : (c.rounds > 0 ? area.color : C.muted), fontWeight:600, marginTop:3 }}>
                         {c.rounds}{c.target > 0 ? `/${c.target}` : ``}회
                       </div>
                     </td>
@@ -3109,7 +3109,7 @@ function McqMatrix({ today, mcqProgress, setMcqProgress }) {
         <div style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:14 }}>
           <div style={{ background: sel.area.color, color:`#fff`, padding:`12px 14px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10 }}>
             <div>
-              <div className=`serif` style={{ fontSize:16, fontWeight:600 }}>{sel.area.name} · {sel.pillar}</div>
+              <div className={`serif`} style={{ fontSize:16, fontWeight:600 }}>{sel.area.name} · {sel.pillar}</div>
               <div style={{ fontSize:10, opacity:0.85, marginTop:3, fontFamily:`JetBrains Mono, monospace` }}>
                 권장 비중 <span style={{ color:`#FFD466`, fontWeight:700 }}>{`★`.repeat(sel.area.weights[sel.pillar])}</span>
                 {` · 마지막 회독 ${sel.cell.lastDate || `미회독`}`}
@@ -3128,7 +3128,7 @@ function McqMatrix({ today, mcqProgress, setMcqProgress }) {
                   style={{ background:C.bg, border:`1px solid ${C.line}`, width:32, height:32, cursor:`pointer`, display:`grid`, placeItems:`center`, color:C.muted }}>
                   <Minus size={13} />
                 </button>
-                <div className=`mono` style={{ minWidth:48, textAlign:`center`, fontSize:20, fontWeight:700, color:sel.area.color }}>
+                <div className={`mono`} style={{ minWidth:48, textAlign:`center`, fontSize:20, fontWeight:700, color:sel.area.color }}>
                   {sel.cell.rounds}
                 </div>
                 <button onClick={() => bump(sel.area.id, sel.pillar, 1)}
@@ -3139,9 +3139,9 @@ function McqMatrix({ today, mcqProgress, setMcqProgress }) {
             </div>
             <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between` }}>
               <span style={{ fontSize:11, color:C.muted }}>목표 회독 (선택)</span>
-              <input type=`number` value={sel.cell.target || ``} min={0}
+              <input type={`number`} value={sel.cell.target || ``} min={0}
                 onChange={e => setCell(sel.area.id, sel.pillar, { target: parseInt(e.target.value) || 0 })}
-                placeholder=`0`
+                placeholder={`0`}
                 style={{ width:60, background:C.bg, border:`1px solid ${C.line}`, padding:`5px 8px`, fontSize:13, textAlign:`center`, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
             </div>
           </div>
@@ -3170,11 +3170,11 @@ function McqMatrix({ today, mcqProgress, setMcqProgress }) {
               {urgent.slice(0, 8).map(u => (
                 <button key={`${u.area.id}-${u.pillar}`} onClick={() => setSelected({ areaId: u.area.id, pillar: u.pillar })}
                   style={{ background:`#FBE4E4`, border:`1px solid ${C.accent}`, borderLeft:`3px solid ${u.area.color}`, padding:`8px 10px`, display:`flex`, justifyContent:`space-between`, alignItems:`center`, cursor:`pointer`, textAlign:`left` }}>
-                  <span className=`kserif` style={{ fontSize:12, fontWeight:600, color:C.ink }}>
+                  <span className={`kserif`} style={{ fontSize:12, fontWeight:600, color:C.ink }}>
                     {u.area.name} <span style={{ color:C.muted, fontWeight:400 }}>· {u.pillar}</span>
                     <span style={{ color:STAR_COLOR, marginLeft:6, letterSpacing:`-0.06em`, fontSize:10 }}>{`★`.repeat(u.w)}</span>
                   </span>
-                  <span className=`mono` style={{ fontSize:11, color:C.accent, fontWeight:600 }}>
+                  <span className={`mono`} style={{ fontSize:11, color:C.accent, fontWeight:600 }}>
                     {u.c.rounds === 0 ? `미시작` : `${u.c.rounds}회뿐`}
                   </span>
                 </button>
@@ -3248,7 +3248,7 @@ function AddReviewForm({ onAdd, onCancel }) {
 
   return (
     <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
-      <input value={title} onChange={e => setTitle(e.target.value)} placeholder=`주제 (예: 채권자대위)`
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder={`주제 (예: 채권자대위)`}
         style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
       <div style={{ display:`flex`, gap:6, marginBottom:8 }}>
         {Object.keys(SUBJECTS).map(s => (
@@ -3261,7 +3261,7 @@ function AddReviewForm({ onAdd, onCancel }) {
             }}>{SUBJECTS[s].short}</button>
         ))}
       </div>
-      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder=`메모 (선택)` rows={2}
+      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={`메모 (선택)`} rows={2}
         style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:10, outline:`none`, resize:`vertical`, fontFamily:`Noto Serif KR, serif` }} />
       <div style={{ display:`flex`, gap:6 }}>
         <button onClick={onCancel} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:`8px`, cursor:`pointer`, fontSize:12 }}>취소</button>
@@ -3281,7 +3281,7 @@ function ReviewCard({ review, onReviewed, onDelete }) {
       <div style={{ flex:1 }}>
         <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8 }}>
           <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{review.title}</div>
-          <div className=`mono` style={{ fontSize:10, color: isDue ? C.accent : C.muted, fontWeight: isDue ? 600 : 400 }}>
+          <div className={`mono`} style={{ fontSize:10, color: isDue ? C.accent : C.muted, fontWeight: isDue ? 600 : 400 }}>
             {isDue ? `오늘` : `D-${review.daysUntilDue}`}
           </div>
         </div>
@@ -3355,7 +3355,7 @@ function AddBookForm({ onAdd, onCancel }) {
 
   return (
     <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
-      <input value={title} onChange={e => setTitle(e.target.value)} placeholder=`제목`
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder={`제목`}
         style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
       <div style={{ display:`flex`, gap:6, marginBottom:8 }}>
         {Object.keys(SUBJECTS).map(s => (
@@ -3370,11 +3370,11 @@ function AddBookForm({ onAdd, onCancel }) {
       </div>
       <div style={{ display:`flex`, gap:6, marginBottom:10, alignItems:`center` }}>
         <span style={{ fontSize:11, color:C.muted }}>목표 회독:</span>
-        <input type=`number` value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1}
+        <input type={`number`} value={target} onChange={e => setTarget(parseInt(e.target.value) || 1)} min={1}
           style={{ width:50, background:C.bg, border:`1px solid ${C.line}`, padding:`5px`, fontSize:12, textAlign:`center`, outline:`none` }} />
         <span style={{ fontSize:11, color:C.muted }}>회</span>
       </div>
-      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder=`메모 (선택)` rows={2}
+      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder={`메모 (선택)`} rows={2}
         style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:10, outline:`none`, resize:`vertical`, fontFamily:`Noto Serif KR, serif` }} />
       <div style={{ display:`flex`, gap:6 }}>
         <button onClick={onCancel} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:`8px`, cursor:`pointer`, fontSize:12 }}>취소</button>
@@ -3394,7 +3394,7 @@ function BookCard({ book, onUp, onDown, onDelete }) {
       <div style={{ flex:1 }}>
         <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline` }}>
           <div style={{ fontSize:13, fontWeight:600 }}>{book.title}</div>
-          <div className=`mono` style={{ fontSize:11, color:C.ink }}>
+          <div className={`mono`} style={{ fontSize:11, color:C.ink }}>
             <span style={{ color: book.current >= book.target ? C.good : C.ink, fontWeight:600 }}>{book.current}</span>
             <span style={{ color:C.muted }}> / {book.target}</span>
           </div>
@@ -3479,7 +3479,7 @@ function MaterialsReview({ today, materials, setMaterials, materialLog, setMater
 
       {showAdd && (
         <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder=`자료 이름`
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={`자료 이름`}
             style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
           <div style={{ display:`flex`, gap:6, marginBottom:8 }}>
             {Object.keys(SUBJECTS).map(s => (
@@ -3494,7 +3494,7 @@ function MaterialsReview({ today, materials, setMaterials, materialLog, setMater
           </div>
           <div style={{ display:`flex`, gap:6, marginBottom:10, alignItems:`center` }}>
             <span style={{ fontSize:11, color:C.muted }}>목표:</span>
-            <input type=`number` value={newTarget} onChange={e => setNewTarget(parseInt(e.target.value) || 1)} min={1}
+            <input type={`number`} value={newTarget} onChange={e => setNewTarget(parseInt(e.target.value) || 1)} min={1}
               style={{ width:50, background:C.bg, border:`1px solid ${C.line}`, padding:`5px`, fontSize:12, textAlign:`center`, outline:`none` }} />
             <span style={{ fontSize:11, color:C.muted }}>회</span>
           </div>
@@ -3520,7 +3520,7 @@ function MaterialsReview({ today, materials, setMaterials, materialLog, setMater
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, gap:6 }}>
                     <div style={{ fontSize:12, fontWeight:600, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{m.name}</div>
-                    <div className=`mono` style={{ fontSize:11, flexShrink:0 }}>
+                    <div className={`mono`} style={{ fontSize:11, flexShrink:0 }}>
                       <span style={{ color: done ? C.good : C.ink, fontWeight:600 }}>{m.rounds}</span>
                       <span style={{ color:C.muted }}>/{m.target}</span>
                     </div>
@@ -3619,9 +3619,9 @@ function ChecklistView({ today, settings, checklists = [], setChecklists }) {
   }
 
   return (
-    <div className=`fadeIn` style={{ padding:`18px 0 24px` }}>
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
       <div style={{ marginBottom:14 }}>
-        <h1 className=`serif` style={{ margin:0, fontSize:22, fontWeight:600 }}>체크리스트</h1>
+        <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>체크리스트</h1>
         <div style={{ fontSize:11, color:C.muted, marginTop:3, lineHeight:1.5 }}>
           답안 작성 직전·직후 점검용 — 점수 누수 방어의 핵심.
         </div>
@@ -3629,13 +3629,13 @@ function ChecklistView({ today, settings, checklists = [], setChecklists }) {
 
       {isUrgent && (
         <div style={{ background:C.accent, color:`#fff`, padding:`10px 14px`, marginBottom:12, fontSize:12 }}>
-          <span className=`kserif` style={{ fontWeight:600 }}>D-{dday} · 직전 점검 모드</span>
+          <span className={`kserif`} style={{ fontWeight:600 }}>D-{dday} · 직전 점검 모드</span>
           <div style={{ fontSize:11, opacity:0.9, marginTop:3 }}>각 카테고리를 매일 한 번 이상 회독하세요.</div>
         </div>
       )}
 
       {/* 카테고리 탭 */}
-      <div style={{ display:`flex`, gap:6, overflowX:`auto`, marginBottom:12, paddingBottom:4 }} className=`hide-scroll`>
+      <div style={{ display:`flex`, gap:6, overflowX:`auto`, marginBottom:12, paddingBottom:4 }} className={`hide-scroll`}>
         {checklists.map(c => {
           const sinceRev = daysSinceReview(c);
           const stale = sinceRev !== null && sinceRev >= 14;
@@ -3654,14 +3654,14 @@ function ChecklistView({ today, settings, checklists = [], setChecklists }) {
               }}>
               {c.name}
               {sinceRev !== null && (
-                <span className=`mono` style={{
+                <span className={`mono`} style={{
                   fontSize:9, opacity: isActive ? 0.85 : 0.6,
                   color: stale ? (isActive ? `#FFB6B6` : C.accent) : (fresh ? (isActive ? `#B6FFB6` : C.good) : `inherit`),
                   fontWeight: stale ? 700 : 400,
                 }}>{sinceRev === 0 ? `오늘` : `${sinceRev}d`}</span>
               )}
               {sinceRev === null && (
-                <span className=`mono` style={{ fontSize:9, opacity:0.6 }}>—</span>
+                <span className={`mono`} style={{ fontSize:9, opacity:0.6 }}>—</span>
               )}
             </button>
           );
@@ -3675,7 +3675,7 @@ function ChecklistView({ today, settings, checklists = [], setChecklists }) {
       {showAdd && (
         <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:12, marginBottom:12 }}>
           <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
-            placeholder=`카테고리 이름 (예: 공사례, 상법, 시험 직전)`
+            placeholder={`카테고리 이름 (예: 공사례, 상법, 시험 직전)`}
             style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
           <div style={{ display:`flex`, gap:6, marginBottom:8 }}>
             {Object.keys(SUBJECTS).map(s => (
@@ -3738,7 +3738,7 @@ function ChecklistDetail({ category, onAddItem, onDelItem, onUpdItem, onMoveItem
         display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10,
       }}>
         <div style={{ minWidth:0, flex:1 }}>
-          <div className=`serif` style={{ fontSize:18, fontWeight:600, letterSpacing:`-0.01em` }}>{category.name}</div>
+          <div className={`serif`} style={{ fontSize:18, fontWeight:600, letterSpacing:`-0.01em` }}>{category.name}</div>
           <div style={{ fontSize:10, opacity:0.85, marginTop:3, fontFamily:`JetBrains Mono, monospace` }}>
             {category.items.length}개 항목 · {` `}
             {daysSinceReview === null ? `미회독` :
@@ -3802,7 +3802,7 @@ function ChecklistDetail({ category, onAddItem, onDelItem, onUpdItem, onMoveItem
           <div style={{ display:`flex`, gap:6, marginBottom:6 }}>
             <input value={newText} onChange={e => setNewText(e.target.value)}
               onKeyDown={e => { if (e.key === `Enter`) submit(); }}
-              placeholder=`새 항목 (예: 공소시효 항변 검토)`
+              placeholder={`새 항목 (예: 공소시효 항변 검토)`}
               style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, fontSize:12, outline:`none` }} />
             <button onClick={submit}
               style={{ background:C.ink, color:`#fff`, border:`none`, padding:`0 14px`, fontSize:12, cursor:`pointer` }}>
@@ -3858,7 +3858,7 @@ function ChecklistItemRow({ item, idx, total, isEditing, onStartEdit, onCancelEd
     );
   }
 
-  const STAR_COLOR = `#D4A437`; //
+  const STAR_COLOR={`#D4A437`}; //
   const borderWidth = item.stars === 3 ? 4 : item.stars === 2 ? 3 : 2;
   return (
     <div style={{
@@ -3954,9 +3954,9 @@ function ReportView({ today, settings, logs, examScores, materials }) {
   }, [examScores]);
 
   return (
-    <div className=`fadeIn` style={{ padding:`18px 0 24px` }}>
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
       <div style={{ marginBottom:16 }}>
-        <h1 className=`serif` style={{ margin:0, fontSize:22, fontWeight:600 }}>리포트</h1>
+        <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>리포트</h1>
         <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
           총 학습일 {studyDays}일 · 누적 {fmtHour(allMin)} · 일평균 {fmtHour(avgPerDay)}
         </div>
@@ -3970,8 +3970,8 @@ function ReportView({ today, settings, logs, examScores, materials }) {
           return (
             <div key={w.fullName} style={{ marginBottom:10 }}>
               <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, marginBottom:4 }}>
-                <span className=`kserif` style={{ fontSize:12, fontWeight:600, color:w.color }}>{w.fullName}</span>
-                <span className=`mono` style={{ fontSize:10, color:C.muted }}>
+                <span className={`kserif`} style={{ fontSize:12, fontWeight:600, color:w.color }}>{w.fullName}</span>
+                <span className={`mono`} style={{ fontSize:10, color:C.muted }}>
                   {fmtHour(w.minutes)} / {fmtHour(w.target)}
                 </span>
               </div>
@@ -3986,13 +3986,13 @@ function ReportView({ today, settings, logs, examScores, materials }) {
       {/* Daily 14-day trend */}
       <SectionTitle>최근 14일 학습 시간</SectionTitle>
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`14px 8px 10px`, marginBottom:18 }}>
-        <ResponsiveContainer width=`100%` height={160}>
+        <ResponsiveContainer width={`100%`} height={160}>
           <BarChart data={dailyData} margin={{ top:5, right:5, bottom:0, left:-20 }}>
-            <CartesianGrid stroke={C.lineSoft} strokeDasharray=`3 3` />
-            <XAxis dataKey=`date` tick={{ fontSize:9, fill:C.muted }} interval={1} />
+            <CartesianGrid stroke={C.lineSoft} strokeDasharray={`3 3`} />
+            <XAxis dataKey={`date`} tick={{ fontSize:9, fill:C.muted }} interval={1} />
             <YAxis tick={{ fontSize:9, fill:C.muted }} />
             <Tooltip contentStyle={{ background:C.paper, border:`1px solid ${C.line}`, fontSize:11 }} formatter={v => fmtMin(v)} />
-            <Bar dataKey=`minutes` fill={C.accent} />
+            <Bar dataKey={`minutes`} fill={C.accent} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -4004,11 +4004,11 @@ function ReportView({ today, settings, logs, examScores, materials }) {
           <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, 1fr)`, gap:6, marginBottom:18 }}>
             {Object.entries(mockAvg).map(([sub, m]) => (
               <div key={sub} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 8px`, textAlign:`center` }}>
-                <div className=`kserif` style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</div>
+                <div className={`kserif`} style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</div>
                 {m ? (
                   <>
-                    <div className=`serif` style={{ fontSize:20, fontWeight:600, marginTop:3 }}>-{m.avg}</div>
-                    <div className=`mono` style={{ fontSize:9, color:C.muted, marginTop:1 }}>{m.count}회 평균</div>
+                    <div className={`serif`} style={{ fontSize:20, fontWeight:600, marginTop:3 }}>-{m.avg}</div>
+                    <div className={`mono`} style={{ fontSize:9, color:C.muted, marginTop:1 }}>{m.count}회 평균</div>
                   </>
                 ) : (
                   <div style={{ fontSize:10, color:C.muted, marginTop:6 }}>기록 없음</div>
@@ -4027,15 +4027,15 @@ function ReportView({ today, settings, logs, examScores, materials }) {
           const total = Object.values(types).reduce((a,b) => a+b, 0);
           if (total === 0) return (
             <div key={sub} style={{ padding:`10px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
-              <span className=`kserif` style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+              <span className={`kserif`} style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
               <span style={{ fontSize:10, color:C.muted, marginLeft:8 }}>기록 없음</span>
             </div>
           );
           return (
             <div key={sub} style={{ padding:`10px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
               <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, marginBottom:6 }}>
-                <span className=`kserif` style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
-                <span className=`mono` style={{ fontSize:10, color:C.muted }}>{fmtHour(total)}</span>
+                <span className={`kserif`} style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+                <span className={`mono`} style={{ fontSize:10, color:C.muted }}>{fmtHour(total)}</span>
               </div>
               <div style={{ display:`flex`, height:6, background:C.lineSoft, overflow:`hidden` }}>
                 {SUBJECTS[sub].types.map((t, i) => {
@@ -4051,7 +4051,7 @@ function ReportView({ today, settings, logs, examScores, materials }) {
                 {SUBJECTS[sub].types.map(t => {
                   const v = types[t.key] || 0;
                   if (v === 0) return null;
-                  return <span key={t.key}>{t.label} <span className=`mono` style={{ color:C.ink }}>{fmtMin(v)}</span></span>;
+                  return <span key={t.key}>{t.label} <span className={`mono`} style={{ color:C.ink }}>{fmtMin(v)}</span></span>;
                 })}
               </div>
             </div>
@@ -4072,8 +4072,8 @@ function ReportView({ today, settings, logs, examScores, materials }) {
               const completed = ms.filter(m => m.rounds >= m.target).length;
               return (
                 <div key={sub} style={{ padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}`, display:`flex`, justifyContent:`space-between`, alignItems:`baseline` }}>
-                  <span className=`kserif` style={{ fontSize:12, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
-                  <span className=`mono` style={{ fontSize:10, color:C.muted }}>
+                  <span className={`kserif`} style={{ fontSize:12, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+                  <span className={`mono`} style={{ fontSize:10, color:C.muted }}>
                     완료 {completed}/{ms.length} · 누적 {totalRounds}/{totalTarget}회
                   </span>
                 </div>
@@ -4124,7 +4124,7 @@ function RoutineEditor({ routines, setRoutines }) {
   // Desktop drag handlers
   function onDragStart(e, id) {
     setDragId(id);
-    e.dataTransfer.effectAllowed = `move`;
+    e.dataTransfer.effectAllowed={`move`};
     try { e.dataTransfer.setData(`text/plain`, id); } catch {}
   }
   function onDragOver(e, id) {
@@ -4219,10 +4219,10 @@ function RoutineEditor({ routines, setRoutines }) {
             </div>
 
             <input value={r.icon || ``} onChange={e => updRoutine(r.id, { icon: e.target.value.slice(0, 2) })}
-              maxLength={2} placeholder=`🌅`
+              maxLength={2} placeholder={`🌅`}
               style={{ width:36, textAlign:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 4px`, fontSize:14, outline:`none` }} />
             <input value={r.name} onChange={e => updRoutine(r.id, { name: e.target.value })}
-              placeholder=`루틴 이름`
+              placeholder={`루틴 이름`}
               style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, fontSize:11, outline:`none` }} />
             <button onClick={() => delRoutine(r.id)}
               style={{ background:`none`, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, cursor:`pointer`, color:C.muted, flexShrink:0 }}>
@@ -4295,9 +4295,9 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
   const palette = SCHEDULE_PALETTE;
 
   return (
-    <div className=`fadeIn` style={{ padding:`18px 0 24px` }}>
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
       <div style={{ marginBottom:14 }}>
-        <h1 className=`serif` style={{ margin:0, fontSize:22, fontWeight:600 }}>설정</h1>
+        <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>설정</h1>
       </div>
 
       <SectionTitle>시험</SectionTitle>
@@ -4306,7 +4306,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
         <input value={examLabel} onChange={e => setExamLabel(e.target.value)}
           style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:10, outline:`none` }} />
         <label style={{ display:`block`, fontSize:11, color:C.muted, marginBottom:4 }}>시험 날짜</label>
-        <input type=`date` value={examDate} onChange={e => setExamDate(e.target.value)}
+        <input type={`date`} value={examDate} onChange={e => setExamDate(e.target.value)}
           style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, outline:`none` }} />
       </div>
 
@@ -4322,10 +4322,10 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
               </button>
             </div>
             <div style={{ display:`flex`, gap:6 }}>
-              <input type=`date` value={m.start} onChange={e => updMock(m.id, `start`, e.target.value)}
+              <input type={`date`} value={m.start} onChange={e => updMock(m.id, `start`, e.target.value)}
                 style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:11, outline:`none` }} />
               <span style={{ alignSelf:`center`, color:C.muted, fontSize:11 }}>~</span>
-              <input type=`date` value={m.end} onChange={e => updMock(m.id, `end`, e.target.value)}
+              <input type={`date`} value={m.end} onChange={e => updMock(m.id, `end`, e.target.value)}
                 style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:11, outline:`none` }} />
             </div>
           </div>
@@ -4350,10 +4350,10 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
               </button>
             </div>
             <div style={{ display:`flex`, gap:6, marginBottom:6 }}>
-              <input type=`date` value={s.start} onChange={e => updSchedule(s.id, `start`, e.target.value)}
+              <input type={`date`} value={s.start} onChange={e => updSchedule(s.id, `start`, e.target.value)}
                 style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:11, outline:`none` }} />
               <span style={{ alignSelf:`center`, color:C.muted, fontSize:11 }}>~</span>
-              <input type=`date` value={s.end} onChange={e => updSchedule(s.id, `end`, e.target.value)}
+              <input type={`date`} value={s.end} onChange={e => updSchedule(s.id, `end`, e.target.value)}
                 style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:11, outline:`none` }} />
             </div>
             <div style={{ display:`flex`, gap:5, alignItems:`center` }}>
@@ -4382,13 +4382,13 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
         </div>
         {cycleDefs.map(c => (
           <div key={c.id} style={{ marginBottom:12 }}>
-            <div className=`kserif` style={{ fontSize:12, fontWeight:600, marginBottom:6 }}>{c.label}</div>
+            <div className={`kserif`} style={{ fontSize:12, fontWeight:600, marginBottom:6 }}>{c.label}</div>
             <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, 1fr)`, gap:6 }}>
               {c.blocks.map((b, i) => (
                 <div key={i} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px` }}>
                   <div style={{ fontSize:10, color:SUBJECTS[b.subject].color, fontWeight:600, marginBottom:3 }}>{b.subject}</div>
                   <div style={{ display:`flex`, alignItems:`center`, gap:4 }}>
-                    <input type=`number` value={b.days} onChange={e => updCycleBlock(c.id, i, e.target.value)} min={1}
+                    <input type={`number`} value={b.days} onChange={e => updCycleBlock(c.id, i, e.target.value)} min={1}
                       style={{ width:`100%`, background:`transparent`, border:`none`, fontSize:14, fontWeight:600, color:C.ink, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
                     <span style={{ fontSize:10, color:C.muted }}>일</span>
                   </div>
@@ -4410,7 +4410,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
           return (
             <div key={sub} style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, marginBottom:10, paddingBottom:10, borderBottom:`1px dashed ${C.lineSoft}` }}>
               <div style={{ flex:1 }}>
-                <span className=`kserif` style={{ fontSize:13, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+                <span className={`kserif`} style={{ fontSize:13, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
                 <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>일평균 약 {fmtMin(Math.round(min / 7))}</div>
               </div>
               <div style={{ display:`flex`, alignItems:`center`, gap:4 }}>
@@ -4419,7 +4419,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
                   <Minus size={12} />
                 </button>
                 <div style={{ display:`flex`, alignItems:`baseline`, gap:3, minWidth:64, justifyContent:`center`, padding:`4px 6px`, background:C.bg, border:`1px solid ${C.line}` }}>
-                  <input type=`number` inputMode=`decimal` value={hours}
+                  <input type={`number`} inputMode={`decimal`} value={hours}
                     onChange={e => {
                       const h = parseFloat(e.target.value) || 0;
                       setTargets({ ...targets, [sub]: Math.round(h * 60) });
@@ -4436,8 +4436,8 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
           );
         })}
         <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, paddingTop:6 }}>
-          <span className=`kserif` style={{ fontSize:12, fontWeight:600, color:C.ink }}>총 주간 목표</span>
-          <span className=`mono` style={{ fontSize:14, fontWeight:600, color:C.accent }}>
+          <span className={`kserif`} style={{ fontSize:12, fontWeight:600, color:C.ink }}>총 주간 목표</span>
+          <span className={`mono`} style={{ fontSize:14, fontWeight:600, color:C.accent }}>
             {fmtHour(Object.values(targets).reduce((a,b) => a + (b || 0), 0))}
             <span style={{ fontSize:10, color:C.muted, marginLeft:6 }}>일평균 {fmtHour(Object.values(targets).reduce((a,b) => a + (b || 0), 0) / 7)}</span>
           </span>
@@ -4450,14 +4450,14 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
       <SectionTitle>자동화</SectionTitle>
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`4px 0`, marginBottom:18 }}>
         <label style={{ display:`flex`, alignItems:`center`, gap:10, padding:`10px 14px`, cursor:`pointer`, borderBottom:`1px dashed ${C.lineSoft}` }}>
-          <input type=`checkbox` checked={d30Mode} onChange={e => setD30Mode(e.target.checked)} />
+          <input type={`checkbox`} checked={d30Mode} onChange={e => setD30Mode(e.target.checked)} />
           <div style={{ flex:1 }}>
             <div style={{ fontSize:12, fontWeight:600 }}>D-30/D-7 모드 배너</div>
             <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>시험 30/7일 전 압축/벼락치기 모드 알림</div>
           </div>
         </label>
         <label style={{ display:`flex`, alignItems:`center`, gap:10, padding:`10px 14px`, cursor:`pointer` }}>
-          <input type=`checkbox` checked={autoGen} onChange={e => setAutoGen(e.target.checked)} />
+          <input type={`checkbox`} checked={autoGen} onChange={e => setAutoGen(e.target.checked)} />
           <div style={{ flex:1 }}>
             <div style={{ fontSize:12, fontWeight:600 }}>모의고사 리뷰 자동 생성</div>
             <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>모의고사 종료 후 1~7일 동안 리뷰 할 일 자동 추가</div>
@@ -4514,7 +4514,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
             <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10 }}>
               <div style={{ minWidth:0, flex:1 }}>
                 <div style={{ fontSize:12, fontWeight:600, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{user.displayName || `(이름 없음)`}</div>
-                <div className=`mono` style={{ fontSize:10, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{user.email}</div>
+                <div className={`mono`} style={{ fontSize:10, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{user.email}</div>
               </div>
               <button onClick={onLogout} style={{ background:C.bg, border:`1px solid ${C.line}`, color:C.muted, padding:`7px 12px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, gap:5, flexShrink:0 }}>
                 <LogOut size={12} /> 로그아웃
