@@ -43,7 +43,7 @@ if (FIREBASE_OK) {
 
 /* ============================================================ THEME & DATA ============================================================ */
 
-const FONT_IMPORT={`@import url(https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap);`};
+const FONT_IMPORT = `@import url(https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap);`;
 
 const C = {
   bg: `#F4EEE1`, paper: `#FBF7EC`, ink: `#1A1915`, muted: `#6B6558`,
@@ -408,7 +408,7 @@ function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
   const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
   const pad2 = n => (n < 10 ? `0` : ``) + n;
   const d = new Date();
-  const stamp={`${d.getUTCFullYear()}${pad2(d.getUTCMonth()+1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`};
+  const stamp = `${d.getUTCFullYear()}${pad2(d.getUTCMonth()+1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`;
   const dOnly = iso => iso.split(`-`).join(``);
   const esc = s => {
     let o = String(s == null ? `` : s);
@@ -430,7 +430,7 @@ function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
   return out.join(CRLF);
 }
 
-function downloadICS(content, filename={`변시일정.ics`}) {
+function downloadICS(content, filename=`변시일정.ics`) {
   const blob = new Blob([content], { type: `text/calendar;charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const a = document.createElement(`a`);
@@ -445,7 +445,7 @@ function loadXLSX() {
   if (_xlsxPromise) return _xlsxPromise;
   _xlsxPromise = new Promise((resolve, reject) => {
     const s = document.createElement(`script`);
-    s.src={`https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js`};
+    s.src=`https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js`;
     s.onload = () => resolve(window.XLSX);
     s.onerror = () => reject(new Error(`XLSX 로드 실패`));
     document.head.appendChild(s);
@@ -512,8 +512,8 @@ async function exportXLSX(state, filename) {
     const row = [d, dows[dt.getDay()]];
     TRACK_TYPES.forEach(tt => {
       const v = t[tt.key] || {};
-      let cell={``};
-      if (v.done) cell={`✓`};
+      let cell = ``;
+      if (v.done) cell=`✓`;
       if (v.text) cell = (cell ? cell + ` ` : ``) + v.text;
       row.push(cell);
     });
@@ -901,7 +901,7 @@ export default function App() {
       // 2) For each mock, place if sentinel missing
       (settings.mockExams || []).forEach(m => {
         const sentinelDate = m.end;
-        const sentinelMark={`__mockreview__${m.id}`};
+        const sentinelMark = `__mockreview__${m.id}`;
         const existing = next[sentinelDate] || [];
         if (existing.some(t => t.title === sentinelMark)) return;
         if (today < m.end) return;
@@ -923,7 +923,7 @@ export default function App() {
   useEffect(() => {
     if (!loaded || !settings.examDate || !checklists?.length) return;
     setTodos(prev => {
-      const currentSentinelMark={`__checklist_premium__${settings.examDate}`};
+      const currentSentinelMark = `__checklist_premium__${settings.examDate}`;
       let next = {};
       // 1) Remove all fromChecklist todos and old sentinels
       Object.keys(prev).forEach(date => {
@@ -1073,7 +1073,7 @@ VITE_FIREBASE_APP_ID`}</pre>
               const blob = new Blob([data], { type: `application/json` });
               const url = URL.createObjectURL(blob);
               const a = document.createElement(`a`);
-              a.href = url; a.download={`변시기록_${today}.json`}; a.click();
+              a.href = url; a.download=`변시기록_${today}.json`; a.click();
               URL.revokeObjectURL(url);
             }}
             onExportXLSX={async () => {
@@ -1606,7 +1606,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
             setMoods(prev => { const next = { ...prev }; delete next[today]; return next; });
           }
         }}
-        placeholder={`컨디션, 느낀점, 한줄메모 (예: 공동저당 어렵다, 노잼)`}
+        placeholder = `컨디션, 느낀점, 한줄메모 (예: 공동저당 어렵다, 노잼)`
         style={{
           width:`100%`, background:C.paper, border:`1px solid ${C.line}`,
           padding:`12px 14px`, fontSize:13, outline:`none`, marginBottom:22,
@@ -1873,7 +1873,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
     setSelected(today);
   }
 
-  const monthName={`${cursor.y}.${String(cursor.m + 1).padStart(2, `}0`)}`;
+  const monthName=`${cursor.y}.${String(cursor.m + 1).padStart(2, `0`)}`;
   const selDate = selected;
   const selLog = logs[selDate] || {};
   const selMinutes = Object.values(selLog).reduce((s, v) => s + (v || 0), 0);
@@ -1926,7 +1926,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
             새 일정 · {(pendingStart <= pendingEnd ? pendingStart : pendingEnd).slice(5).replace(`-`,`/`)} ~ {(pendingStart <= pendingEnd ? pendingEnd : pendingStart).slice(5).replace(`-`,`/`)}
           </div>
           <input value={draftTitle} onChange={e => setDraftTitle(e.target.value)} autoFocus
-            placeholder={`일정 제목 (예: 김영환 헌법 인강)`}
+            placeholder = `일정 제목 (예: 김영환 헌법 인강)`
             style={{ width:`100%`, background:`rgba(255,255,255,0.1)`, border:`none`, borderBottom:`1px solid rgba(255,255,255,0.3)`, color:`#fff`, padding:`7px 4px`, fontSize:13, marginBottom:10, outline:`none` }} />
           <div style={{ display:`flex`, gap:5, marginBottom:10, alignItems:`center` }}>
             <span style={{ fontSize:10, opacity:0.7, marginRight:4 }}>색</span>
@@ -2253,7 +2253,7 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
           onChange={e => setMoodLocal(e.target.value)}
           onBlur={() => setMood(moodLocal.trim())}
           onKeyDown={e => { if (e.key === `Enter`) e.target.blur(); }}
-          placeholder={`컨디션·느낀점 메모`}
+          placeholder = `컨디션·느낀점 메모`
           style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:12, outline:`none`, fontFamily:`Noto Serif KR, serif` }}
         />
       </div>
@@ -2296,7 +2296,7 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
 
         <div style={{ display:`flex`, gap:6 }}>
           <input value={newTodo} onChange={e => setNewTodo(e.target.value)} onKeyDown={e => { if (e.key === `Enter`) submit(); }}
-            placeholder={`할 일 추가`}
+            placeholder = `할 일 추가`
             style={{ flex:1, border:`1px solid ${C.line}`, background:C.bg, padding:`8px 10px`, fontSize:12, outline:`none` }} />
           <button onClick={submit} disabled={!newTodo.trim()} className={`lift`}
             style={{ background: newTodo.trim() ? C.accent : C.line, color:`#fff`, border:`none`, padding:`0 12px`, fontSize:12, cursor: newTodo.trim() ? `pointer` : `default`, display:`flex`, alignItems:`center` }}>
@@ -2406,7 +2406,7 @@ function TimerSection({ today, logs, setLogs }) {
   const hh = Math.floor(elapsedSec / 3600);
   const mm = Math.floor((elapsedSec % 3600) / 60);
   const ss = elapsedSec % 60;
-  const timeStr={`${String(hh).padStart(2, `}0`)}:${String(mm).padStart(2, `0`)}:${String(ss).padStart(2, `0`)}`;
+  const timeStr=`${String(hh).padStart(2, `0`)}:${String(mm).padStart(2, `0`)}:${String(ss).padStart(2, `0`)}`;
 
   const subjectColor = SUBJECTS[subject]?.color || C.ink;
 
@@ -2424,7 +2424,7 @@ function TimerSection({ today, logs, setLogs }) {
   }
   function stop(saveIt = true) {
     if (saveIt && startedAt) {
-      const key={`${subject}::${type}`};
+      const key = `${subject}::${type}`;
       const now = Date.now();
       const totalMin = Math.max(1, Math.round((now - startedAt) / 60000));
 
@@ -2612,7 +2612,7 @@ function TimeSection({ date, logs, setLogs, settings }) {
   const dl = logs[date] || {};
 
   function setMin(subj, type, val) {
-    const key={`${subj}::${type}`};
+    const key = `${subj}::${type}`;
     const next = { ...dl };
     if (val > 0) next[key] = val;
     else delete next[key];
@@ -2644,7 +2644,7 @@ function TimeSection({ date, logs, setLogs, settings }) {
               </div>
               <div style={{ display:`grid`, gridTemplateColumns:`repeat(2, 1fr)`, gap:6 }}>
                 {meta.types.map(t => {
-                  const key={`${sub}::${t.key}`};
+                  const key = `${sub}::${t.key}`;
                   return <TypeEntry key={key} label={t.label} value={dl[key] || 0} onChange={v => setMin(sub, t.key, v)} color={meta.color} />;
                 })}
               </div>
@@ -2759,13 +2759,13 @@ function ScoresSection({ date, examScores, setExamScores }) {
         <div style={{ display:`flex`, gap:5, marginBottom:6, alignItems:`stretch` }}>
           <div style={{ flex:1, display:`flex`, alignItems:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`0 8px` }}>
             <input value={round} onChange={e => setRound(e.target.value)} placeholder={`회차`}
-              type={`number`} inputMode={`numeric`}
+              type=`number` inputMode=`numeric`
               style={{ flex:1, background:`transparent`, border:`none`, outline:`none`, padding:`8px 0`, fontSize:12, fontFamily:`JetBrains Mono, monospace` }} />
             <span style={{ fontSize:10, color:C.muted }}>회</span>
           </div>
           <div style={{ flex:1.4, display:`flex`, alignItems:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`0 8px` }}>
             <input value={wrong} onChange={e => setWrong(e.target.value)}
-              placeholder={`틀린 개수`} type={`number`} inputMode={`numeric`} min={0} max={total}
+              placeholder=`틀린 개수` type=`number` inputMode=`numeric` min={0} max={total}
               style={{ flex:1, background:`transparent`, border:`none`, outline:`none`, padding:`8px 0`, fontSize:12, fontFamily:`JetBrains Mono, monospace`, color:C.accent, fontWeight:600 }} />
             <span style={{ fontSize:10, color:C.muted }}>/{total}</span>
           </div>
@@ -3014,7 +3014,7 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
 
 /* 객관식 3요소 × 7과목 매트릭스 — 최민하 합격수기 기반 권장 별점 */
 function McqMatrix({ today, mcqProgress, setMcqProgress }) {
-  const STAR_COLOR={`#D4A437`};
+  const STAR_COLOR = `#D4A437`;
   const [selected, setSelected] = useState(null); // { areaId, pillar }
 
   function k(areaId, pillar) { return `${areaId}__${pillar}`; }
@@ -3141,7 +3141,7 @@ function McqMatrix({ today, mcqProgress, setMcqProgress }) {
               <span style={{ fontSize:11, color:C.muted }}>목표 회독 (선택)</span>
               <input type={`number`} value={sel.cell.target || ``} min={0}
                 onChange={e => setCell(sel.area.id, sel.pillar, { target: parseInt(e.target.value) || 0 })}
-                placeholder={`0`}
+                placeholder = `0`
                 style={{ width:60, background:C.bg, border:`1px solid ${C.line}`, padding:`5px 8px`, fontSize:13, textAlign:`center`, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
             </div>
           </div>
@@ -3675,7 +3675,7 @@ function ChecklistView({ today, settings, checklists = [], setChecklists }) {
       {showAdd && (
         <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:12, marginBottom:12 }}>
           <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
-            placeholder={`카테고리 이름 (예: 공사례, 상법, 시험 직전)`}
+            placeholder = `카테고리 이름 (예: 공사례, 상법, 시험 직전)`
             style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
           <div style={{ display:`flex`, gap:6, marginBottom:8 }}>
             {Object.keys(SUBJECTS).map(s => (
@@ -3802,7 +3802,7 @@ function ChecklistDetail({ category, onAddItem, onDelItem, onUpdItem, onMoveItem
           <div style={{ display:`flex`, gap:6, marginBottom:6 }}>
             <input value={newText} onChange={e => setNewText(e.target.value)}
               onKeyDown={e => { if (e.key === `Enter`) submit(); }}
-              placeholder={`새 항목 (예: 공소시효 항변 검토)`}
+              placeholder = `새 항목 (예: 공소시효 항변 검토)`
               style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, fontSize:12, outline:`none` }} />
             <button onClick={submit}
               style={{ background:C.ink, color:`#fff`, border:`none`, padding:`0 14px`, fontSize:12, cursor:`pointer` }}>
@@ -3858,7 +3858,7 @@ function ChecklistItemRow({ item, idx, total, isEditing, onStartEdit, onCancelEd
     );
   }
 
-  const STAR_COLOR={`#D4A437`}; //
+  const STAR_COLOR = `#D4A437`; //
   const borderWidth = item.stars === 3 ? 4 : item.stars === 2 ? 3 : 2;
   return (
     <div style={{
@@ -4124,7 +4124,7 @@ function RoutineEditor({ routines, setRoutines }) {
   // Desktop drag handlers
   function onDragStart(e, id) {
     setDragId(id);
-    e.dataTransfer.effectAllowed={`move`};
+    e.dataTransfer.effectAllowed=`move`;
     try { e.dataTransfer.setData(`text/plain`, id); } catch {}
   }
   function onDragOver(e, id) {
@@ -4219,10 +4219,10 @@ function RoutineEditor({ routines, setRoutines }) {
             </div>
 
             <input value={r.icon || ``} onChange={e => updRoutine(r.id, { icon: e.target.value.slice(0, 2) })}
-              maxLength={2} placeholder={`🌅`}
+              maxLength={2} placeholder=`🌅`
               style={{ width:36, textAlign:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 4px`, fontSize:14, outline:`none` }} />
             <input value={r.name} onChange={e => updRoutine(r.id, { name: e.target.value })}
-              placeholder={`루틴 이름`}
+              placeholder = `루틴 이름`
               style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, fontSize:11, outline:`none` }} />
             <button onClick={() => delRoutine(r.id)}
               style={{ background:`none`, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, cursor:`pointer`, color:C.muted, flexShrink:0 }}>
