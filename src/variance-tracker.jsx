@@ -430,8 +430,8 @@ function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
   return out.join(CRLF);
 }
 
-function downloadICS(content, filename={`변시일정.ics`}) {
-  const blob = new Blob([content], { type: `text/calendar;charset=utf-8` });
+function downloadICS(content, filename = '변시일정.ics') {
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement(`a`);
   a.href = url; a.download = filename; a.click();
