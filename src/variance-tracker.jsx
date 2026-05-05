@@ -346,6 +346,10 @@ const DEFAULT_SETTINGS = {
     { id: `mock-2`, label: `모의고사 2차`, start: `2026-08-03`, end: `2026-08-07` },
     { id: `mock-3`, label: `모의고사 3차`, start: `2026-10-16`, end: `2026-10-20` },
   ],
+  d30Mode: true,
+  autoGenMockReview: true,
+  cycleEnabled: true, // 사이클(블록) 기능 사용 여부
+};
   d30Mode: true, //
   autoGenMockReview: true, //
 };
@@ -743,6 +747,7 @@ function nextMockExam(dateISO, settings) {
 
 /* Cycle: backward from each mock/exam */
 function getCycleInfo(dateISO, settings) {
+  if (settings.cycleEnabled === false) return null; // 사이클 기능 꺼짐
   const { cycleDefs, examDate, mockExams = [] } = settings;
   //
   if (examDate) {
@@ -909,6 +914,16 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [today, setToday] = useState(todayISO());
   const [syncStatus, setSyncStatus] = useState(`idle`); // idle | saving | saved | error
+  // ↓ [추가] 모바일 하단 탭 고정 및 줌 방지를 위한 뷰포트 강제 세팅
+  useEffect(() => {
+    let meta = document.querySelector(`meta[name="viewport"]`);
+    if (!meta) {
+      meta = document.createElement(`meta`);
+      meta.name = `viewport`;
+      document.head.appendChild(meta);
+    }
+    meta.content = `width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover`;
+  }, []);
 
   // Auth listener
   useEffect(() => {
@@ -919,7 +934,28 @@ export default function App() {
     const t = setInterval(() => setToday(todayISO()), 60000);
     return () => { unsub(); clearInterval(t); };
   }, []);
-
+const globalStyles = (
+    <>
+      <style>{FONT_IMPORT}</style>
+      <style>{`
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        /* ↓ 변경: html, body 마진/패딩 제거 및 모바일 바운스 방지 추가 */
+        html, body { margin: 0; padding: 0; overscroll-behavior-y: none; }
+        input, textarea, button, select { font-family: inherit; color: inherit; }
+        input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+        .serif { font-family: Fraunces, Noto Serif KR, serif; }
+        .kserif { font-family: Noto Serif KR, serif; }
+        .mono { font-family: JetBrains Mono, monospace; font-variant-numeric: tabular-nums; }
+        .fadeIn { animation: fade .35s ease both; }
+        @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+        .lift:active { transform: scale(0.98); }
+        .lift { transition: transform .15s ease; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { scrollbar-width: none; }
+      `}</style>
+    </>
+  );
   // Load when user is set
   useEffect(() => {
     if (!user) { setLoaded(false); return; }
@@ -1288,10 +1324,13 @@ function BottomNav({ view, setView }) {
   ];
   return (
     <nav style={{
-      position:`fixed`, left:0, right:0, bottom:0,
-      background:C.paper, borderTop:`1px solid ${C.line}`,
-      display:`grid`, gridTemplateColumns:`repeat(${items.length}, 1fr)`,
-      paddingBottom:`env(safe-area-inset-bottom)`, zIndex:10,
+      position: `fixed`, left: 0, right: 0, bottom: 0,
+      background: C.paper, borderTop: `1px solid ${C.line}`,
+      display: `grid`, gridTemplateColumns: `repeat(${items.length}, 1fr)`,
+      // ↓ 변경: 최하단 여백 및 iOS/모바일 렌더링 버그 고정 옵션
+      paddingBottom: `max(env(safe-area-inset-bottom, 0px), 8px)`,
+      zIndex: 9999,
+      WebkitTransform: `translateZ(0)`, 
     }}>
       {items.map(it => {
         const active = view === it.key;
@@ -4444,6 +4483,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
   const [mockExams, setMockExams] = useState(settings.mockExams || []);
   const [d30Mode, setD30Mode] = useState(settings.d30Mode);
   const [autoGen, setAutoGen] = useState(settings.autoGenMockReview);
+  const [cycleEnabled, setCycleEnabled] = useState(settings.cycleEnabled !== false);
 
   function save() {
     setSettings({
@@ -4454,6 +4494,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
       mockExams,
       d30Mode,
       autoGenMockReview: autoGen,
+      cycleEnabled, // 추가
     });
     alert(`저장되었습니다`);
   }
@@ -4653,11 +4694,20 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
             <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>시험 30/7일 전 압축/벼락치기 모드 알림</div>
           </div>
         </label>
-        <label style={{ display:`flex`, alignItems:`center`, gap:10, padding:`10px 14px`, cursor:`pointer` }}>
+        <label style={{ display:`flex`, alignItems:`center`, gap:10, padding:`10px 14px`, cursor:`pointer`, borderBottom:`1px dashed ${C.lineSoft}` }}>
           <input type={`checkbox`} checked={autoGen} onChange={e => setAutoGen(e.target.checked)} />
           <div style={{ flex:1 }}>
             <div style={{ fontSize:12, fontWeight:600 }}>모의고사 리뷰 자동 생성</div>
             <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>모의고사 종료 후 1~7일 동안 리뷰 할 일 자동 추가</div>
+          </div>
+        </label>
+        <label style={{ display:`flex`, alignItems:`center`, gap:10, padding:`10px 14px`, cursor:`pointer` }}>
+          <input type={`checkbox`} checked={cycleEnabled} onChange={e => setCycleEnabled(e.target.checked)} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:600 }}>사이클(블록) 기능 사용</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>
+              끄면 홈/캘린더에서 민→형→공 사이클 표시가 사라집니다. (사이클 정의는 그대로 보존)
+            </div>
           </div>
         </label>
       </div>
