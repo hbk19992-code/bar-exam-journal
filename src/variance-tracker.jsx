@@ -1072,28 +1072,6 @@ const globalStyles = (
 
   const dday = useMemo(() => daysDiff(today, settings.examDate), [today, settings.examDate]);
 
-  const globalStyles = (
-    <>
-      <style>{FONT_IMPORT}</style>
-      <style>{`
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; }
-        input, textarea, button, select { font-family: inherit; color: inherit; }
-        input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        input[type=number] { -moz-appearance: textfield; }
-        .serif { font-family: Fraunces, Noto Serif KR, serif; }
-        .kserif { font-family: Noto Serif KR, serif; }
-        .mono { font-family: JetBrains Mono, monospace; font-variant-numeric: tabular-nums; }
-        .fadeIn { animation: fade .35s ease both; }
-        @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-        .lift:active { transform: scale(0.98); }
-        .lift { transition: transform .15s ease; }
-        .hide-scroll::-webkit-scrollbar { display: none; }
-        .hide-scroll { scrollbar-width: none; }
-      `}</style>
-    </>
-  );
-
   if (!FIREBASE_OK) {
     return (
       <div style={{ minHeight:`100vh`, background:C.bg, display:`grid`, placeItems:`center`, padding:24, fontFamily:`Noto Sans KR, sans-serif` }}>
