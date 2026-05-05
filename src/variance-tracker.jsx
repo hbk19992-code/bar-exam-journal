@@ -349,7 +349,7 @@ const DEFAULT_SETTINGS = {
   d30Mode: true,
   autoGenMockReview: true,
   cycleEnabled: true, // 사이클(블록) 기능 사용 여부
-};
+
   d30Mode: true, //
   autoGenMockReview: true, //
 };
