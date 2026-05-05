@@ -4075,3 +4075,660 @@ function ChecklistItemRow({ item, idx, total, isEditing, onStartEdit, onCancelEd
           style={{ background:`none`, border:`none`, cursor: idx === 0 ? `default` : `pointer`, padding:`1px 4px`, color: idx === 0 ? C.lineSoft : C.muted, fontSize:9 }}>▲</button>
         <button onClick={onDown} disabled={idx === total - 1}
           style={{ background:`none`, border:`none`, cursor:저는 그렇게 하도록 프로그램되지 않았습니다.
+        <div style={{ display:`flex`, flexDirection:`column`, gap:1, flexShrink:0 }}>
+        <button onClick={onUp} disabled={idx === 0}
+          style={{ background:`none`, border:`none`, cursor: idx === 0 ? `default` : `pointer`, padding:`1px 4px`, color: idx === 0 ? C.lineSoft : C.muted, fontSize:9 }}>▲</button>
+        <button onClick={onDown} disabled={idx === total - 1}
+          style={{ background:`none`, border:`none`, cursor: idx === total - 1 ? `default` : `pointer`, padding:`1px 4px`, color: idx === total - 1 ? C.lineSoft : C.muted, fontSize:9 }}>▼</button>
+      </div>
+      <button onClick={onDelete}
+        style={{ background:`none`, border:`none`, cursor:`pointer`, padding:`2px`, color:C.muted, flexShrink:0 }}>
+        <X size={11} />
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================ REPORT (리포트) ============================================================ */
+
+function ReportView({ today, settings, logs, examScores, materials }) {
+  const weekStart = weekStartOf(today);
+  const wDates = weekDays(weekStart);
+
+  const weeklyBySubject = {};
+  Object.keys(SUBJECTS).forEach(s => { weeklyBySubject[s] = 0; });
+  wDates.forEach(d => {
+    const dl = logs[d] || {};
+    Object.entries(dl).forEach(([k, v]) => {
+      const [sub] = k.split(`::`);
+      if (weeklyBySubject[sub] !== undefined) weeklyBySubject[sub] += v || 0;
+    });
+  });
+
+  const weeklyData = Object.entries(weeklyBySubject).map(([sub, m]) => ({
+    name: SUBJECTS[sub].short,
+    fullName: sub,
+    minutes: m,
+    target: settings.weeklyTargets[sub] || 0,
+    color: SUBJECTS[sub].color,
+  }));
+
+  // last 14 days (daily totals)
+  const dailyData = useMemo(() => {
+    const arr = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = addDays(today, -i);
+      const dl = logs[d] || {};
+      const total = Object.values(dl).reduce((s, t) => s + (t || 0), 0);
+      arr.push({ date: d.slice(5).replace(`-`, `/`), minutes: total, hours: Math.round(total/60*10)/10 });
+    }
+    return arr;
+  }, [today, logs]);
+
+  // breakdown by type (since beginning) per subject
+  const typeBreakdown = useMemo(() => {
+    const out = {};
+    Object.keys(SUBJECTS).forEach(s => { out[s] = {}; });
+    Object.values(logs).forEach(dl => {
+      Object.entries(dl).forEach(([k, v]) => {
+        const [sub, type] = k.split(`::`);
+        if (out[sub]) out[sub][type] = (out[sub][type] || 0) + (v || 0);
+      });
+    });
+    return out;
+  }, [logs]);
+
+  // total study time
+  const allMin = Object.values(logs).reduce((s, dl) => s + Object.values(dl).reduce((a,b) => a+b, 0), 0);
+  const studyDays = Object.keys(logs).length;
+  const avgPerDay = studyDays > 0 ? allMin / studyDays : 0;
+
+  // mock score average per subject
+  const mockAvg = useMemo(() => {
+    const out = {};
+    Object.keys(SUBJECTS).filter(s => s !== `선택법`).forEach(s => {
+      const subScores = examScores.filter(es => es.subject === s);
+      if (subScores.length === 0) { out[s] = null; return; }
+      const avg = subScores.reduce((a,b) => a + b.wrong, 0) / subScores.length;
+      out[s] = { avg: Math.round(avg * 10) / 10, count: subScores.length };
+    });
+    return out;
+  }, [examScores]);
+
+  return (
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
+      <div style={{ marginBottom:16 }}>
+        <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>리포트</h1>
+        <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>
+          총 학습일 {studyDays}일 · 누적 {fmtHour(allMin)} · 일평균 {fmtHour(avgPerDay)}
+        </div>
+      </div>
+
+      {/* Weekly progress */}
+      <SectionTitle>주간 목표 (이번 주)</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`14px 14px`, marginBottom:18 }}>
+        {weeklyData.map(w => {
+          const pct = w.target > 0 ? Math.min(100, (w.minutes / w.target) * 100) : 0;
+          return (
+            <div key={w.fullName} style={{ marginBottom:10 }}>
+              <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, marginBottom:4 }}>
+                <span className={`kserif`} style={{ fontSize:12, fontWeight:600, color:w.color }}>{w.fullName}</span>
+                <span className={`mono`} style={{ fontSize:10, color:C.muted }}>
+                  {fmtHour(w.minutes)} / {fmtHour(w.target)}
+                </span>
+              </div>
+              <div style={{ height:4, background:C.lineSoft, position:`relative` }}>
+                <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background: pct >= 100 ? C.good : w.color }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Daily 14-day trend */}
+      <SectionTitle>최근 14일 학습 시간</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`14px 8px 10px`, marginBottom:18 }}>
+        <ResponsiveContainer width={`100%`} height={160}>
+          <BarChart data={dailyData} margin={{ top:5, right:5, bottom:0, left:-20 }}>
+            <CartesianGrid stroke={C.lineSoft} strokeDasharray={`3 3`} />
+            <XAxis dataKey={`date`} tick={{ fontSize:9, fill:C.muted }} interval={1} />
+            <YAxis tick={{ fontSize:9, fill:C.muted }} />
+            <Tooltip contentStyle={{ background:C.paper, border:`1px solid ${C.line}`, fontSize:11 }} formatter={v => fmtMin(v)} />
+            <Bar dataKey={`minutes`} fill={C.accent} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Mock score averages */}
+      {Object.values(mockAvg).some(v => v) && (
+        <>
+          <SectionTitle>객관식 평균 (전체 기록 기준)</SectionTitle>
+          <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, 1fr)`, gap:6, marginBottom:18 }}>
+            {Object.entries(mockAvg).map(([sub, m]) => (
+              <div key={sub} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 8px`, textAlign:`center` }}>
+                <div className={`kserif`} style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</div>
+                {m ? (
+                  <>
+                    <div className={`serif`} style={{ fontSize:20, fontWeight:600, marginTop:3 }}>-{m.avg}</div>
+                    <div className={`mono`} style={{ fontSize:9, color:C.muted, marginTop:1 }}>{m.count}회 평균</div>
+                  </>
+                ) : (
+                  <div style={{ fontSize:10, color:C.muted, marginTop:6 }}>기록 없음</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Type breakdown per subject */}
+      <SectionTitle>과목별 유형 분포 (누적)</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`8px 14px`, marginBottom:18 }}>
+        {Object.keys(SUBJECTS).map(sub => {
+          const types = typeBreakdown[sub] || {};
+          const total = Object.values(types).reduce((a,b) => a+b, 0);
+          if (total === 0) return (
+            <div key={sub} style={{ padding:`10px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
+              <span className={`kserif`} style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+              <span style={{ fontSize:10, color:C.muted, marginLeft:8 }}>기록 없음</span>
+            </div>
+          );
+          return (
+            <div key={sub} style={{ padding:`10px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
+              <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, marginBottom:6 }}>
+                <span className={`kserif`} style={{ fontSize:11, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+                <span className={`mono`} style={{ fontSize:10, color:C.muted }}>{fmtHour(total)}</span>
+              </div>
+              <div style={{ display:`flex`, height:6, background:C.lineSoft, overflow:`hidden` }}>
+                {SUBJECTS[sub].types.map((t, i) => {
+                  const v = types[t.key] || 0;
+                  const pct = (v / total) * 100;
+                  if (pct === 0) return null;
+                  const tColor = SUBJECTS[sub].color;
+                  const opacity = 0.4 + (i / SUBJECTS[sub].types.length) * 0.6;
+                  return <div key={t.key} style={{ width:`${pct}%`, background: tColor, opacity, transition:`all .3s` }} title={`${t.label} ${fmtMin(v)}`} />;
+                })}
+              </div>
+              <div style={{ display:`flex`, flexWrap:`wrap`, gap:8, marginTop:5, fontSize:9, color:C.muted }}>
+                {SUBJECTS[sub].types.map(t => {
+                  const v = types[t.key] || 0;
+                  if (v === 0) return null;
+                  return <span key={t.key}>{t.label} <span className={`mono`} style={{ color:C.ink }}>{fmtMin(v)}</span></span>;
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Materials progress summary */}
+      {materials.length > 0 && (
+        <>
+          <SectionTitle>자료 회독 현황</SectionTitle>
+          <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`8px 14px`, marginBottom:18 }}>
+            {Object.keys(SUBJECTS).map(sub => {
+              const ms = materials.filter(m => m.subject === sub);
+              if (ms.length === 0) return null;
+              const totalRounds = ms.reduce((s,m) => s + m.rounds, 0);
+              const totalTarget = ms.reduce((s,m) => s + m.target, 0);
+              const completed = ms.filter(m => m.rounds >= m.target).length;
+              return (
+                <div key={sub} style={{ padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}`, display:`flex`, justifyContent:`space-between`, alignItems:`baseline` }}>
+                  <span className={`kserif`} style={{ fontSize:12, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+                  <span className={`mono`} style={{ fontSize:10, color:C.muted }}>
+                    완료 {completed}/{ms.length} · 누적 {totalRounds}/{totalTarget}회
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================ SETTINGS ============================================================ */
+
+/* RoutineEditor — 드래그(누르고 끌기) + ▲▼ 버튼 동시 지원 */
+function RoutineEditor({ routines, setRoutines }) {
+  const sorted = [...routines].sort((a, b) => (a.order || 0) - (b.order || 0));
+  const [dragId, setDragId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+  const [touchY, setTouchY] = useState(0);
+  const itemRefs = useRef({});
+
+  function reorder(fromIdx, toIdx) {
+    if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= sorted.length || toIdx >= sorted.length) return;
+    const next = [...sorted];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    // order 재할당
+    const reordered = next.map((r, i) => ({ ...r, order: i + 1 }));
+    setRoutines(reordered);
+  }
+
+  function moveBy(routineId, delta) {
+    const idx = sorted.findIndex(r => r.id === routineId);
+    reorder(idx, idx + delta);
+  }
+
+  function updRoutine(id, patch) {
+    setRoutines(routines.map(r => r.id === id ? { ...r, ...patch } : r));
+  }
+  function delRoutine(id) {
+    setRoutines(routines.filter(r => r.id !== id));
+  }
+  function addRoutine() {
+    setRoutines([...routines, { id: uid(), name: `새 루틴`, icon: `✓`, order: (routines.length || 0) + 1 }]);
+  }
+
+  // Desktop drag handlers
+  function onDragStart(e, id) {
+    setDragId(id);
+    e.dataTransfer.effectAllowed=`move`;
+    try { e.dataTransfer.setData(`text/plain`, id); } catch {}
+  }
+  function onDragOver(e, id) {
+    e.preventDefault();
+    if (id !== dragOverId) setDragOverId(id);
+  }
+  function onDragEnd() {
+    if (dragId && dragOverId && dragId !== dragOverId) {
+      const fromIdx = sorted.findIndex(r => r.id === dragId);
+      const toIdx = sorted.findIndex(r => r.id === dragOverId);
+      reorder(fromIdx, toIdx);
+    }
+    setDragId(null);
+    setDragOverId(null);
+  }
+
+  // Touch drag handlers (mobile)
+  function onTouchStart(e, id) {
+    setDragId(id);
+    setTouchY(e.touches[0].clientY);
+  }
+  function onTouchMove(e, id) {
+    if (!dragId) return;
+    const y = e.touches[0].clientY;
+    setTouchY(y);
+    // Find which item the finger is over
+    let overId = null;
+    for (const r of sorted) {
+      const el = itemRefs.current[r.id];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom) {
+        overId = r.id;
+        break;
+      }
+    }
+    if (overId && overId !== dragOverId) setDragOverId(overId);
+  }
+  function onTouchEnd() {
+    if (dragId && dragOverId && dragId !== dragOverId) {
+      const fromIdx = sorted.findIndex(r => r.id === dragId);
+      const toIdx = sorted.findIndex(r => r.id === dragOverId);
+      reorder(fromIdx, toIdx);
+    }
+    setDragId(null);
+    setDragOverId(null);
+  }
+
+  return (
+    <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+      <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
+        매일 지키고 싶은 생활 루틴(기상·식사·취침 등). 왼쪽 손잡이를 <b>꾹 누르고 위아래로 끌면</b> 순서를 바꿀 수 있어요. ▲▼ 버튼도 가능합니다.
+      </div>
+      {sorted.map((r, idx) => {
+        const isDragging = dragId === r.id;
+        const isOver = dragOverId === r.id && dragId !== r.id;
+        return (
+          <div key={r.id}
+            ref={el => { itemRefs.current[r.id] = el; }}
+            style={{
+              display:`flex`, gap:6, marginBottom:6, alignItems:`center`,
+              opacity: isDragging ? 0.5 : 1,
+              background: isOver ? `#F4EAD0` : `transparent`,
+              border: isOver ? `1px dashed ${C.accent}` : `1px solid transparent`,
+              padding: isOver ? `4px` : `5px`,
+              transition: `background .12s ease`,
+            }}>
+            {/* 드래그 손잡이 */}
+            <div
+              draggable
+              onDragStart={(e) => onDragStart(e, r.id)}
+              onDragOver={(e) => onDragOver(e, r.id)}
+              onDragEnd={onDragEnd}
+              onTouchStart={(e) => onTouchStart(e, r.id)}
+              onTouchMove={(e) => onTouchMove(e, r.id)}
+              onTouchEnd={onTouchEnd}
+              style={{
+                cursor: `grab`, touchAction: `none`, flexShrink: 0,
+                width: 24, height: 30, display: `grid`, placeItems: `center`,
+                color: C.muted, fontSize: 14, lineHeight: 1, userSelect: `none`,
+                background: isDragging ? C.lineSoft : `transparent`,
+              }}>
+              ⋮⋮
+            </div>
+
+            {/* 위/아래 버튼 */}
+            <div style={{ display:`flex`, flexDirection:`column`, gap:1, flexShrink:0 }}>
+              <button onClick={() => moveBy(r.id, -1)} disabled={idx === 0}
+                style={{ background:`none`, border:`none`, cursor: idx === 0 ? `default` : `pointer`, padding:`1px 4px`, color: idx === 0 ? C.lineSoft : C.muted, fontSize:9, lineHeight:1 }}>▲</button>
+              <button onClick={() => moveBy(r.id, 1)} disabled={idx === sorted.length - 1}
+                style={{ background:`none`, border:`none`, cursor: idx === sorted.length - 1 ? `default` : `pointer`, padding:`1px 4px`, color: idx === sorted.length - 1 ? C.lineSoft : C.muted, fontSize:9, lineHeight:1 }}>▼</button>
+            </div>
+
+            <input value={r.icon || ``} onChange={e => updRoutine(r.id, { icon: e.target.value.slice(0, 2) })}
+              maxLength={2} placeholder={`🌅`}
+              style={{ width:36, textAlign:`center`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 4px`, fontSize:14, outline:`none` }} />
+            <input value={r.name} onChange={e => updRoutine(r.id, { name: e.target.value })}
+              placeholder={`루틴 이름`}
+              style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, fontSize:11, outline:`none` }} />
+            <button onClick={() => delRoutine(r.id)}
+              style={{ background:`none`, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, cursor:`pointer`, color:C.muted, flexShrink:0 }}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+        );
+      })}
+      <button onClick={addRoutine}
+        style={{ width:`100%`, background:C.bg, border:`1px dashed ${C.line}`, padding:`8px`, cursor:`pointer`, fontSize:11, color:C.muted, marginTop:6 }}>
+        + 루틴 추가
+      </button>
+    </div>
+  );
+}
+
+function SettingsView({ settings, setSettings, schedules = [], setSchedules, routines = [], setRoutines, user, onLogout, onReset, onExport, onExportXLSX }) {
+  const [examDate, setExamDate] = useState(settings.examDate);
+  const [examLabel, setExamLabel] = useState(settings.examLabel);
+  const [targets, setTargets] = useState(settings.weeklyTargets);
+  const [cycleDefs, setCycleDefs] = useState(settings.cycleDefs);
+  const [mockExams, setMockExams] = useState(settings.mockExams || []);
+  const [d30Mode, setD30Mode] = useState(settings.d30Mode);
+  const [autoGen, setAutoGen] = useState(settings.autoGenMockReview);
+
+  function save() {
+    setSettings({
+      ...settings,
+      examDate, examLabel,
+      weeklyTargets: targets,
+      cycleDefs,
+      mockExams,
+      d30Mode,
+      autoGenMockReview: autoGen,
+    });
+    alert(`저장되었습니다`);
+  }
+
+  function updCycleBlock(cycleId, blockIdx, days) {
+    setCycleDefs(cycleDefs.map(c => c.id === cycleId ? {
+      ...c, blocks: c.blocks.map((b, i) => i === blockIdx ? { ...b, days: parseInt(days) || 1 } : b),
+    } : c));
+  }
+
+  function addMock() {
+    setMockExams([...mockExams, { id: uid(), label: `모의고사 ${mockExams.length + 1}`, start: examDate, end: examDate }]);
+  }
+  function updMock(id, field, val) {
+    setMockExams(mockExams.map(m => m.id === id ? { ...m, [field]: val } : m));
+  }
+  function delMock(id) {
+    setMockExams(mockExams.filter(m => m.id !== id));
+  }
+
+  function addSchedule() {
+    if (!setSchedules) return;
+    setSchedules([...(schedules || []), {
+      id: uid(), title: `새 일정`, color: SCHEDULE_PALETTE[0],
+      start: todayISO(), end: addDays(todayISO(), 7),
+    }]);
+  }
+  function updSchedule(id, field, val) {
+    if (!setSchedules) return;
+    setSchedules((schedules || []).map(s => s.id === id ? { ...s, [field]: val } : s));
+  }
+  function delSchedule(id) {
+    if (!setSchedules) return;
+    setSchedules((schedules || []).filter(s => s.id !== id));
+  }
+  const palette = SCHEDULE_PALETTE;
+
+  return (
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
+      <div style={{ marginBottom:14 }}>
+        <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>설정</h1>
+      </div>
+
+      <SectionTitle>시험</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        <label style={{ display:`block`, fontSize:11, color:C.muted, marginBottom:4 }}>시험 이름</label>
+        <input value={examLabel} onChange={e => setExamLabel(e.target.value)}
+          style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:10, outline:`none` }} />
+        <label style={{ display:`block`, fontSize:11, color:C.muted, marginBottom:4 }}>시험 날짜</label>
+        <input type={`date`} value={examDate} onChange={e => setExamDate(e.target.value)}
+          style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, outline:`none` }} />
+      </div>
+
+      <SectionTitle>모의고사 일정</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        {mockExams.map(m => (
+          <div key={m.id} style={{ marginBottom:10, paddingBottom:10, borderBottom:`1px dashed ${C.lineSoft}` }}>
+            <div style={{ display:`flex`, gap:6, marginBottom:5 }}>
+              <input value={m.label} onChange={e => updMock(m.id, `label`, e.target.value)}
+                style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, fontSize:11, outline:`none` }} />
+              <button onClick={() => delMock(m.id)} style={{ background:`none`, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, cursor:`pointer`, color:C.muted }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+            <div style={{ display:`flex`, gap:6 }}>
+              <input type={`date`} value={m.start} onChange={e => updMock(m.id, `start`, e.target.value)}
+                style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:11, outline:`none` }} />
+              <span style={{ alignSelf:`center`, color:C.muted, fontSize:11 }}>~</span>
+              <input type={`date`} value={m.end} onChange={e => updMock(m.id, `end`, e.target.value)}
+                style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:11, outline:`none` }} />
+            </div>
+          </div>
+        ))}
+        <button onClick={addMock} style={{ width:`100%`, background:C.bg, border:`1px dashed ${C.line}`, padding:`8px`, cursor:`pointer`, fontSize:11, color:C.muted }}>
+          + 모의고사 추가
+        </button>
+      </div>
+
+      <SectionTitle>장기 일정 (캘린더 막대)</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
+          인강 수강, 특정 자료 회독 같은 며칠~몇 주짜리 일정을 캘린더에 막대로 표시합니다.
+        </div>
+        {(schedules || []).map(s => (
+          <div key={s.id} style={{ marginBottom:10, paddingBottom:10, borderBottom:`1px dashed ${C.lineSoft}` }}>
+            <div style={{ display:`flex`, gap:6, marginBottom:6 }}>
+              <input value={s.title} onChange={e => updSchedule(s.id, `title`, e.target.value)}
+                style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, fontSize:11, outline:`none` }} />
+              <button onClick={() => delSchedule(s.id)} style={{ background:`none`, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, cursor:`pointer`, color:C.muted }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+            <div style={{ display:`flex`, gap:6, marginBottom:6 }}>
+              <input type={`date`} value={s.start} onChange={e => updSchedule(s.id, `start`, e.target.value)}
+                style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:11, outline:`none` }} />
+              <span style={{ alignSelf:`center`, color:C.muted, fontSize:11 }}>~</span>
+              <input type={`date`} value={s.end} onChange={e => updSchedule(s.id, `end`, e.target.value)}
+                style={{ flex:1, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:11, outline:`none` }} />
+            </div>
+            <div style={{ display:`flex`, gap:5, alignItems:`center` }}>
+              <span style={{ fontSize:10, color:C.muted, marginRight:4 }}>색</span>
+              {palette.map(c => (
+                <button key={c} onClick={() => updSchedule(s.id, `color`, c)}
+                  style={{
+                    width:18, height:18, background:c, cursor:`pointer`,
+                    border: s.color === c ? `2px solid ${C.ink}` : `1px solid transparent`,
+                    padding:0,
+                  }} />
+              ))}
+            </div>
+          </div>
+        ))}
+        <button onClick={addSchedule} style={{ width:`100%`, background:C.bg, border:`1px dashed ${C.line}`, padding:`8px`, cursor:`pointer`, fontSize:11, color:C.muted }}>
+          + 일정 추가
+        </button>
+      </div>
+
+      <SectionTitle>사이클 (블록 일수)</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 }}>
+          순서: 민사법(+선택법) → 형사법 → 공법<br/>
+          각 모의고사 / 본시험 직전부터 거꾸로 깔립니다.
+        </div>
+        {cycleDefs.map(c => (
+          <div key={c.id} style={{ marginBottom:12 }}>
+            <div className={`kserif`} style={{ fontSize:12, fontWeight:600, marginBottom:6 }}>{c.label}</div>
+            <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, 1fr)`, gap:6 }}>
+              {c.blocks.map((b, i) => (
+                <div key={i} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px` }}>
+                  <div style={{ fontSize:10, color:SUBJECTS[b.subject].color, fontWeight:600, marginBottom:3 }}>{b.subject}</div>
+                  <div style={{ display:`flex`, alignItems:`center`, gap:4 }}>
+                    <input type={`number`} value={b.days} onChange={e => updCycleBlock(c.id, i, e.target.value)} min={1}
+                      style={{ width:`100%`, background:`transparent`, border:`none`, fontSize:14, fontWeight:600, color:C.ink, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
+                    <span style={{ fontSize:10, color:C.muted }}>일</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <SectionTitle>주간 학습 시간 목표</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
+          시간(h) 단위로 입력하세요. ± 버튼은 30분씩 증감.
+        </div>
+        {Object.keys(SUBJECTS).map(sub => {
+          const min = targets[sub] || 0;
+          const hours = (min / 60).toFixed(1).replace(/\.0$/, ``);
+          return (
+            <div key={sub} style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, marginBottom:10, paddingBottom:10, borderBottom:`1px dashed ${C.lineSoft}` }}>
+              <div style={{ flex:1 }}>
+                <span className={`kserif`} style={{ fontSize:13, fontWeight:600, color:SUBJECTS[sub].color }}>{sub}</span>
+                <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>일평균 약 {fmtMin(Math.round(min / 7))}</div>
+              </div>
+              <div style={{ display:`flex`, alignItems:`center`, gap:4 }}>
+                <button onClick={() => setTargets({ ...targets, [sub]: Math.max(0, min - 30) })}
+                  style={{ background:C.bg, border:`1px solid ${C.line}`, width:28, height:28, cursor:`pointer`, display:`grid`, placeItems:`center`, color:C.muted }}>
+                  <Minus size={12} />
+                </button>
+                <div style={{ display:`flex`, alignItems:`baseline`, gap:3, minWidth:64, justifyContent:`center`, padding:`4px 6px`, background:C.bg, border:`1px solid ${C.line}` }}>
+                  <input type={`number`} inputMode={`decimal`} value={hours}
+                    onChange={e => {
+                      const h = parseFloat(e.target.value) || 0;
+                      setTargets({ ...targets, [sub]: Math.round(h * 60) });
+                    }}
+                    style={{ width:36, textAlign:`right`, background:`transparent`, border:`none`, outline:`none`, fontSize:14, fontWeight:700, color:SUBJECTS[sub].color, fontFamily:`JetBrains Mono, monospace` }} />
+                  <span style={{ fontSize:10, color:C.muted }}>h</span>
+                </div>
+                <button onClick={() => setTargets({ ...targets, [sub]: min + 30 })}
+                  style={{ background:C.bg, border:`1px solid ${C.line}`, width:28, height:28, cursor:`pointer`, display:`grid`, placeItems:`center`, color:C.muted }}>
+                  <Plus size={12} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, paddingTop:6 }}>
+          <span className={`kserif`} style={{ fontSize:12, fontWeight:600, color:C.ink }}>총 주간 목표</span>
+          <span className={`mono`} style={{ fontSize:14, fontWeight:600, color:C.accent }}>
+            {fmtHour(Object.values(targets).reduce((a,b) => a + (b || 0), 0))}
+            <span style={{ fontSize:10, color:C.muted, marginLeft:6 }}>일평균 {fmtHour(Object.values(targets).reduce((a,b) => a + (b || 0), 0) / 7)}</span>
+          </span>
+        </div>
+      </div>
+
+      <SectionTitle>루틴 (생활 패턴)</SectionTitle>
+      <RoutineEditor routines={routines || []} setRoutines={setRoutines} />
+
+      <SectionTitle>자동화</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`4px 0`, marginBottom:18 }}>
+        <label style={{ display:`flex`, alignItems:`center`, gap:10, padding:`10px 14px`, cursor:`pointer`, borderBottom:`1px dashed ${C.lineSoft}` }}>
+          <input type={`checkbox`} checked={d30Mode} onChange={e => setD30Mode(e.target.checked)} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:600 }}>D-30/D-7 모드 배너</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>시험 30/7일 전 압축/벼락치기 모드 알림</div>
+          </div>
+        </label>
+        <label style={{ display:`flex`, alignItems:`center`, gap:10, padding:`10px 14px`, cursor:`pointer` }}>
+          <input type={`checkbox`} checked={autoGen} onChange={e => setAutoGen(e.target.checked)} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:600 }}>모의고사 리뷰 자동 생성</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>모의고사 종료 후 1~7일 동안 리뷰 할 일 자동 추가</div>
+          </div>
+        </label>
+      </div>
+
+      <button onClick={save} style={{ width:`100%`, background:C.ink, color:`#fff`, border:`none`, padding:`12px`, cursor:`pointer`, fontSize:13, marginBottom:14, fontWeight:600 }}>
+        저장하기
+      </button>
+
+      <SectionTitle>캘린더 동기화</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`14px 14px`, marginBottom:18 }}>
+        <div style={{ fontSize:11, color:C.muted, lineHeight:1.7, marginBottom:10 }}>
+          본시험·모의고사·내가 추가한 모든 일정을 .ics 파일로 받아서 애플 캘린더에 추가할 수 있습니다.
+          <br />아이폰: 다운로드된 파일 탭 → `캘린더에 추가`. 구글 캘린더에도 같은 방식으로 가져오기 가능합니다.
+        </div>
+        <button onClick={() => {
+          const ics = buildICS({
+            examDate, examLabel,
+            mockExams,
+            schedules: schedules || [],
+          });
+          downloadICS(ics, `변시일정_${examDate.replaceAll( `-`, ``)}.ics`);
+        }}
+          style={{ width:`100%`, background:C.ink, color:`#fff`, border:`none`, padding:`11px`, cursor:`pointer`, fontSize:12, fontWeight:600, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:6 }}>
+          <CalendarIcon size={13} /> .ics 파일 받기 (애플/구글 캘린더)
+        </button>
+      </div>
+
+      <SectionTitle>데이터</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        <button onClick={onExportXLSX}
+          style={{ width:`100%`, background:`#1F6B3F`, color:`#fff`, border:`none`, padding:`12px`, cursor:`pointer`, fontSize:13, fontWeight:600, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:6, marginBottom:8 }}>
+          <Sheet size={14} /> 엑셀(.xlsx)로 내보내기
+        </button>
+        <div style={{ fontSize:10, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
+          요약 / 학습시간 / 5트랙 / 회차점수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 — 9개 시트로 정리됩니다.
+        </div>
+        <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr`, gap:8 }}>
+          <button onClick={onExport} style={{ background:C.bg, border:`1px solid ${C.line}`, padding:`10px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5 }}>
+            <Download size={13} /> JSON 백업
+          </button>
+          <button onClick={onReset} style={{ background:C.bg, border:`1px solid ${C.accent}`, color:C.accent, padding:`10px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5 }}>
+            <RefreshCw size={13} /> 전체 초기화
+          </button>
+        </div>
+      </div>
+
+      {user && (
+        <>
+          <SectionTitle>계정</SectionTitle>
+          <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px`, marginBottom:18 }}>
+            <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10 }}>
+              <div style={{ minWidth:0, flex:1 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{user.displayName || `(이름 없음)`}</div>
+                <div className={`mono`} style={{ fontSize:10, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{user.email}</div>
+              </div>
+              <button onClick={onLogout} style={{ background:C.bg, border:`1px solid ${C.line}`, color:C.muted, padding:`7px 12px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, gap:5, flexShrink:0 }}>
+                <LogOut size={12} /> 로그아웃
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div style={{ textAlign:`center`, fontSize:10, color:C.muted, marginTop:30, fontStyle:`italic` }}>
+        Bar Exam Journal · 16회 변시
+      </div>
+    </div>
+  );
+}
