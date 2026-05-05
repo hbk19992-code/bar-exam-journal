@@ -4074,11 +4074,6 @@ function ChecklistItemRow({ item, idx, total, isEditing, onStartEdit, onCancelEd
         <button onClick={onUp} disabled={idx === 0}
           style={{ background:`none`, border:`none`, cursor: idx === 0 ? `default` : `pointer`, padding:`1px 4px`, color: idx === 0 ? C.lineSoft : C.muted, fontSize:9 }}>▲</button>
         <button onClick={onDown} disabled={idx === total - 1}
-          style={{ background:`none`, border:`none`, cursor:저는 그렇게 하도록 프로그램되지 않았습니다.
-        <div style={{ display:`flex`, flexDirection:`column`, gap:1, flexShrink:0 }}>
-        <button onClick={onUp} disabled={idx === 0}
-          style={{ background:`none`, border:`none`, cursor: idx === 0 ? `default` : `pointer`, padding:`1px 4px`, color: idx === 0 ? C.lineSoft : C.muted, fontSize:9 }}>▲</button>
-        <button onClick={onDown} disabled={idx === total - 1}
           style={{ background:`none`, border:`none`, cursor: idx === total - 1 ? `default` : `pointer`, padding:`1px 4px`, color: idx === total - 1 ? C.lineSoft : C.muted, fontSize:9 }}>▼</button>
       </div>
       <button onClick={onDelete}
