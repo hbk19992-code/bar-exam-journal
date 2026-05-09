@@ -874,11 +874,7 @@ async function loadStateFromFirestore(uid) {
     routineLog: d.routineLog || {},
     weeklyPlans: d.weeklyPlans || {},
   };
-  } catch (e) {
-    console.error(`[loadState]`, e);
-    return { ...DEFAULT_STATE };
-  }
-}
+} // <-- 딱 여기서 함수가 끝나야 합니다. 밑에 catch 블록이 남아있으면 안 됩니다!
 
 async function saveStateToFirestore(uid, partial) {
   try {
