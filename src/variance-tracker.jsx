@@ -845,34 +845,35 @@ const DEFAULT_STATE = {
 };
 
 async function loadStateFromFirestore(uid) {
-  try {
-    const ref = doc(fbDB, `users`, uid);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return { ...DEFAULT_STATE };
-    const d = snap.data() || {};
-    return {
-      settings: {
-        ...DEFAULT_SETTINGS, ...(d.settings || {}),
-        weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
-        cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
-        mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
-      },
-      logs: d.logs || {},
-      reviews: d.reviews || [],
-      books: d.books || [],
-      todos: d.todos || {},
-      tracks: d.tracks || {},
-      materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
-      materialLog: d.materialLog || {},
-      examScores: d.examScores || [],
-      moods: d.moods || {},
-      schedules: d.schedules || [],
-      checklists: (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS,
-      mcqProgress: d.mcqProgress || {},
-      routines: (d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES,
-      routineLog: d.routineLog || {},
-      weeklyPlans: d.weeklyPlans || {},
-    };
+  const ref = doc(fbDB, `users`, uid);
+  const snap = await getDoc(ref);
+  
+  if (!snap.exists()) return { ...DEFAULT_STATE, _isNew: true };
+  
+  const d = snap.data() || {};
+  return {
+    settings: {
+      ...DEFAULT_SETTINGS, ...(d.settings || {}),
+      weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
+      cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
+      mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
+    },
+    logs: d.logs || {},
+    reviews: d.reviews || [],
+    books: d.books || [],
+    todos: d.todos || {},
+    tracks: d.tracks || {},
+    materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
+    materialLog: d.materialLog || {},
+    examScores: d.examScores || [],
+    moods: d.moods || {},
+    schedules: d.schedules || [],
+    checklists: (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS,
+    mcqProgress: d.mcqProgress || {},
+    routines: (d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES,
+    routineLog: d.routineLog || {},
+    weeklyPlans: d.weeklyPlans || {},
+  };
   } catch (e) {
     console.error(`[loadState]`, e);
     return { ...DEFAULT_STATE };
@@ -956,37 +957,76 @@ const globalStyles = (
       `}</style>
     </>
   );
-  // Load when user is set
+  // [추가] 내가 방금 보낸 저장 요청이 돌아오는 것을 무시하기 위한 플래그
+  const saveInFlightRef = useRef(false);
+
+  // Load when user is set (onSnapshot 실시간 동기화로 교체)
   useEffect(() => {
     if (!user) { setLoaded(false); return; }
     setLoaded(false);
-    const fallback = setTimeout(() => {
-      console.warn(`[sync] timeout fallback`);
-      setLoaded(true);
-    }, 5000);
-    loadStateFromFirestore(user.uid).then(s => {
-      setSettings(s.settings); setLogs(s.logs); setReviews(s.reviews); setBooks(s.books);
-      setTodos(s.todos); setTracks(s.tracks); setMaterials(s.materials);
-      setMaterialLog(s.materialLog); setExamScores(s.examScores); setMoods(s.moods);
-      setSchedules(s.schedules);
-      setChecklists(s.checklists || DEFAULT_CHECKLISTS);
-      setMcqProgress(s.mcqProgress || {});
-      setRoutines(s.routines || DEFAULT_ROUTINES);
-      setRoutineLog(s.routineLog || {});
-      setWeeklyPlans(s.weeklyPlans || {});
-      clearTimeout(fallback);
-      setLoaded(true);
-    });
-    return () => clearTimeout(fallback);
+    
+    const ref = doc(fbDB, `users`, user.uid);
+    let isFirstSnapshot = true;
+
+    const unsub = onSnapshot(ref, 
+      (snap) => {
+        // [핵심] 내가 방금 저장한 데이터거나, 로컬에서 서버로 보내는 중이면 무시 (무한 루프/덮어쓰기 방지)
+        if (snap.metadata.hasPendingWrites) return;
+        if (saveInFlightRef.current) return;
+
+        if (!snap.exists()) {
+          if (isFirstSnapshot) {
+            setSettings(DEFAULT_SETTINGS);
+            setLogs({}); setReviews([]); setBooks([]); setTodos({});
+            setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
+            setExamScores([]); setMoods({}); setSchedules([]);
+            setChecklists(DEFAULT_CHECKLISTS); setMcqProgress({});
+            setRoutines(DEFAULT_ROUTINES); setRoutineLog({}); setWeeklyPlans({});
+            setLoaded(true);
+            isFirstSnapshot = false;
+          }
+          return;
+        }
+
+        const d = snap.data() || {};
+        
+        setSettings({
+          ...DEFAULT_SETTINGS, ...(d.settings || {}),
+          weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
+          cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
+          mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
+        });
+        setLogs(d.logs || {}); setReviews(d.reviews || []); setBooks(d.books || []);
+        setTodos(d.todos || {}); setTracks(d.tracks || {});
+        setMaterials((d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS);
+        setMaterialLog(d.materialLog || {}); setExamScores(d.examScores || []);
+        setMoods(d.moods || {}); setSchedules(d.schedules || []);
+        setChecklists((d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS);
+        setMcqProgress(d.mcqProgress || {});
+        setRoutines((d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES);
+        setRoutineLog(d.routineLog || {}); setWeeklyPlans(d.weeklyPlans || {});
+
+        setLoaded(true);
+        isFirstSnapshot = false;
+      },
+      (err) => {
+        console.error(`[snapshot error - 동기화 차단됨]`, err);
+        alert(`데이터 실시간 동기화 실패. 네트워크 연결을 확인하고 새로고침해 주세요.`);
+      }
+    );
+
+    return () => unsub();
   }, [user]);
 
-  // Save (debounced) — single doc per user
+  // Save (debounced) - in-flight 플래그 연동
   const saveTimerRef = useRef(null);
   useEffect(() => {
     if (!loaded || !user) return;
     setSyncStatus(`saving`);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    
     saveTimerRef.current = setTimeout(async () => {
+      saveInFlightRef.current = true; // 저장 시작 락 걸기
       const ok = await saveStateToFirestore(user.uid, {
         settings, logs, reviews, books, todos, tracks,
         materials, materialLog, examScores, moods, schedules, checklists,
@@ -994,18 +1034,24 @@ const globalStyles = (
         weeklyPlans,
         updatedAt: new Date().toISOString(),
       });
+      
       setSyncStatus(ok ? `saved` : `error`);
+      
+      // 저장이 끝나고 서버 응답이 올 때까지 0.5초 기다렸다가 락 풀기
+      setTimeout(() => { saveInFlightRef.current = false; }, 500);
     }, 2500);
+    
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans]);
 
   //
+  // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
     const validMockIds = new Set((settings.mockExams || []).map(m => m.id));
     setTodos(prev => {
       let next = {};
-      // 1) Cleanup stale fromMock todos and sentinels
+      
       const liveSentinels = new Set((settings.mockExams || []).map(m => `__mockreview__${m.id}`));
       Object.keys(prev).forEach(date => {
         const filtered = (prev[date] || []).filter(t => {
@@ -1016,7 +1062,6 @@ const globalStyles = (
         if (filtered.length > 0) next[date] = filtered;
       });
 
-      // 2) For each mock, place if sentinel missing
       (settings.mockExams || []).forEach(m => {
         const sentinelDate = m.end;
         const sentinelMark = `__mockreview__${m.id}`;
@@ -1032,27 +1077,29 @@ const globalStyles = (
         });
         next = { ...next, [sentinelDate]: [...(next[sentinelDate] || []), { id: uid(), title: sentinelMark, done: true, hidden: true }] };
       });
+
+      // [핵심] 변경된 내용이 없으면 기존 객체를 그대로 리턴해서 불필요한 저장을 막음
+      if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
       return next;
     });
   }, [loaded, settings.mockExams, settings.autoGenMockReview, today]);
 
-  // D-3, D-1, D-day checklist review todos
-  // On exam date change, cleanup and re-place
+  // 체크리스트(D-3, D-1) 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.examDate || !checklists?.length) return;
     setTodos(prev => {
       const currentSentinelMark = `__checklist_premium__${settings.examDate}`;
       let next = {};
-      // 1) Remove all fromChecklist todos and old sentinels
+      
       Object.keys(prev).forEach(date => {
         const filtered = (prev[date] || []).filter(t => {
-          if (t.fromChecklist) return false; //
+          if (t.fromChecklist) return false;
           if (typeof t.title === `string` && t.title.startsWith(`__checklist_premium__`)) return false;
           return true;
         });
         if (filtered.length > 0) next[date] = filtered;
       });
-      // 2) Create new D-3, D-1, D-day todos
+      
       [3, 1, 0].forEach(offset => {
         const targetDate = addDays(settings.examDate, -offset);
         const list = next[targetDate] || [];
@@ -1063,9 +1110,12 @@ const globalStyles = (
           : `체크리스트 회독 + 우선순위 ★★★만 별도 정리 (D-3)`;
         next = { ...next, [targetDate]: [...list, { id: uid(), title, done: false, fromChecklist: true }] };
       });
-      // 3) sentinel
+      
       const sentinelList = next[settings.examDate] || [];
       next = { ...next, [settings.examDate]: [...sentinelList, { id: uid(), title: currentSentinelMark, done: true, hidden: true }] };
+      
+      // [핵심] 위와 동일하게 변경사항 없을 시 기존 래퍼런스 유지
+      if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
       return next;
     });
   }, [loaded, settings.examDate]);
