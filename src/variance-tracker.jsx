@@ -1013,31 +1013,125 @@ const globalStyles = (
 
     return () => unsub();
   }, [user]);
+const lastSavedRef = useRef({}); 
 
+  // 1. 데이터 로드 (onSnapshot)
+  useEffect(() => {
+    if (!user) { setLoaded(false); return; }
+    setLoaded(false);
+    
+    const ref = doc(fbDB, `users`, user.uid);
+    let isFirstSnapshot = true;
+
+    const unsub = onSnapshot(ref, 
+      (snap) => {
+        if (snap.metadata.hasPendingWrites) return;
+        if (saveInFlightRef.current) return;
+
+        if (!snap.exists()) {
+          /* ... (기존 초기화 로직 유지) ... */
+          return;
+        }
+
+        const d = snap.data() || {};
+        
+        // [수정] 개별적으로 set 하던 것을 하나의 객체로 먼저 묶습니다.
+        const newState = {
+          settings: {
+            ...DEFAULT_SETTINGS, ...(d.settings || {}),
+            weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
+            cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
+            mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
+          },
+          logs: d.logs || {},
+          reviews: d.reviews || [],
+          books: d.books || [],
+          todos: d.todos || {},
+          tracks: d.tracks || {},
+          materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
+          materialLog: d.materialLog || {},
+          examScores: d.examScores || [],
+          moods: d.moods || {},
+          schedules: d.schedules || [],
+          checklists: (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS,
+          mcqProgress: d.mcqProgress || {},
+          routines: (d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES,
+          routineLog: d.routineLog || {},
+          weeklyPlans: d.weeklyPlans || {},
+        };
+
+        // [핵심] 서버에서 내려온 기준점 데이터를 기억해둡니다.
+        lastSavedRef.current = newState;
+
+        // 화면 갱신
+        setSettings(newState.settings); setLogs(newState.logs); setReviews(newState.reviews);
+        setBooks(newState.books); setTodos(newState.todos); setTracks(newState.tracks);
+        setMaterials(newState.materials); setMaterialLog(newState.materialLog);
+        setExamScores(newState.examScores); setMoods(newState.moods);
+        setSchedules(newState.schedules); setChecklists(newState.checklists);
+        setMcqProgress(newState.mcqProgress); setRoutines(newState.routines);
+        setRoutineLog(newState.routineLog); setWeeklyPlans(newState.weeklyPlans);
+
+        setLoaded(true);
+        isFirstSnapshot = false;
+      },
+      (err) => { console.error(`[snapshot error]`, err); }
+    );
+
+    return () => unsub();
+  }, [user]);
+  
   // Save (debounced) - in-flight 플래그 연동
+  // 2. 스마트 저장 (변경된 항목만 골라서 부분 업데이트)
   const saveTimerRef = useRef(null);
   useEffect(() => {
     if (!loaded || !user) return;
+    
+    // UI 반응성을 위해 즉각 saving 표시
     setSyncStatus(`saving`);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     
     saveTimerRef.current = setTimeout(async () => {
-      saveInFlightRef.current = true; // 저장 시작 락 걸기
-      const ok = await saveStateToFirestore(user.uid, {
+      // 현재 화면에 떠 있는 전체 상태
+      const currentState = {
         settings, logs, reviews, books, todos, tracks,
         materials, materialLog, examScores, moods, schedules, checklists,
-        mcqProgress, routines, routineLog,
-        weeklyPlans,
-        updatedAt: new Date().toISOString(),
-      });
+        mcqProgress, routines, routineLog, weeklyPlans
+      };
+
+      // [핵심 로직] 과거 저장본과 비교해서 내용물이 바뀐 카테고리만 찾아냄
+      const patch = {};
+      let hasChanges = false;
+
+      for (const key in currentState) {
+        if (currentState[key] !== lastSavedRef.current[key]) {
+          patch[key] = currentState[key];
+          hasChanges = true;
+        }
+      }
+
+      // 바뀐게 단 하나도 없다면 서버 통신 취소
+      if (!hasChanges) {
+        setSyncStatus(`saved`);
+        return;
+      }
+
+      saveInFlightRef.current = true;
+      patch.updatedAt = new Date().toISOString(); // 업데이트 시간은 무조건 추가
+      
+      // patch 객체 안에는 '변경된 최상위 카테고리'만 들어있음 (예: patch.todos 만 존재)
+      const ok = await saveStateToFirestore(user.uid, patch);
       
       setSyncStatus(ok ? `saved` : `error`);
       
-      // 저장이 끝나고 서버 응답이 올 때까지 0.5초 기다렸다가 락 풀기
+      // 저장이 성공했다면 기준점을 현재 상태로 갱신
+      if (ok) {
+        lastSavedRef.current = currentState;
+      }
+      
       setTimeout(() => { saveInFlightRef.current = false; }, 500);
     }, 2500);
-    
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+
   }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans]);
 
   //
