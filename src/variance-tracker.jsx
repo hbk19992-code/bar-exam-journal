@@ -3,7 +3,7 @@ import { initializeApp } from `firebase/app`;
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
 } from `firebase/auth`;
-import { getFirestore, doc, getDoc, setDoc } from `firebase/firestore`;
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from `firebase/firestore`;
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip,
   PieChart, Pie, Cell, CartesianGrid,
