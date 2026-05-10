@@ -953,89 +953,52 @@ const globalStyles = (
       `}</style>
     </>
   );
-  // [추가] 내가 방금 보낸 저장 요청이 돌아오는 것을 무시하기 위한 플래그
+  /* === 다기기 동기화 보호용 ref들 ===
+     - saveInFlightRef: 자기가 방금 저장한 echo가 onSnapshot으로 돌아올 때 무시하는 플래그
+     - lastSavedRef: 마지막으로 서버에서 받은(또는 서버에 저장한) 기준 상태.
+                     다음 저장 때 이 기준과 비교해서 진짜 바뀐 필드만 patch */
   const saveInFlightRef = useRef(false);
+  const lastSavedRef = useRef({});
+  const saveTimerRef = useRef(null);
 
-  // Load when user is set (onSnapshot 실시간 동기화로 교체)
+  // === 데이터 로드 (onSnapshot 실시간 동기화) ===
   useEffect(() => {
     if (!user) { setLoaded(false); return; }
     setLoaded(false);
-    
-    const ref = doc(fbDB, `users`, user.uid);
-    let isFirstSnapshot = true;
 
-    const unsub = onSnapshot(ref, 
+    const ref = doc(fbDB, `users`, user.uid);
+
+    const unsub = onSnapshot(ref,
       (snap) => {
-        // [핵심] 내가 방금 저장한 데이터거나, 로컬에서 서버로 보내는 중이면 무시 (무한 루프/덮어쓰기 방지)
+        // 자기 echo는 무시
         if (snap.metadata.hasPendingWrites) return;
         if (saveInFlightRef.current) return;
 
+        // 신규 사용자: 문서가 아직 없음 → 기본값으로 초기화
         if (!snap.exists()) {
-          if (isFirstSnapshot) {
-            setSettings(DEFAULT_SETTINGS);
-            setLogs({}); setReviews([]); setBooks([]); setTodos({});
-            setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
-            setExamScores([]); setMoods({}); setSchedules([]);
-            setChecklists(DEFAULT_CHECKLISTS); setMcqProgress({});
-            setRoutines(DEFAULT_ROUTINES); setRoutineLog({}); setWeeklyPlans({});
-            setLoaded(true);
-            isFirstSnapshot = false;
-          }
+          const blank = {
+            settings: DEFAULT_SETTINGS,
+            logs: {}, reviews: [], books: [], todos: {}, tracks: {},
+            materials: DEFAULT_MATERIALS, materialLog: {},
+            examScores: [], moods: {}, schedules: [],
+            checklists: DEFAULT_CHECKLISTS, mcqProgress: {},
+            routines: DEFAULT_ROUTINES, routineLog: {}, weeklyPlans: {},
+          };
+          lastSavedRef.current = blank;
+          setSettings(blank.settings);
+          setLogs(blank.logs); setReviews(blank.reviews); setBooks(blank.books);
+          setTodos(blank.todos); setTracks(blank.tracks);
+          setMaterials(blank.materials); setMaterialLog(blank.materialLog);
+          setExamScores(blank.examScores); setMoods(blank.moods);
+          setSchedules(blank.schedules); setChecklists(blank.checklists);
+          setMcqProgress(blank.mcqProgress); setRoutines(blank.routines);
+          setRoutineLog(blank.routineLog); setWeeklyPlans(blank.weeklyPlans);
+          setLoaded(true);
+          setSyncStatus(`saved`);
           return;
         }
 
         const d = snap.data() || {};
-        
-        setSettings({
-          ...DEFAULT_SETTINGS, ...(d.settings || {}),
-          weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
-          cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
-          mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
-        });
-        setLogs(d.logs || {}); setReviews(d.reviews || []); setBooks(d.books || []);
-        setTodos(d.todos || {}); setTracks(d.tracks || {});
-        setMaterials((d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS);
-        setMaterialLog(d.materialLog || {}); setExamScores(d.examScores || []);
-        setMoods(d.moods || {}); setSchedules(d.schedules || []);
-        setChecklists((d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS);
-        setMcqProgress(d.mcqProgress || {});
-        setRoutines((d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES);
-        setRoutineLog(d.routineLog || {}); setWeeklyPlans(d.weeklyPlans || {});
-
-        setLoaded(true);
-        isFirstSnapshot = false;
-      },
-      (err) => {
-        console.error(`[snapshot error - 동기화 차단됨]`, err);
-        alert(`데이터 실시간 동기화 실패. 네트워크 연결을 확인하고 새로고침해 주세요.`);
-      }
-    );
-
-    return () => unsub();
-  }, [user]);
-const lastSavedRef = useRef({}); 
-
-  // 1. 데이터 로드 (onSnapshot)
-  useEffect(() => {
-    if (!user) { setLoaded(false); return; }
-    setLoaded(false);
-    
-    const ref = doc(fbDB, `users`, user.uid);
-    let isFirstSnapshot = true;
-
-    const unsub = onSnapshot(ref, 
-      (snap) => {
-        if (snap.metadata.hasPendingWrites) return;
-        if (saveInFlightRef.current) return;
-
-        if (!snap.exists()) {
-          /* ... (기존 초기화 로직 유지) ... */
-          return;
-        }
-
-        const d = snap.data() || {};
-        
-        // [수정] 개별적으로 set 하던 것을 하나의 객체로 먼저 묶습니다.
         const newState = {
           settings: {
             ...DEFAULT_SETTINGS, ...(d.settings || {}),
@@ -1060,12 +1023,13 @@ const lastSavedRef = useRef({});
           weeklyPlans: d.weeklyPlans || {},
         };
 
-        // [핵심] 서버에서 내려온 기준점 데이터를 기억해둡니다.
+        // 기준점 갱신
         lastSavedRef.current = newState;
 
         // 화면 갱신
-        setSettings(newState.settings); setLogs(newState.logs); setReviews(newState.reviews);
-        setBooks(newState.books); setTodos(newState.todos); setTracks(newState.tracks);
+        setSettings(newState.settings);
+        setLogs(newState.logs); setReviews(newState.reviews); setBooks(newState.books);
+        setTodos(newState.todos); setTracks(newState.tracks);
         setMaterials(newState.materials); setMaterialLog(newState.materialLog);
         setExamScores(newState.examScores); setMoods(newState.moods);
         setSchedules(newState.schedules); setChecklists(newState.checklists);
@@ -1073,36 +1037,35 @@ const lastSavedRef = useRef({});
         setRoutineLog(newState.routineLog); setWeeklyPlans(newState.weeklyPlans);
 
         setLoaded(true);
-        isFirstSnapshot = false;
+        setSyncStatus(`saved`);
       },
-      (err) => { console.error(`[snapshot error]`, err); }
+      (err) => {
+        // alert 쓰지 말 것 — 모바일에서 무한 반복 가능
+        console.error(`[snapshot error - 저장 차단됨]`, err);
+        setSyncStatus(`error`);
+      }
     );
 
     return () => unsub();
   }, [user]);
-  
-  // Save (debounced) - in-flight 플래그 연동
-  // 2. 스마트 저장 (변경된 항목만 골라서 부분 업데이트)
-  const saveTimerRef = useRef(null);
+
+  // === 자동 저장 (debounced) — 변경된 필드만 patch로 ===
   useEffect(() => {
     if (!loaded || !user) return;
-    
-    // UI 반응성을 위해 즉각 saving 표시
+
     setSyncStatus(`saving`);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    
+
     saveTimerRef.current = setTimeout(async () => {
-      // 현재 화면에 떠 있는 전체 상태
       const currentState = {
         settings, logs, reviews, books, todos, tracks,
         materials, materialLog, examScores, moods, schedules, checklists,
-        mcqProgress, routines, routineLog, weeklyPlans
+        mcqProgress, routines, routineLog, weeklyPlans,
       };
 
-      // [핵심 로직] 과거 저장본과 비교해서 내용물이 바뀐 카테고리만 찾아냄
+      // 기준점과 비교해 바뀐 필드만 골라냄
       const patch = {};
       let hasChanges = false;
-
       for (const key in currentState) {
         if (currentState[key] !== lastSavedRef.current[key]) {
           patch[key] = currentState[key];
@@ -1110,31 +1073,30 @@ const lastSavedRef = useRef({});
         }
       }
 
-      // 바뀐게 단 하나도 없다면 서버 통신 취소
       if (!hasChanges) {
         setSyncStatus(`saved`);
         return;
       }
 
       saveInFlightRef.current = true;
-      patch.updatedAt = new Date().toISOString(); // 업데이트 시간은 무조건 추가
-      
-      // patch 객체 안에는 '변경된 최상위 카테고리'만 들어있음 (예: patch.todos 만 존재)
+      patch.updatedAt = new Date().toISOString();
+
       const ok = await saveStateToFirestore(user.uid, patch);
-      
       setSyncStatus(ok ? `saved` : `error`);
-      
-      // 저장이 성공했다면 기준점을 현재 상태로 갱신
+
       if (ok) {
         lastSavedRef.current = currentState;
       }
-      
-      setTimeout(() => { saveInFlightRef.current = false; }, 500);
+
+      // snapshot이 자기 echo를 받을 시간 여유 후 해제
+      setTimeout(() => { saveInFlightRef.current = false; }, 800);
     }, 2500);
 
+    // 언마운트/로그아웃 시 대기 중인 저장 취소
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
   }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans]);
-
-  //
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
