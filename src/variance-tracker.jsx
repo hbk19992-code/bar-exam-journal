@@ -3,7 +3,7 @@ import { initializeApp } from `firebase/app`;
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
 } from `firebase/auth`;
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from `firebase/firestore`;
+import { getFirestore, doc, setDoc, onSnapshot } from `firebase/firestore`;
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip,
   PieChart, Pie, Cell, CartesianGrid,
@@ -843,38 +843,6 @@ const DEFAULT_STATE = {
   routineLog: {},  // routineLog: { YYYY-MM-DD: { routineId: true } }
   weeklyPlans: {}, // { weekStartISO: { 공법: "...", 형사법: "...", 민사법: "...", 선택법: "..." } }
 };
-
-async function loadStateFromFirestore(uid) {
-  const ref = doc(fbDB, `users`, uid);
-  const snap = await getDoc(ref);
-  
-  if (!snap.exists()) return { ...DEFAULT_STATE, _isNew: true };
-  
-  const d = snap.data() || {};
-  return {
-    settings: {
-      ...DEFAULT_SETTINGS, ...(d.settings || {}),
-      weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
-      cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
-      mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
-    },
-    logs: d.logs || {},
-    reviews: d.reviews || [],
-    books: d.books || [],
-    todos: d.todos || {},
-    tracks: d.tracks || {},
-    materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
-    materialLog: d.materialLog || {},
-    examScores: d.examScores || [],
-    moods: d.moods || {},
-    schedules: d.schedules || [],
-    checklists: (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS,
-    mcqProgress: d.mcqProgress || {},
-    routines: (d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES,
-    routineLog: d.routineLog || {},
-    weeklyPlans: d.weeklyPlans || {},
-  };
-} // <-- 딱 여기서 함수가 끝나야 합니다. 밑에 catch 블록이 남아있으면 안 됩니다!
 
 async function saveStateToFirestore(uid, partial) {
   try {
