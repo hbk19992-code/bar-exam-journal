@@ -636,16 +636,15 @@ function buildDailyPlanText({ date, log, tracks, todos, mood }) {
     lines.push(``);
   }
 
-  // 5트랙
+  // 5트랙 — 체크된 것만 내보냄
   const t = tracks || {};
-  const hasAnyTrack = TRACK_TYPES.some(tt => t[tt.key]?.done || t[tt.key]?.text);
-  if (hasAnyTrack) {
+  const checkedTracks = TRACK_TYPES.filter(tt => t[tt.key]?.done);
+  if (checkedTracks.length > 0) {
     lines.push(`📚 5트랙`);
-    TRACK_TYPES.forEach(tt => {
+    checkedTracks.forEach(tt => {
       const slot = t[tt.key] || {};
-      const mark = slot.done ? `✓` : `·`;
       const txt = slot.text || `—`;
-      lines.push(`${mark} [${tt.short}] ${txt}`);
+      lines.push(`✓ [${tt.short}] ${txt}`);
     });
     lines.push(``);
   }
