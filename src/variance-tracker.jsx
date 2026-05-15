@@ -1106,7 +1106,7 @@ const globalStyles = (
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans]);
+  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
@@ -1247,6 +1247,7 @@ VITE_FIREBASE_APP_ID`}</pre>
     routines, setRoutines,
     routineLog, setRoutineLog,
     weeklyPlans, setWeeklyPlans,
+    courses, setCourses,
   };
 
   return (
@@ -1272,7 +1273,7 @@ VITE_FIREBASE_APP_ID`}</pre>
                 setLogs({}); setReviews([]); setBooks([]); setTodos({});
                 setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
                 setExamScores([]); setMoods({}); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
-                setWeeklyPlans({});
+                setWeeklyPlans({});setCourses([]);
               }
             }}
             onExport={() => {
@@ -3294,11 +3295,12 @@ function ExamsView({ examScores }) {
 
 /* ============================================================ REVIEW (회독) ============================================================ */
 
-function ReviewView({ today, reviews, setReviews, books, setBooks, materials, setMaterials, materialLog, setMaterialLog, mcqProgress, setMcqProgress }) {
+function ReviewView({ today, reviews, setReviews, books, setBooks, materials, setMaterials, materialLog, setMaterialLog, mcqProgress, setMcqProgress, courses, setCourses, logs, setLogs }) {
   const [tab, setTab] = useState(`matrix`);
 
   const tabs = [
     { key:`matrix`, label:`매트릭스`, icon:Layers },
+    { key:`courses`, label:`강의`, icon:FileText },
     { key:`topics`, label:`주제`, icon:RotateCw },
     { key:`books`, label:`문제집`, icon:BookOpen },
     { key:`materials`, label:`자료`, icon:Library },
@@ -3331,6 +3333,7 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
       </div>
 
       {tab === `matrix` && <McqMatrix today={today} mcqProgress={mcqProgress} setMcqProgress={setMcqProgress} />}
+      {tab === `courses` && <CoursesReview today={today} courses={courses} setCourses={setCourses} logs={logs} setLogs={setLogs} />}
       {tab === `topics` && <TopicsReview today={today} reviews={reviews} setReviews={setReviews} />}
       {tab === `books` && <BooksReview today={today} books={books} setBooks={setBooks} />}
       {tab === `materials` && <MaterialsReview today={today} materials={materials} setMaterials={setMaterials} materialLog={materialLog} setMaterialLog={setMaterialLog} />}
@@ -3874,7 +3877,296 @@ function MaterialsReview({ today, materials, setMaterials, materialLog, setMater
     </>
   );
 }
+/* ============================================================ COURSES (인강 진도율) ============================================================ */
 
+function CoursesReview({ today, courses, setCourses, logs, setLogs }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [filter, setFilter] = useState(`전체`);
+
+  function autoLogTime(subject, studyType, minutes) {
+    if (minutes <= 0) return;
+    const key = `${subject}::${studyType}`;
+    const dl = logs[today] || {};
+    setLogs({ ...logs, [today]: { ...dl, [key]: (dl[key] || 0) + minutes } });
+  }
+
+  function addCourse(data) {
+    const c = {
+      id: uid(),
+      name: data.name,
+      subject: data.subject,
+      studyType: data.studyType,
+      lectures: data.lectures,
+      createdAt: today,
+      lastUpdated: today,
+    };
+    setCourses([...courses, c]);
+    const completedMin = data.lectures.filter(l => l.completed).reduce((s, l) => s + l.durationMin, 0);
+    autoLogTime(c.subject, c.studyType, completedMin);
+    setShowAdd(false);
+  }
+
+  function updateCourse(id, newLectures) {
+    const prev = courses.find(c => c.id === id);
+    if (!prev) return;
+    const prevSet = new Set(prev.lectures.filter(l => l.completed).map(l => l.num));
+    const addedMin = newLectures
+      .filter(l => l.completed && !prevSet.has(l.num))
+      .reduce((s, l) => s + l.durationMin, 0);
+    setCourses(courses.map(c => c.id === id ? { ...c, lectures: newLectures, lastUpdated: today } : c));
+    autoLogTime(prev.subject, prev.studyType, addedMin);
+  }
+
+  function delCourse(id) {
+    if (!confirm(`이 강의를 삭제할까요? 이미 합산된 학습시간은 그대로 유지됩니다.`)) return;
+    setCourses(courses.filter(c => c.id !== id));
+  }
+
+  const filtered = filter === `전체` ? courses : courses.filter(c => c.subject === filter);
+
+  return (
+    <>
+      <div style={{ fontSize:11, color:C.muted, marginBottom:14, lineHeight:1.6 }}>
+        사이트의 강의 진도표를 복사해서 붙여넣으면 자동으로 파싱해요. <b>완강 강의의 분량은 그 날짜 학습시간에 자동 합산</b>됩니다.
+      </div>
+
+      <div style={{ display:`flex`, gap:6, marginBottom:10, flexWrap:`wrap` }}>
+        {[`전체`, ...Object.keys(SUBJECTS)].map(s => (
+          <button key={s} onClick={() => setFilter(s)}
+            style={{
+              background: filter === s ? C.ink : C.paper,
+              color: filter === s ? `#fff` : C.muted,
+              border: `1px solid ${filter === s ? C.ink : C.line}`,
+              padding:`4px 10px`, fontSize:11, cursor:`pointer`,
+            }}>{s}</button>
+        ))}
+      </div>
+
+      <button onClick={() => setShowAdd(true)}
+        style={{ width:`100%`, background:C.ink, color:`#fff`, border:`none`, padding:`10px`, cursor:`pointer`, marginBottom:14, fontSize:12, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:6 }}>
+        <Plus size={14} /> 강의 추가
+      </button>
+
+      {showAdd && <AddCourseForm onAdd={addCourse} onCancel={() => setShowAdd(false)} />}
+
+      {filtered.length === 0 ? (
+        <div style={{ textAlign:`center`, padding:30, color:C.muted, fontSize:12, background:C.paper, border:`1px dashed ${C.line}` }}>
+          {courses.length === 0 ? `강의를 추가해 보세요` : `이 과목에 등록된 강의가 없습니다.`}
+        </div>
+      ) : (
+        <div style={{ display:`flex`, flexDirection:`column`, gap:10 }}>
+          {filtered.map(c => (
+            <CourseCard key={c.id} course={c}
+              onUpdate={(lecs) => updateCourse(c.id, lecs)}
+              onDelete={() => delCourse(c.id)} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function AddCourseForm({ onAdd, onCancel }) {
+  const [name, setName] = useState(``);
+  const [subject, setSubject] = useState(`민사법`);
+  const [studyType, setStudyType] = useState(`사례형_1문`);
+  const [text, setText] = useState(``);
+
+  const types = SUBJECTS[subject]?.types || [];
+  useEffect(() => {
+    const valid = types.map(t => t.key);
+    if (!valid.includes(studyType)) setStudyType(valid[0] || `선택형`);
+  }, [subject]);
+
+  const parsed = useMemo(() => parseCourseText(text), [text]);
+  const completedCount = parsed.filter(l => l.completed).length;
+  const totalMin = parsed.reduce((s, l) => s + l.durationMin, 0);
+  const completedMin = parsed.filter(l => l.completed).reduce((s, l) => s + l.durationMin, 0);
+  const canSubmit = name.trim() && parsed.length > 0;
+
+  function submit() {
+    if (!canSubmit) return;
+    onAdd({ name: name.trim(), subject, studyType, lectures: parsed });
+  }
+
+  return (
+    <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
+      <input value={name} onChange={e => setName(e.target.value)}
+        placeholder={`강의 이름 (예: 정연석 선사기 민법)`}
+        style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
+
+      <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>과목</div>
+      <div style={{ display:`flex`, gap:6, marginBottom:8 }}>
+        {Object.keys(SUBJECTS).map(s => (
+          <button key={s} onClick={() => setSubject(s)}
+            style={{
+              flex:1, background: subject === s ? SUBJECTS[s].color : C.bg,
+              color: subject === s ? `#fff` : C.muted,
+              border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`,
+              padding:`6px 4px`, fontSize:10, cursor:`pointer`,
+            }}>{SUBJECTS[s].short}</button>
+        ))}
+      </div>
+
+      <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>학습유형 (완강 시 이 유형에 분량 합산)</div>
+      <div style={{ display:`flex`, gap:5, marginBottom:10, flexWrap:`wrap` }}>
+        {types.map(t => (
+          <button key={t.key} onClick={() => setStudyType(t.key)}
+            style={{
+              background: studyType === t.key ? SUBJECTS[subject].color : C.bg,
+              color: studyType === t.key ? `#fff` : C.muted,
+              border: `1px solid ${studyType === t.key ? SUBJECTS[subject].color : C.lineSoft}`,
+              padding:`5px 9px`, fontSize:10, cursor:`pointer`,
+            }}>{t.label}</button>
+        ))}
+      </div>
+
+      <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>진도표 텍스트 붙여넣기</div>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={7}
+        placeholder={`사이트의 강의 목록을 통째로 복사해서 붙여넣으세요.\n\n예:\n1강\t[OT] 강의 소개\t29분\t100%\t완강\n2강\t채권자대위권 ①\t55분\t50%`}
+        style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:10, outline:`none`, resize:`vertical`, fontFamily:`JetBrains Mono, monospace`, lineHeight:1.5 }} />
+
+      {parsed.length > 0 && (
+        <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, marginBottom:10 }}>
+          <div style={{ display:`flex`, justifyContent:`space-between`, marginBottom:6, fontSize:11 }}>
+            <span style={{ color:C.muted }}>파싱 결과 미리보기</span>
+            <span className={`mono`} style={{ color:C.ink, fontWeight:600 }}>{parsed.length}강 인식</span>
+          </div>
+          <div style={{ display:`flex`, gap:12, fontSize:10, marginBottom:6, flexWrap:`wrap` }}>
+            <span className={`kserif`}>완강 <span className={`mono`} style={{ color:C.good, fontWeight:600 }}>{completedCount}/{parsed.length}</span></span>
+            <span className={`kserif`}>총분량 <span className={`mono`} style={{ color:C.ink }}>{fmtMin(totalMin)}</span></span>
+            <span className={`kserif`}>합산될 학습시간 <span className={`mono`} style={{ color:SUBJECTS[subject].color, fontWeight:600 }}>+{fmtMin(completedMin)}</span></span>
+          </div>
+          <div style={{ maxHeight:120, overflowY:`auto`, fontSize:10 }}>
+            {parsed.map(l => (
+              <div key={l.num} style={{ display:`flex`, gap:6, padding:`2px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
+                <span className={`mono`} style={{ color:C.muted, minWidth:24 }}>{l.num}강</span>
+                <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                <span className={`mono`} style={{ color:C.muted }}>{l.durationMin}분</span>
+                <span className={`mono`} style={{ color: l.completed ? C.good : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:38, textAlign:`right` }}>
+                  {l.completed ? `완강` : `${l.progress}%`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display:`flex`, gap:6 }}>
+        <button onClick={onCancel} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:`8px`, cursor:`pointer`, fontSize:12 }}>취소</button>
+        <button onClick={submit} disabled={!canSubmit}
+          style={{ flex:2, background: canSubmit ? C.ink : C.line, color:`#fff`, border:`none`, padding:`8px`, cursor: canSubmit ? `pointer` : `default`, fontSize:12, fontWeight:600 }}>
+          {completedMin > 0 ? `저장 · +${fmtMin(completedMin)} 합산` : `저장`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CourseCard({ course, onUpdate, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [updateMode, setUpdateMode] = useState(false);
+  const [text, setText] = useState(``);
+
+  const completed = course.lectures.filter(l => l.completed).length;
+  const total = course.lectures.length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const totalMin = course.lectures.reduce((s, l) => s + l.durationMin, 0);
+  const completedMin = course.lectures.filter(l => l.completed).reduce((s, l) => s + l.durationMin, 0);
+  const subColor = SUBJECTS[course.subject]?.color || C.muted;
+  const typeLabel = SUBJECTS[course.subject]?.types.find(t => t.key === course.studyType)?.label || course.studyType;
+
+  const newParsed = useMemo(() => parseCourseText(text), [text]);
+  const prevSet = new Set(course.lectures.filter(l => l.completed).map(l => l.num));
+  const added = newParsed.filter(l => l.completed && !prevSet.has(l.num));
+  const addedMin = added.reduce((s, l) => s + l.durationMin, 0);
+
+  function submitUpdate() {
+    if (newParsed.length === 0) return;
+    onUpdate(newParsed);
+    setText(``); setUpdateMode(false);
+  }
+
+  return (
+    <div style={{ background:C.paper, border:`1px solid ${C.line}` }}>
+      <div onClick={() => setOpen(o => !o)}
+        style={{ padding:`12px 14px`, display:`flex`, alignItems:`center`, gap:10, cursor:`pointer` }}>
+        <div style={{ width:3, alignSelf:`stretch`, background:subColor }} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8 }}>
+            <div className={`kserif`} style={{ fontSize:13, fontWeight:600, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{course.name}</div>
+            <div className={`mono`} style={{ fontSize:12, flexShrink:0 }}>
+              <span style={{ color: pct === 100 ? C.good : C.ink, fontWeight:600 }}>{completed}/{total}</span>
+              <span style={{ color:C.muted, marginLeft:4 }}>{pct}%</span>
+            </div>
+          </div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
+            <span style={{ color:subColor, fontWeight:600 }}>{course.subject}</span> · {typeLabel}
+            <span style={{ marginLeft:8 }}>완강 {fmtMin(completedMin)} / {fmtMin(totalMin)}</span>
+          </div>
+          <div style={{ height:3, background:C.lineSoft, marginTop:8, position:`relative` }}>
+            <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background: pct === 100 ? C.good : subColor }} />
+          </div>
+        </div>
+        <ChevronDown size={14} color={C.muted}
+          style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s`, flexShrink:0 }} />
+      </div>
+
+      {open && (
+        <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 14px` }}>
+          <div style={{ maxHeight:240, overflowY:`auto`, marginBottom:10 }}>
+            {course.lectures.map(l => (
+              <div key={l.num} style={{ display:`flex`, gap:6, padding:`4px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11 }}>
+                <span className={`mono`} style={{ color:C.muted, minWidth:26 }}>{l.num}강</span>
+                <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.durationMin || `-`}분</span>
+                <span className={`mono`} style={{ color: l.completed ? C.good : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:42, textAlign:`right` }}>
+                  {l.completed ? `✓ 완강` : `${l.progress}%`}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {!updateMode ? (
+            <div style={{ display:`flex`, gap:6 }}>
+              <button onClick={() => setUpdateMode(true)}
+                style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, padding:`7px`, cursor:`pointer`, fontSize:11 }}>
+                재붙여넣기로 갱신
+              </button>
+              <button onClick={onDelete}
+                style={{ background:C.bg, border:`1px solid ${C.accent}`, color:C.accent, padding:`7px 12px`, cursor:`pointer`, fontSize:11 }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>최신 진도표 텍스트</div>
+              <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
+                placeholder={`사이트에서 진도표를 다시 복사해 붙여넣으세요`}
+                style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:6, outline:`none`, resize:`vertical`, fontFamily:`JetBrains Mono, monospace`, lineHeight:1.5 }} />
+              {newParsed.length > 0 && (
+                <div style={{ fontSize:11, color:C.muted, marginBottom:8, padding:`6px 8px`, background:C.bg, border:`1px solid ${C.lineSoft}` }}>
+                  {newParsed.length}강 인식 ·
+                  {added.length > 0
+                    ? <span style={{ color:subColor, fontWeight:600 }}> 새로 완강 +{added.length}개 (+{fmtMin(addedMin)} 학습시간 합산)</span>
+                    : <span> 새로 완강된 강의 없음</span>}
+                </div>
+              )}
+              <div style={{ display:`flex`, gap:6 }}>
+                <button onClick={() => { setUpdateMode(false); setText(``); }}
+                  style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:`7px`, cursor:`pointer`, fontSize:11 }}>취소</button>
+                <button onClick={submitUpdate} disabled={newParsed.length === 0}
+                  style={{ flex:2, background: newParsed.length > 0 ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px`, cursor: newParsed.length > 0 ? `pointer` : `default`, fontSize:11, fontWeight:600 }}>
+                  갱신
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 /* ============================================================ CHECKLIST (점수 누수 방어) ============================================================ */
 
 function ChecklistView({ today, settings, checklists = [], setChecklists }) {
