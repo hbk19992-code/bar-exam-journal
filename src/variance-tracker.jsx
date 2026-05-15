@@ -3923,8 +3923,6 @@ function MaterialsReview({ today, materials, setMaterials, materialLog, setMater
 }
 /* ============================================================ COURSES (인강 진도율) ============================================================ */
 
-/* ============================================================ COURSES (인강 진도율) ============================================================ */
-
 function CoursesReview({ today, courses, setCourses, logs, setLogs }) {
   const [showAdd, setShowAdd] = useState(false);
   const [filter, setFilter] = useState(`전체`);
@@ -3945,7 +3943,7 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs }) {
       lectures: data.lectures,
       createdAt: today,
       lastUpdated: today,
-      targetPerDay: 2, // 기본 하루 소화량 2강으로 초기화
+      targetPerDay: 2,
     };
     setCourses([...courses, c]);
     const completedMin = data.lectures.filter(l => l.completed).reduce((s, l) => s + l.durationMin, 0);
@@ -4115,6 +4113,200 @@ function AddCourseForm({ onAdd, onCancel }) {
   );
 }
 
+function CourseCard({ course, today, onUpdate, onUpdateMeta, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [updateMode, setUpdateMode] = useState(false);
+  const [text, setText] = useState(``);
+
+  const completed = course.lectures.filter(l => l.completed).length;
+  const total = course.lectures.length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const totalMin = course.lectures.reduce((s, l) => s + l.durationMin, 0);
+  const completedMin = course.lectures.filter(l => l.completed).reduce((s, l) => s + l.durationMin, 0);
+  const subColor = SUBJECTS[course.subject]?.color || C.muted;
+  const typeLabel = SUBJECTS[course.subject]?.types.find(t => t.key === course.studyType)?.label || course.studyType;
+
+  const newParsed = useMemo(() => parseCourseText(text), [text]);
+  const prevSet = new Set(course.lectures.filter(l => l.completed).map(l => l.num));
+  const added = newParsed.filter(l => l.completed && !prevSet.has(l.num));
+  const addedMin = added.reduce((s, l) => s + l.durationMin, 0);
+
+  // ============================================================
+  // [고도화된 예상 완강일 계산 로직]
+  // ============================================================
+  const remainingLectures = total - completed;
+  const remainingMin = course.lectures.filter(l => !l.completed).reduce((s, l) => s + (l.durationMin || 0), 0);
+
+  // 1. 목표 진도 기준 계산
+  const targetPerDay = course.targetPerDay || 2; 
+  const daysNeededTarget = targetPerDay > 0 ? Math.ceil(remainingLectures / targetPerDay) : 0;
+  const expectedDateTarget = today ? addDays(today, daysNeededTarget) : '';
+  const targetMinPerDay = daysNeededTarget > 0 ? Math.round(remainingMin / daysNeededTarget) : 0;
+
+  // 2. 실제 수강 페이스 기준 계산 (사용자 수동 입력 지원)
+  const autoDaysSinceStart = Math.max(1, daysDiff(course.createdAt || today, today) + 1); // 자동 계산된 일수
+  const daysTaken = course.manualDaysTaken || autoDaysSinceStart; // 수동 입력값이 있으면 우선 적용
+  
+  const actualPace = completed / daysTaken;
+  const daysNeededActual = actualPace > 0 ? Math.ceil(remainingLectures / actualPace) : null;
+  const expectedDateActual = daysNeededActual !== null ? addDays(today, daysNeededActual) : null;
+  // ============================================================
+
+  function submitUpdate() {
+    if (newParsed.length === 0) return;
+    onUpdate(newParsed);
+    setText(``); setUpdateMode(false);
+  }
+
+  return (
+    <div style={{ background:C.paper, border:`1px solid ${C.line}` }}>
+      <div onClick={() => setOpen(o => !o)}
+        style={{ padding:`12px 14px`, display:`flex`, alignItems:`center`, gap:10, cursor:`pointer` }}>
+        <div style={{ width:3, alignSelf:`stretch`, background:subColor }} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8 }}>
+            <div className={`kserif`} style={{ fontSize:13, fontWeight:600, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{course.name}</div>
+            <div className={`mono`} style={{ fontSize:12, flexShrink:0 }}>
+              <span style={{ color: pct === 100 ? C.good : C.ink, fontWeight:600 }}>{completed}/{total}</span>
+              <span style={{ color:C.muted, marginLeft:4 }}>{pct}%</span>
+            </div>
+          </div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
+            <span style={{ color:subColor, fontWeight:600 }}>{course.subject}</span> · {typeLabel}
+            <span style={{ marginLeft:8 }}>완강 {fmtMin(completedMin)} / {fmtMin(totalMin)}</span>
+          </div>
+          <div style={{ height:3, background:C.lineSoft, marginTop:8, position:`relative` }}>
+            <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background: pct === 100 ? C.good : subColor }} />
+          </div>
+        </div>
+        <ChevronDown size={14} color={C.muted}
+          style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s`, flexShrink:0 }} />
+      </div>
+
+      {open && (
+        <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 14px` }}>
+          
+          {/* [고도화 UI] 소화 진도량, 실제 페이스, 필요 학습 시간 표시 */}
+          {remainingLectures > 0 ? (
+            <div style={{ background: C.bg, border: `1px solid ${C.lineSoft}`, padding: `12px 14px`, marginBottom: 12 }}>
+              
+              {/* 1. 실제 수강 페이스 기반 */}
+              <div style={{ display: `flex`, justifyContent: `space-between`, alignItems: `center`, marginBottom: 8, flexWrap: `wrap`, gap: 6 }}>
+                <div style={{ fontSize: 11, color: C.muted, display: `flex`, alignItems: `center` }}>
+                  <span className={`kserif`} style={{ fontWeight: 600, color: C.ink, marginRight: 8 }}>실제 페이스</span>
+                  최근
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder={autoDaysSinceStart.toString()}
+                    value={course.manualDaysTaken || ''}
+                    onChange={e => {
+                      const val = parseInt(e.target.value);
+                      if (onUpdateMeta) onUpdateMeta({ manualDaysTaken: isNaN(val) ? null : val });
+                    }}
+                    style={{ width: 36, textAlign: `center`, border: `1px solid ${C.line}`, background: C.paper, outline: `none`, padding: `3px 4px`, margin: `0 4px`, fontSize: 12, fontFamily: `JetBrains Mono, monospace`, color: C.ink, fontWeight: 600 }}
+                  />
+                  일 · 평균 {actualPace.toFixed(1)}강/일
+                </div>
+                <div style={{ fontSize: 11 }}>
+                  {actualPace > 0 ? (
+                    <>
+                      예상 <span className={`mono`} style={{ fontWeight: 600, color: C.ink, marginLeft: 4 }}>{expectedDateActual.slice(5).replace('-', '/')}</span>
+                      <span className={`mono`} style={{ color: C.muted, fontSize: 10, marginLeft: 4 }}>(D+{daysNeededActual})</span>
+                    </>
+                  ) : (
+                    <span style={{ color: C.muted }}>데이터 부족</span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ borderTop: `1px dashed ${C.lineSoft}`, margin: `10px 0` }} />
+
+              {/* 2. 목표 속도 및 필요 분량 기반 */}
+              <div style={{ display: `flex`, justifyContent: `space-between`, alignItems: `flex-start`, flexWrap: `wrap`, gap: 6 }}>
+                <div style={{ fontSize: 11, color: C.muted, display: `flex`, alignItems: `center` }}>
+                  <span className={`kserif`} style={{ fontWeight: 600, color: C.ink, marginRight: 8 }}>목표 진도</span>
+                  하루
+                  <input
+                    type="number"
+                    min="1"
+                    value={targetPerDay}
+                    onChange={e => onUpdateMeta && onUpdateMeta({ targetPerDay: parseInt(e.target.value) || 1 })}
+                    style={{ width: 36, textAlign: `center`, border: `1px solid ${C.line}`, background: C.paper, outline: `none`, padding: `3px 4px`, margin: `0 4px`, fontSize: 12, fontFamily: `JetBrains Mono, monospace`, color: C.ink, fontWeight: 600 }}
+                  />
+                  강
+                </div>
+                <div style={{ textAlign: `right` }}>
+                  <div style={{ fontSize: 11, color: C.ink }}>
+                    목표 <span className={`mono`} style={{ fontWeight: 600, color: C.accent, fontSize: 12, marginLeft: 4 }}>{expectedDateTarget.slice(5).replace('-', '/')}</span>
+                    <span className={`mono`} style={{ color: C.muted, fontSize: 10, marginLeft: 4 }}>(D+{daysNeededTarget})</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>
+                    남은 기간 매일 <span className={`mono`} style={{ color: C.ink, fontWeight: 600 }}>{fmtMin(targetMinPerDay)}</span> 수강 필요
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div style={{ background: C.bg, border: `1px solid ${C.lineSoft}`, padding: `10px`, marginBottom: 10, textAlign: `center`, color: C.good, fontWeight: 600, fontSize: 12 }}>
+              완강 완료 🎉
+            </div>
+          )}
+
+          <div style={{ maxHeight:240, overflowY:`auto`, marginBottom:10 }}>
+            {course.lectures.map(l => (
+              <div key={l.num} style={{ display:`flex`, gap:6, padding:`4px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11 }}>
+                <span className={`mono`} style={{ color:C.muted, minWidth:26 }}>{l.num}강</span>
+                <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.durationMin || `-`}분</span>
+                <span className={`mono`} style={{ color: l.completed ? C.good : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:42, textAlign:`right` }}>
+                  {l.completed ? `✓ 완강` : `${l.progress}%`}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {!updateMode ? (
+            <div style={{ display:`flex`, gap:6 }}>
+              <button onClick={() => setUpdateMode(true)}
+                style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, color:C.ink, padding:`7px`, cursor:`pointer`, fontSize:11 }}>
+                재붙여넣기로 갱신
+              </button>
+              <button onClick={onDelete}
+                style={{ background:C.bg, border:`1px solid ${C.accent}`, color:C.accent, padding:`7px 12px`, cursor:`pointer`, fontSize:11 }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>최신 진도표 텍스트</div>
+              <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
+                placeholder={`사이트에서 진도표를 다시 복사해 붙여넣으세요`}
+                style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:6, outline:`none`, resize:`vertical`, fontFamily:`JetBrains Mono, monospace`, lineHeight:1.5 }} />
+              {newParsed.length > 0 && (
+                <div style={{ fontSize:11, color:C.muted, marginBottom:8, padding:`6px 8px`, background:C.bg, border:`1px solid ${C.lineSoft}` }}>
+                  {newParsed.length}강 인식 ·
+                  {added.length > 0
+                    ? <span style={{ color:subColor, fontWeight:600 }}> 새로 완강 +{added.length}개 (+{fmtMin(addedMin)} 학습시간 합산)</span>
+                    : <span> 새로 완강된 강의 없음</span>}
+                </div>
+              )}
+              <div style={{ display:`flex`, gap:6 }}>
+                <button onClick={() => { setUpdateMode(false); setText(``); }}
+                  style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:`7px`, cursor:`pointer`, fontSize:11 }}>취소</button>
+                <button onClick={submitUpdate} disabled={newParsed.length === 0}
+                  style={{ flex:2, background: newParsed.length > 0 ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px`, cursor: newParsed.length > 0 ? `pointer` : `default`, fontSize:11, fontWeight:600 }}>
+                  갱신
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 /* ============================================================ CHECKLIST (점수 누수 방어) ============================================================ */
 
 function ChecklistView({ today, settings, checklists = [], setChecklists }) {
