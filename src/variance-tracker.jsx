@@ -3879,6 +3879,8 @@ function MaterialsReview({ today, materials, setMaterials, materialLog, setMater
 }
 /* ============================================================ COURSES (인강 진도율) ============================================================ */
 
+/* ============================================================ COURSES (인강 진도율) ============================================================ */
+
 function CoursesReview({ today, courses, setCourses, logs, setLogs }) {
   const [showAdd, setShowAdd] = useState(false);
   const [filter, setFilter] = useState(`전체`);
@@ -3899,6 +3901,7 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs }) {
       lectures: data.lectures,
       createdAt: today,
       lastUpdated: today,
+      targetPerDay: 2, // 기본 하루 소화량 2강으로 초기화
     };
     setCourses([...courses, c]);
     const completedMin = data.lectures.filter(l => l.completed).reduce((s, l) => s + l.durationMin, 0);
@@ -3915,6 +3918,10 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs }) {
       .reduce((s, l) => s + l.durationMin, 0);
     setCourses(courses.map(c => c.id === id ? { ...c, lectures: newLectures, lastUpdated: today } : c));
     autoLogTime(prev.subject, prev.studyType, addedMin);
+  }
+
+  function updateCourseMeta(id, patch) {
+    setCourses(courses.map(c => c.id === id ? { ...c, ...patch, lastUpdated: today } : c));
   }
 
   function delCourse(id) {
@@ -3956,8 +3963,9 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs }) {
       ) : (
         <div style={{ display:`flex`, flexDirection:`column`, gap:10 }}>
           {filtered.map(c => (
-            <CourseCard key={c.id} course={c}
+            <CourseCard key={c.id} course={c} today={today}
               onUpdate={(lecs) => updateCourse(c.id, lecs)}
+              onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)}
               onDelete={() => delCourse(c.id)} />
           ))}
         </div>
@@ -4063,7 +4071,7 @@ function AddCourseForm({ onAdd, onCancel }) {
   );
 }
 
-function CourseCard({ course, onUpdate, onDelete }) {
+function CourseCard({ course, today, onUpdate, onUpdateMeta, onDelete }) {
   const [open, setOpen] = useState(false);
   const [updateMode, setUpdateMode] = useState(false);
   const [text, setText] = useState(``);
@@ -4080,6 +4088,12 @@ function CourseCard({ course, onUpdate, onDelete }) {
   const prevSet = new Set(course.lectures.filter(l => l.completed).map(l => l.num));
   const added = newParsed.filter(l => l.completed && !prevSet.has(l.num));
   const addedMin = added.reduce((s, l) => s + l.durationMin, 0);
+
+  // 예상 완강일 계산 로직
+  const targetPerDay = course.targetPerDay || 2; 
+  const remainingLectures = total - completed;
+  const daysNeeded = targetPerDay > 0 ? Math.ceil(remainingLectures / targetPerDay) : 0;
+  const expectedDate = today ? addDays(today, daysNeeded) : '';
 
   function submitUpdate() {
     if (newParsed.length === 0) return;
@@ -4114,6 +4128,32 @@ function CourseCard({ course, onUpdate, onDelete }) {
 
       {open && (
         <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 14px` }}>
+          
+          {/* 소화 진도량 및 예상 완강일 계산 UI */}
+          <div style={{ background: C.bg, border: `1px solid ${C.lineSoft}`, padding: `8px 10px`, marginBottom: 10, display: `flex`, alignItems: `center`, justifyContent: `space-between`, flexWrap: `wrap`, gap: 8 }}>
+            <div style={{ fontSize: 11, color: C.muted, display: `flex`, alignItems: `center` }}>
+              목표 진도: 하루
+              <input
+                type="number"
+                min="1"
+                value={targetPerDay}
+                onChange={e => onUpdateMeta && onUpdateMeta({ targetPerDay: parseInt(e.target.value) || 1 })}
+                style={{ width: 44, textAlign: `center`, border: `1px solid ${C.line}`, background: C.paper, outline: `none`, padding: `3px 4px`, margin: `0 6px`, fontSize: 12, fontFamily: `JetBrains Mono, monospace`, color: C.ink, fontWeight: 600 }}
+              />
+              강
+            </div>
+            <div style={{ fontSize: 11, color: C.ink }}>
+              {remainingLectures > 0 ? (
+                <>
+                  예상 완강 <span className={`mono`} style={{ fontWeight: 600, color: C.accent, fontSize: 12 }}>{expectedDate.slice(5).replace('-', '/')}</span>
+                  <span className={`mono`} style={{ color: C.muted, fontSize: 10, marginLeft: 6 }}>(D+{daysNeeded})</span>
+                </>
+              ) : (
+                <span style={{ color: C.good, fontWeight: 600 }}>완강 완료 🎉</span>
+              )}
+            </div>
+          </div>
+
           <div style={{ maxHeight:240, overflowY:`auto`, marginBottom:10 }}>
             {course.lectures.map(l => (
               <div key={l.num} style={{ display:`flex`, gap:6, padding:`4px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11 }}>
