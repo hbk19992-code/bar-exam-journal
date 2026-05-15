@@ -615,8 +615,51 @@ async function exportXLSX(state, filename) {
 }
 /* ============================================================ 인강 진도표 파서 ============================================================ */
 function parseCourseText(text) {
-  const lines = text.split(/\r?\n/);
   const lectures = [];
+
+  // 1. 타사 양식 매칭 (제 N 강 [제목] [수강분]분 / [전체분]분)
+  // 줄바꿈이나 '최근재생' 텍스트가 섞여 들어오는 것을 대비해 전체 텍스트 단위로 정규식 매칭
+  const altPattern = /제\s*(\d+)\s*강([\s\S]*?)(\d+)\s*분\s*\/\s*(\d+)\s*분/g;
+  let match;
+  let altMatched = false;
+
+  while ((match = altPattern.exec(text)) !== null) {
+    altMatched = true;
+    const num = parseInt(match[1], 10);
+    
+    // 제목에서 불필요한 줄바꿈과 '최근재생' 등의 텍스트 제거 후 깔끔하게 정리
+    let rawTitle = match[2]
+      .replace(/최근재생/g, '')
+      .replace(/\r?\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const watchedMin = parseInt(match[3], 10);
+    const totalMin = parseInt(match[4], 10);
+
+    // 수강 시간과 전체 시간을 바탕으로 진도율(%) 계산
+    const progress = totalMin > 0 ? Math.floor((watchedMin / totalMin) * 100) : 0;
+    // 수강 시간이 전체 시간과 같거나 크면 완강 처리
+    const completed = totalMin > 0 && watchedMin >= totalMin;
+
+    if (!lectures.find(l => l.num === num)) {
+      lectures.push({
+        num,
+        title: rawTitle,
+        durationMin: totalMin, // 완강 시 자동 합산될 기준 시간이므로 전체 분량을 저장
+        progress,
+        completed,
+      });
+    }
+  }
+
+  // 타사 양식으로 성공적으로 매칭되었다면 바로 정렬해서 반환
+  if (altMatched) {
+    return lectures.sort((a, b) => a.num - b.num);
+  }
+
+  // 2. 기존 양식 매칭 (N강 제목 N분 N% [완강])
+  const lines = text.split(/\r?\n/);
   for (const raw of lines) {
     const line = raw.replace(/\s+/g, ` `).trim();
     if (!line) continue;
@@ -650,6 +693,7 @@ function parseCourseText(text) {
       }
     }
   }
+  
   return lectures.sort((a, b) => a.num - b.num);
 }
 /* ============================================================ 카카오톡 복사용 일간계획 텍스트 빌더 ============================================================ */
