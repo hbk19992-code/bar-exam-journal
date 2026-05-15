@@ -613,7 +613,45 @@ async function exportXLSX(state, filename) {
 
   XLSX.writeFile(wb, filename);
 }
+/* ============================================================ 인강 진도표 파서 ============================================================ */
+function parseCourseText(text) {
+  const lines = text.split(/\r?\n/);
+  const lectures = [];
+  for (const raw of lines) {
+    const line = raw.replace(/\s+/g, ` `).trim();
+    if (!line) continue;
+    if (/^\(\d+분/.test(line)) continue; // (28분/88분) 같은 보조 줄 스킵
 
+    // 패턴 1: N강 제목 N분 N% [완강]
+    let m = line.match(/(\d+)\s*강\s+(.+?)\s+(\d+)\s*분\s+(\d+)\s*%\s*(완강)?/);
+    if (m) {
+      const num = parseInt(m[1]);
+      if (!lectures.find(l => l.num === num)) {
+        lectures.push({
+          num,
+          title: m[2].trim(),
+          durationMin: parseInt(m[3]),
+          progress: parseInt(m[4]),
+          completed: !!m[5] || parseInt(m[4]) >= 100,
+        });
+      }
+      continue;
+    }
+
+    // 패턴 2: N강 제목만 (진도 정보 없음 — 미수강)
+    m = line.match(/^(\d+)\s*강\s+(.+)$/);
+    if (m) {
+      const num = parseInt(m[1]);
+      if (!lectures.find(l => l.num === num)) {
+        lectures.push({
+          num, title: m[2].trim(),
+          durationMin: 0, progress: 0, completed: false,
+        });
+      }
+    }
+  }
+  return lectures.sort((a, b) => a.num - b.num);
+}
 /* ============================================================ 카카오톡 복사용 일간계획 텍스트 빌더 ============================================================ */
 function buildDailyPlanText({ date, log, tracks, todos, mood }) {
   const lines = [];
@@ -841,6 +879,7 @@ const DEFAULT_STATE = {
   routines: DEFAULT_ROUTINES, // [{ id, name, icon, order }]
   routineLog: {},  // routineLog: { YYYY-MM-DD: { routineId: true } }
   weeklyPlans: {}, // { weekStartISO: { 공법: "...", 형사법: "...", 민사법: "...", 선택법: "..." } }
+  courses: [], // [{ id, name, subject, studyType, lectures: [{num, title, durationMin, progress, completed}], createdAt, lastUpdated }]
 };
 
 async function saveStateToFirestore(uid, partial) {
@@ -875,6 +914,7 @@ export default function App() {
   const [routines, setRoutines] = useState(DEFAULT_ROUTINES);
   const [routineLog, setRoutineLog] = useState({});
   const [weeklyPlans, setWeeklyPlans] = useState({});
+  const [courses, setCourses] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [today, setToday] = useState(todayISO());
   const [syncStatus, setSyncStatus] = useState(`idle`); // idle | saving | saved | error
@@ -949,7 +989,7 @@ const globalStyles = (
             materials: DEFAULT_MATERIALS, materialLog: {},
             examScores: [], moods: {}, schedules: [],
             checklists: DEFAULT_CHECKLISTS, mcqProgress: {},
-            routines: DEFAULT_ROUTINES, routineLog: {}, weeklyPlans: {},
+            routines: DEFAULT_ROUTINES, routineLog: {}, weeklyPlans: {}, courses: [],
           };
           lastSavedRef.current = blank;
           setSettings(blank.settings);
@@ -961,7 +1001,7 @@ const globalStyles = (
           setMcqProgress(blank.mcqProgress); setRoutines(blank.routines);
           setRoutineLog(blank.routineLog); setWeeklyPlans(blank.weeklyPlans);
           setLoaded(true);
-          setSyncStatus(`saved`);
+          setSyncStatus(`saved`); setCourses(blank.courses);
           return;
         }
 
@@ -988,6 +1028,8 @@ const globalStyles = (
           routines: (d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES,
           routineLog: d.routineLog || {},
           weeklyPlans: d.weeklyPlans || {},
+          courses: d.courses || [],
+      
         };
 
         // 기준점 갱신
@@ -1002,6 +1044,7 @@ const globalStyles = (
         setSchedules(newState.schedules); setChecklists(newState.checklists);
         setMcqProgress(newState.mcqProgress); setRoutines(newState.routines);
         setRoutineLog(newState.routineLog); setWeeklyPlans(newState.weeklyPlans);
+        setCourses(newState.courses);
 
         setLoaded(true);
         setSyncStatus(`saved`);
@@ -1027,7 +1070,7 @@ const globalStyles = (
       const currentState = {
         settings, logs, reviews, books, todos, tracks,
         materials, materialLog, examScores, moods, schedules, checklists,
-        mcqProgress, routines, routineLog, weeklyPlans,
+        mcqProgress, routines, routineLog, weeklyPlans, courses,
       };
 
       // 기준점과 비교해 바뀐 필드만 골라냄
