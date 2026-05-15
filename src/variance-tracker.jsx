@@ -4132,20 +4132,20 @@ function CourseCard({ course, today, onUpdate, onUpdateMeta, onDelete }) {
   const addedMin = added.reduce((s, l) => s + l.durationMin, 0);
 
   // ============================================================
-  // [고도화된 예상 완강일 계산 로직]
+  // [고도화된 예상 완강일 및 목표치 계산 로직]
   // ============================================================
   const remainingLectures = total - completed;
   const remainingMin = course.lectures.filter(l => !l.completed).reduce((s, l) => s + (l.durationMin || 0), 0);
 
-  // 1. 목표 진도 기준 계산
-  const targetPerDay = course.targetPerDay || 2; 
-  const daysNeededTarget = targetPerDay > 0 ? Math.ceil(remainingLectures / targetPerDay) : 0;
-  const expectedDateTarget = today ? addDays(today, daysNeededTarget) : '';
-  const targetMinPerDay = daysNeededTarget > 0 ? Math.round(remainingMin / daysNeededTarget) : 0;
+  // 1. 목표 일자 기준 역산 (새로 추가된 기능)
+  const targetEndDate = course.targetEndDate || today;
+  const daysUntilTarget = Math.max(1, daysDiff(today, targetEndDate));
+  const requiredPace = Math.ceil(remainingLectures / daysUntilTarget);
+  const requiredMinPerDay = Math.round(remainingMin / daysUntilTarget);
 
-  // 2. 실제 수강 페이스 기준 계산 (사용자 수동 입력 지원)
-  const autoDaysSinceStart = Math.max(1, daysDiff(course.createdAt || today, today) + 1); // 자동 계산된 일수
-  const daysTaken = course.manualDaysTaken || autoDaysSinceStart; // 수동 입력값이 있으면 우선 적용
+  // 2. 실제 수강 페이스 기준 (사용자 수동 입력 지원)
+  const autoDaysSinceStart = Math.max(1, daysDiff(course.createdAt || today, today) + 1);
+  const daysTaken = course.manualDaysTaken || autoDaysSinceStart;
   
   const actualPace = completed / daysTaken;
   const daysNeededActual = actualPace > 0 ? Math.ceil(remainingLectures / actualPace) : null;
@@ -4186,14 +4186,13 @@ function CourseCard({ course, today, onUpdate, onUpdateMeta, onDelete }) {
       {open && (
         <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 14px` }}>
           
-          {/* [고도화 UI] 소화 진도량, 실제 페이스, 필요 학습 시간 표시 */}
           {remainingLectures > 0 ? (
             <div style={{ background: C.bg, border: `1px solid ${C.lineSoft}`, padding: `12px 14px`, marginBottom: 12 }}>
               
-              {/* 1. 실제 수강 페이스 기반 */}
+              {/* 1. 실제 페이스 (지금까지 얼마나 들었나) */}
               <div style={{ display: `flex`, justifyContent: `space-between`, alignItems: `center`, marginBottom: 8, flexWrap: `wrap`, gap: 6 }}>
                 <div style={{ fontSize: 11, color: C.muted, display: `flex`, alignItems: `center` }}>
-                  <span className={`kserif`} style={{ fontWeight: 600, color: C.ink, marginRight: 8 }}>실제 페이스</span>
+                  <span className={`kserif`} style={{ fontWeight: 600, color: C.ink, marginRight: 8 }}>현재 페이스</span>
                   최근
                   <input
                     type="number"
@@ -4211,8 +4210,7 @@ function CourseCard({ course, today, onUpdate, onUpdateMeta, onDelete }) {
                 <div style={{ fontSize: 11 }}>
                   {actualPace > 0 ? (
                     <>
-                      예상 <span className={`mono`} style={{ fontWeight: 600, color: C.ink, marginLeft: 4 }}>{expectedDateActual.slice(5).replace('-', '/')}</span>
-                      <span className={`mono`} style={{ color: C.muted, fontSize: 10, marginLeft: 4 }}>(D+{daysNeededActual})</span>
+                      현 추세 완강 <span className={`mono`} style={{ fontWeight: 600, color: C.ink, marginLeft: 4 }}>{expectedDateActual.slice(5).replace('-', '/')}</span>
                     </>
                   ) : (
                     <span style={{ color: C.muted }}>데이터 부족</span>
@@ -4222,27 +4220,23 @@ function CourseCard({ course, today, onUpdate, onUpdateMeta, onDelete }) {
 
               <div style={{ borderTop: `1px dashed ${C.lineSoft}`, margin: `10px 0` }} />
 
-              {/* 2. 목표 속도 및 필요 분량 기반 */}
+              {/* 2. 목표 일자 기준 역산 (언제까지 다 들을 것인가) */}
               <div style={{ display: `flex`, justifyContent: `space-between`, alignItems: `flex-start`, flexWrap: `wrap`, gap: 6 }}>
-                <div style={{ fontSize: 11, color: C.muted, display: `flex`, alignItems: `center` }}>
-                  <span className={`kserif`} style={{ fontWeight: 600, color: C.ink, marginRight: 8 }}>목표 진도</span>
-                  하루
+                <div style={{ fontSize: 11, color: C.muted }}>
+                  <span className={`kserif`} style={{ fontWeight: 600, color: C.accent, marginRight: 8 }}>목표 완강일</span>
                   <input
-                    type="number"
-                    min="1"
-                    value={targetPerDay}
-                    onChange={e => onUpdateMeta && onUpdateMeta({ targetPerDay: parseInt(e.target.value) || 1 })}
-                    style={{ width: 36, textAlign: `center`, border: `1px solid ${C.line}`, background: C.paper, outline: `none`, padding: `3px 4px`, margin: `0 4px`, fontSize: 12, fontFamily: `JetBrains Mono, monospace`, color: C.ink, fontWeight: 600 }}
+                    type="date"
+                    value={targetEndDate}
+                    onChange={e => onUpdateMeta && onUpdateMeta({ targetEndDate: e.target.value })}
+                    style={{ border: `1px solid ${C.line}`, background: C.paper, outline: `none`, padding: `2px 4px`, fontSize: 11, color: C.ink, fontFamily: `JetBrains Mono, monospace` }}
                   />
-                  강
                 </div>
                 <div style={{ textAlign: `right` }}>
-                  <div style={{ fontSize: 11, color: C.ink }}>
-                    목표 <span className={`mono`} style={{ fontWeight: 600, color: C.accent, fontSize: 12, marginLeft: 4 }}>{expectedDateTarget.slice(5).replace('-', '/')}</span>
-                    <span className={`mono`} style={{ color: C.muted, fontSize: 10, marginLeft: 4 }}>(D+{daysNeededTarget})</span>
+                  <div style={{ fontSize: 12, color: C.ink }}>
+                    하루 <span className={`mono`} style={{ fontWeight: 700, color: C.accent, fontSize: 14 }}>{requiredPace}</span> 강씩 수강 필요
                   </div>
-                  <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>
-                    남은 기간 매일 <span className={`mono`} style={{ color: C.ink, fontWeight: 600 }}>{fmtMin(targetMinPerDay)}</span> 수강 필요
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
+                    일평균 약 <span className={`mono`} style={{ color: C.ink, fontWeight: 600 }}>{fmtMin(requiredMinPerDay)}</span> 학습
                   </div>
                 </div>
               </div>
