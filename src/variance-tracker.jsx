@@ -4192,9 +4192,10 @@ function stopReviewTimer(lecNum) {
               
               {/* 수강 페이스 */}
               {remainingLectures > 0 && (
-             {/* 수강 페이스 영역의 <div> 안쪽 수정 */}
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-  <div>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+    {/* 주석이 필요하다면 이렇게 div 태그 안쪽에 넣어야 합니다 */}
+    {/* ... */}
+  </div>
     <span style={{ fontWeight: 600, color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent }}>수강 페이스 {isPaceGood ? `🟢` : isPaceWarning ? `🟡` : `🔴`}</span>
     <div style={{ color: C.muted, marginTop: 4 }}>현재 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{actualPace.toFixed(1)}</span>강/일 · 필요 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{requiredPace}</span>강/일</div>
   </div>
