@@ -4270,6 +4270,11 @@ function stopReviewTimer(lecNum) {
     );
   })}
 </div>
+          </div>
+    )}
+  </div>
+);
+}
 /* ============================================================ CHECKLIST (점수 누수 방어) ============================================================ */
 
 function ChecklistView({ today, settings, checklists = [], setChecklists }) {
