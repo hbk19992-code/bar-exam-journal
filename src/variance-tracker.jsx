@@ -4082,25 +4082,58 @@ function AddCourseForm({ onAdd, onCancel }) {
 }
 
 function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete, onToggleReview }) {
-  const [open, setOpen] = useState(false); const [updateMode, setUpdateMode] = useState(false); const [text, setText] = useState(``);
+  const [open, setOpen] = useState(false); 
+  const [updateMode, setUpdateMode] = useState(false); 
+  const [text, setText] = useState(``);
+  
+  // --- 👇 추가 및 개선된 타이머 로직 ---
+  const [activeTimerLec, setActiveTimerLec] = useState(null);
+  const [timerStartAt, setTimerStartAt] = useState(null);
+  const [tick, setTick] = useState(0); // 실시간 초시계 상태
+
+  // 초시계 타이머 구동
+  useEffect(() => {
+    if (!timerStartAt) return;
+    const interval = setInterval(() => {
+      setTick(Math.floor((Date.now() - timerStartAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timerStartAt]);
+
+  // 타이머 정지 및 시간 저장
+  function stopReviewTimer(e, lecNum) {
+    e.stopPropagation(); // 이벤트 씹힘 방지
+    if (!timerStartAt) return;
+    
+    // 테스트 삼아 일찍 꺼도 최소 1분은 저장되도록 보장
+    const elapsedMin = Math.max(1, Math.round((Date.now() - timerStartAt) / 60000));
+    
+    const updatedLectures = course.lectures.map(l => {
+      if (l.num === lecNum) {
+        const prevReviewMin = l.reviewDurationMin || 0;
+        return { ...l, reviewed: true, reviewDurationMin: prevReviewMin + elapsedMin };
+      }
+      return l;
+    });
+    
+    onUpdate(updatedLectures);
+    setActiveTimerLec(null);
+    setTimerStartAt(null);
+    setTick(0);
+  }
+  // --- 👆 타이머 로직 끝 ---
+
   const total = course.lectures.length;
   const completed = course.lectures.filter(l => l.completed).length; 
-  const reviewed = course.lectures.filter(l => l.reviewed).length; // 복습 완료 수
+  const reviewed = course.lectures.filter(l => l.reviewed).length;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   const reviewPct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
   
-  const totalMin = course.lectures.reduce((s, l) => s + (l.durationMin || 0), 0); 
-  const completedMin = course.lectures.filter(l => l.completed).reduce((s, l) => s + (l.durationMin || 0), 0);
   const subColor = SUBJECTS[course.subject]?.color || C.muted; 
   const typeLabel = SUBJECTS[course.subject]?.types.find(t => t.key === course.studyType)?.label || course.studyType;
 
-  const newParsed = useMemo(() => parseCourseText(text), [text]);
-  const prevSet = new Set(course.lectures.filter(l => l.completed).map(l => l.num));
-  const added = newParsed.filter(l => l.completed && !prevSet.has(l.num));
-  const addedMin = added.reduce((s, l) => s + l.durationMin, 0);
-
   const targetEndDate = course.targetEndDate || settings?.examDate || addDays(today, 30);
-  const targetReviewDate = course.targetReviewDate || targetEndDate; // 복습 목표일 기본값은 수강 목표일과 동일
+  const targetReviewDate = course.targetReviewDate || targetEndDate; 
   
   const daysUntilTarget = Math.max(1, daysDiff(today, targetEndDate));
   const daysUntilReviewTarget = Math.max(1, daysDiff(today, targetReviewDate));
@@ -4108,43 +4141,17 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   const startDate = course.startDate || course.createdAt || today;
   const daysSinceStart = Math.max(1, daysDiff(startDate, today) + 1);
   
-  // CourseCard 컴포넌트 상단에 타이머 상태 추가
-const [activeTimerLec, setActiveTimerLec] = useState(null); // 현재 측정 중인 강의 num
-const [timerStartAt, setTimerStartAt] = useState(null);
-
-// 타이머 정지 시 측정된 시간을 저장하는 함수
-function stopReviewTimer(lecNum) {
-  if (!timerStartAt) return;
-  const elapsedMin = Math.round((Date.now() - timerStartAt) / 60000);
-  
-  const updatedLectures = course.lectures.map(l => {
-    if (l.num === lecNum) {
-      const prevReviewMin = l.reviewDurationMin || 0;
-      return { ...l, reviewed: true, reviewDurationMin: prevReviewMin + elapsedMin };
-    }
-    return l;
-  });
-  
-  onUpdate(updatedLectures);
-  setActiveTimerLec(null);
-  setTimerStartAt(null);
-}
-  
-  // 수강 페이스
   const remainingLectures = total - completed;
   const requiredPace = Math.ceil(remainingLectures / daysUntilTarget);
   const actualPace = completed / daysSinceStart;
   const isPaceGood = actualPace >= requiredPace;
   const isPaceWarning = actualPace >= (requiredPace * 0.7) && !isPaceGood;
   
-  // 복습 페이스
   const remainingReviews = total - reviewed;
   const requiredReviewPace = Math.ceil(remainingReviews / daysUntilReviewTarget);
   const actualReviewPace = reviewed / daysSinceStart;
   const isReviewGood = actualReviewPace >= requiredReviewPace;
   const isReviewWarning = actualReviewPace >= (requiredReviewPace * 0.7) && !isReviewGood;
-
-  function submitUpdate() { if (newParsed.length === 0) return; onUpdate(newParsed); setText(``); setUpdateMode(false); }
 
   return (
     <div style={{ background:C.paper, border:`1px solid ${C.line}` }}>
@@ -4174,7 +4181,6 @@ function stopReviewTimer(lecNum) {
               </span>
             )}
           </div>
-          {/* 진행바 (수강 진한색, 복습 연한색 겹침) */}
           <div style={{ height:4, background:C.lineSoft, marginTop:8, position:`relative`, overflow: 'hidden' }}>
             <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background: pct === 100 ? C.good : subColor, opacity: 0.4 }} />
             <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${reviewPct}%`, background: reviewPct === 100 ? C.good : subColor }} />
@@ -4185,39 +4191,31 @@ function stopReviewTimer(lecNum) {
 
       {open && (
         <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 14px` }}>
-          
-          {/* 페이스 진단 카드 영역 */}
           {(remainingLectures > 0 || remainingReviews > 0) && (
             <div style={{ background: C.bg, border: `1px solid ${C.lineSoft}`, padding: `12px`, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              
-              {/* 수강 페이스 */}
               {remainingLectures > 0 && (
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-    <div>
-      <span style={{ fontWeight: 600, color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent }}>
-        수강 페이스 {isPaceGood ? `🟢` : isPaceWarning ? `🟡` : `🔴`}
-      </span>
-      <div style={{ color: C.muted, marginTop: 4 }}>
-        현재 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{actualPace.toFixed(1)}</span>강/일 · 필요 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{requiredPace}</span>강/일
-      </div>
-    </div>
-    
-    <div style={{ textAlign: 'right', display: 'flex', gap: 10 }}>
-      <div>
-        <div style={{ color: C.muted, marginBottom: 2 }}>시작일</div>
-        <input type="date" value={startDate} onChange={e => onUpdateMeta && onUpdateMeta({ startDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.paper, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
-      </div>
-      <div>
-        <div style={{ color: C.muted, marginBottom: 2 }}>목표일 (D-{daysUntilTarget})</div>
-        <input type="date" value={targetEndDate} onChange={e => onUpdateMeta && onUpdateMeta({ targetEndDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.paper, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
-      </div>
-    </div>
-  </div>
-)}
-              
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+                  <div>
+                    <span style={{ fontWeight: 600, color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent }}>
+                      수강 페이스 {isPaceGood ? `🟢` : isPaceWarning ? `🟡` : `🔴`}
+                    </span>
+                    <div style={{ color: C.muted, marginTop: 4 }}>
+                      현재 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{actualPace.toFixed(1)}</span>강/일 · 필요 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{requiredPace}</span>강/일
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', display: 'flex', gap: 10 }}>
+                    <div>
+                      <div style={{ color: C.muted, marginBottom: 2 }}>시작일</div>
+                      <input type="date" value={startDate} onChange={e => onUpdateMeta && onUpdateMeta({ startDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.paper, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
+                    </div>
+                    <div>
+                      <div style={{ color: C.muted, marginBottom: 2 }}>목표일 (D-{daysUntilTarget})</div>
+                      <input type="date" value={targetEndDate} onChange={e => onUpdateMeta && onUpdateMeta({ targetEndDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.paper, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
+                    </div>
+                  </div>
+                </div>
+              )}
               {remainingLectures > 0 && remainingReviews > 0 && <div style={{ borderTop: `1px dashed ${C.lineSoft}` }} />}
-
-              {/* 복습 페이스 */}
               {remainingReviews > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
                   <div>
@@ -4233,47 +4231,51 @@ function stopReviewTimer(lecNum) {
             </div>
           )}
 
-         {/* 기존 강의 리스트 렌더링 부분 수정 */}
-<div style={{ maxHeight:240, overflowY:`auto`, marginBottom:10 }}>
-  {course.lectures.map(l => {
-    const isRunning = activeTimerLec === l.num;
-    const isReviewOk = l.reviewDurationMin <= l.durationMin;
-    
-    return (
-      <div key={l.num} style={{ display:`flex`, gap:6, padding:`6px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11, alignItems: 'center' }}>
-        <span className={`mono`} style={{ color:C.muted, minWidth:26 }}>{l.num}강</span>
-        <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
-        <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.durationMin || `-`}분</span>
-        
-        {/* 복습 타이머 및 상태 표시 영역 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 60 }}>
-          {isRunning ? (
-            <button onClick={() => stopReviewTimer(l.num)} style={{ background: C.accent, color: '#fff', border: 'none', padding: '3px 6px', fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
-              정지
-            </button>
-          ) : (
-            <button onClick={() => { setActiveTimerLec(l.num); setTimerStartAt(Date.now()); }} style={{ background: C.bg, color: C.ink, border: `1px solid ${C.line}`, padding: '3px 6px', fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
-              ▶ 복습시작
-            </button>
-          )}
-          
-          {/* 복습 완료 후 결과 (시간 및 상태 아이콘) */}
-          {l.reviewed && l.reviewDurationMin !== undefined && (
-            <span className="mono" style={{ fontSize: 9, color: isReviewOk ? C.good : C.accent }}>
-              {l.reviewDurationMin}분 {isReviewOk ? '🟢' : '🔴'}
-            </span>
-          )}
-        </div>
-        
-        <span className={`mono`} style={{ color: l.completed ? C.ink : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:38, textAlign:`right` }}>{l.completed ? `✓ 완강` : `${l.progress}%`}</span>
-      </div>
-    );
-  })}
-</div>
+          <div style={{ maxHeight:240, overflowY:`auto`, marginBottom:10 }}>
+            {course.lectures.map(l => {
+              const isRunning = activeTimerLec === l.num;
+              const isReviewOk = l.reviewDurationMin <= l.durationMin;
+              
+              return (
+                <div key={l.num} style={{ display:`flex`, gap:6, padding:`6px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11, alignItems: 'center' }}>
+                  <span className={`mono`} style={{ color:C.muted, minWidth:26 }}>{l.num}강</span>
+                  <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                  <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.durationMin || `-`}분</span>
+                  
+                  {/* 👇 개선된 부분: 실시간 타이머 및 버튼 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 60 }}>
+                    {isRunning ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span className="mono" style={{ color: C.accent, fontSize: 10, fontWeight: 600 }}>
+                          {Math.floor(tick / 60)}:{(tick % 60).toString().padStart(2, '0')}
+                        </span>
+                        <button onClick={(e) => stopReviewTimer(e, l.num)} style={{ background: C.accent, color: '#fff', border: 'none', padding: '3px 6px', fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
+                          정지
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={(e) => { e.stopPropagation(); setActiveTimerLec(l.num); setTimerStartAt(Date.now()); setTick(0); }} style={{ background: C.bg, color: C.ink, border: `1px solid ${C.line}`, padding: '3px 6px', fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
+                        ▶ 복습시작
+                      </button>
+                    )}
+                    
+                    {!isRunning && l.reviewed && l.reviewDurationMin !== undefined && (
+                      <span className="mono" style={{ fontSize: 9, color: isReviewOk ? C.good : C.accent }}>
+                        {l.reviewDurationMin}분 {isReviewOk ? '🟢' : '🔴'}
+                      </span>
+                    )}
+                  </div>
+                  {/* 👆 개선 부분 끝 */}
+                  
+                  <span className={`mono`} style={{ color: l.completed ? C.ink : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:38, textAlign:`right` }}>{l.completed ? `✓ 완강` : `${l.progress}%`}</span>
+                </div>
+              );
+            })}
           </div>
-    )}
-  </div>
-);
+        </div>
+      )}
+    </div>
+  );
 }
 /* ============================================================ CHECKLIST (점수 누수 방어) ============================================================ */
 
