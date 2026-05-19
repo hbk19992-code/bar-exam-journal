@@ -3941,11 +3941,14 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings }) 
   function updateCourse(id, newLectures) {
     const prev = courses.find(c => c.id === id); if (!prev) return;
     const prevSet = new Set(prev.lectures.filter(l => l.completed).map(l => l.num));
-    // 기존에 복습 완료했던 강의 번호 저장
     const reviewedSet = new Set(prev.lectures.filter(l => l.reviewed).map(l => l.num));
     
-    // 새 강의 리스트에 복습 상태 병합
-    const mergedLectures = newLectures.map(l => ({ ...l, reviewed: reviewedSet.has(l.num) }));
+    // 👇 이 부분이 핵심입니다. 타이머가 넘겨준 reviewed 상태가 있으면 그걸 우선적으로 존중합니다.
+    const mergedLectures = newLectures.map(l => ({
+      ...l,
+      reviewed: l.reviewed !== undefined ? l.reviewed : reviewedSet.has(l.num)
+    }));
+    
     const addedMin = mergedLectures.filter(l => l.completed && !prevSet.has(l.num)).reduce((s, l) => s + l.durationMin, 0);
     
     setCourses(courses.map(c => c.id === id ? { ...c, lectures: mergedLectures, lastUpdated: today } : c)); 
