@@ -998,10 +998,22 @@ function normalizeStoredState(data = {}) {
   };
 }
 
+function stripUndefined(value) {
+  if (Array.isArray(value)) return value.map(stripUndefined);
+  if (value && typeof value === `object`) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefined(v)])
+    );
+  }
+  return value;
+}
+
 async function saveStateToFirestore(uid, partial) {
   if (!fbDB) return false;
   try {
-    await setDoc(doc(fbDB, `users`, uid), partial, { merge: true });
+    await setDoc(doc(fbDB, `users`, uid), stripUndefined(partial), { merge: true });
     return true;
   } catch (e) {
     console.error(`[saveState]`, e);
@@ -1097,6 +1109,14 @@ const globalStyles = (
   };
   localStateRef.current = currentState;
   loadedRef.current = loaded;
+
+  if (loaded && user && Object.keys(lastSavedRef.current).length > 0) {
+    PERSISTED_STATE_KEYS.forEach(key => {
+      if (currentState[key] !== lastSavedRef.current[key]) {
+        dirtyKeysRef.current.add(key);
+      }
+    });
+  }
 
   function applyAppState(nextState) {
     setSettings(nextState.settings);
@@ -4082,12 +4102,15 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings }) 
     const prevSet = new Set(prev.lectures.filter(l => l.completed).map(l => l.num));
     const prevByNum = new Map(prev.lectures.map(l => [l.num, l]));
     
-    const mergedLectures = newLectures.map(l => ({
-      ...(prevByNum.get(l.num) || {}),
-      ...l,
-      reviewed: l.reviewed !== undefined ? l.reviewed : !!prevByNum.get(l.num)?.reviewed,
-      reviewDurationMin: l.reviewDurationMin !== undefined ? l.reviewDurationMin : prevByNum.get(l.num)?.reviewDurationMin,
-    }));
+    const mergedLectures = newLectures.map(l => {
+      const prevLecture = prevByNum.get(l.num) || {};
+      return stripUndefined({
+        ...prevLecture,
+        ...l,
+        reviewed: l.reviewed !== undefined ? l.reviewed : !!prevLecture.reviewed,
+        reviewDurationMin: l.reviewDurationMin !== undefined ? l.reviewDurationMin : prevLecture.reviewDurationMin,
+      });
+    });
     
     const addedMin = mergedLectures.filter(l => l.completed && !prevSet.has(l.num)).reduce((s, l) => s + l.durationMin, 0);
     
