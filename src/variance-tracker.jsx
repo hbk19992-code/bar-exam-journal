@@ -958,6 +958,46 @@ function normalizeSettings(value = {}) {
   };
 }
 
+const PERSISTED_STATE_KEYS = [
+  `settings`, `logs`, `reviews`, `books`, `todos`, `tracks`,
+  `materials`, `materialLog`, `examScores`, `moods`, `schedules`, `checklists`,
+  `mcqProgress`, `routines`, `routineLog`, `weeklyPlans`, `courses`,
+];
+
+function blankUserState() {
+  return {
+    settings: normalizeSettings(),
+    logs: {}, reviews: [], books: [], todos: {}, tracks: {},
+    materials: DEFAULT_MATERIALS, materialLog: {},
+    examScores: [], moods: {}, schedules: [],
+    checklists: DEFAULT_CHECKLISTS, mcqProgress: {},
+    routines: DEFAULT_ROUTINES, routineLog: {}, weeklyPlans: {}, courses: [],
+  };
+}
+
+function normalizeStoredState(data = {}) {
+  const d = asPlainObject(data);
+  return {
+    settings: normalizeSettings(d.settings),
+    logs: asPlainObject(d.logs),
+    reviews: asArray(d.reviews),
+    books: asArray(d.books),
+    todos: asPlainObject(d.todos),
+    tracks: asPlainObject(d.tracks),
+    materials: asArray(d.materials, DEFAULT_MATERIALS),
+    materialLog: asPlainObject(d.materialLog),
+    examScores: asArray(d.examScores),
+    moods: asPlainObject(d.moods),
+    schedules: asArray(d.schedules),
+    checklists: asArray(d.checklists, DEFAULT_CHECKLISTS),
+    mcqProgress: asPlainObject(d.mcqProgress),
+    routines: asArray(d.routines, DEFAULT_ROUTINES),
+    routineLog: asPlainObject(d.routineLog),
+    weeklyPlans: asPlainObject(d.weeklyPlans),
+    courses: asArray(d.courses),
+  };
+}
+
 async function saveStateToFirestore(uid, partial) {
   if (!fbDB) return false;
   try {
@@ -995,6 +1035,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [today, setToday] = useState(todayISO());
   const [syncStatus, setSyncStatus] = useState(`idle`); // idle | saving | saved | error
+  const [syncRetryTick, setSyncRetryTick] = useState(0);
   // ↓ [추가] 모바일 하단 탭 고정 및 줌 방지를 위한 뷰포트 강제 세팅
   useEffect(() => {
     let meta = document.querySelector(`meta[name="viewport"]`);
@@ -1044,12 +1085,38 @@ const globalStyles = (
   );
   /* 마지막으로 서버에서 받은 기준 상태와 비교해 바뀐 최상위 필드만 저장한다. */
   const lastSavedRef = useRef({});
+  const localStateRef = useRef({});
+  const dirtyKeysRef = useRef(new Set());
+  const loadedRef = useRef(false);
   const saveTimerRef = useRef(null);
+
+  const currentState = {
+    settings, logs, reviews, books, todos, tracks,
+    materials, materialLog, examScores, moods, schedules, checklists,
+    mcqProgress, routines, routineLog, weeklyPlans, courses,
+  };
+  localStateRef.current = currentState;
+  loadedRef.current = loaded;
+
+  function applyAppState(nextState) {
+    setSettings(nextState.settings);
+    setLogs(nextState.logs); setReviews(nextState.reviews); setBooks(nextState.books);
+    setTodos(nextState.todos); setTracks(nextState.tracks);
+    setMaterials(nextState.materials); setMaterialLog(nextState.materialLog);
+    setExamScores(nextState.examScores); setMoods(nextState.moods);
+    setSchedules(nextState.schedules); setChecklists(nextState.checklists);
+    setMcqProgress(nextState.mcqProgress); setRoutines(nextState.routines);
+    setRoutineLog(nextState.routineLog); setWeeklyPlans(nextState.weeklyPlans);
+    setCourses(nextState.courses);
+  }
 
   // === 데이터 로드 (onSnapshot 실시간 동기화) ===
   useEffect(() => {
     if (!firebaseReady || !fbDB || !user) { setLoaded(false); return; }
     setLoaded(false);
+    dirtyKeysRef.current.clear();
+    lastSavedRef.current = {};
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     const ref = doc(fbDB, `users`, user.uid);
 
@@ -1057,69 +1124,40 @@ const globalStyles = (
       (snap) => {
         // 로컬 대기 스냅샷은 건너뛰고, 서버 확정 스냅샷은 기준 상태로 반영한다.
         if (snap.metadata.hasPendingWrites) return;
-
-        // 신규 사용자: 문서가 아직 없음 → 기본값으로 초기화
-        if (!snap.exists()) {
-          const blank = {
-            settings: normalizeSettings(),
-            logs: {}, reviews: [], books: [], todos: {}, tracks: {},
-            materials: DEFAULT_MATERIALS, materialLog: {},
-            examScores: [], moods: {}, schedules: [],
-            checklists: DEFAULT_CHECKLISTS, mcqProgress: {},
-            routines: DEFAULT_ROUTINES, routineLog: {}, weeklyPlans: {}, courses: [],
-          };
-          lastSavedRef.current = blank;
-          setSettings(blank.settings);
-          setLogs(blank.logs); setReviews(blank.reviews); setBooks(blank.books);
-          setTodos(blank.todos); setTracks(blank.tracks);
-          setMaterials(blank.materials); setMaterialLog(blank.materialLog);
-          setExamScores(blank.examScores); setMoods(blank.moods);
-          setSchedules(blank.schedules); setChecklists(blank.checklists);
-          setMcqProgress(blank.mcqProgress); setRoutines(blank.routines);
-          setRoutineLog(blank.routineLog); setWeeklyPlans(blank.weeklyPlans);
-          setLoaded(true);
-          setSyncStatus(`saved`); setCourses(blank.courses);
+        if (snap.metadata.fromCache && loadedRef.current) {
+          setSyncStatus(dirtyKeysRef.current.size > 0 ? `saving` : `saved`);
           return;
         }
 
-        const d = snap.data() || {};
-        const newState = {
-          settings: normalizeSettings(d.settings),
-          logs: asPlainObject(d.logs),
-          reviews: asArray(d.reviews),
-          books: asArray(d.books),
-          todos: asPlainObject(d.todos),
-          tracks: asPlainObject(d.tracks),
-          materials: asArray(d.materials, DEFAULT_MATERIALS),
-          materialLog: asPlainObject(d.materialLog),
-          examScores: asArray(d.examScores),
-          moods: asPlainObject(d.moods),
-          schedules: asArray(d.schedules),
-          checklists: asArray(d.checklists, DEFAULT_CHECKLISTS),
-          mcqProgress: asPlainObject(d.mcqProgress),
-          routines: asArray(d.routines, DEFAULT_ROUTINES),
-          routineLog: asPlainObject(d.routineLog),
-          weeklyPlans: asPlainObject(d.weeklyPlans),
-          courses: asArray(d.courses),
-      
-        };
+        // 신규 사용자: 문서가 아직 없음 → 기본값으로 초기화
+        if (!snap.exists()) {
+          const blank = blankUserState();
+          lastSavedRef.current = blank;
+          dirtyKeysRef.current.clear();
+          applyAppState(blank);
+          setLoaded(true);
+          setSyncStatus(`saved`);
+          return;
+        }
 
-        // 기준점 갱신
-        lastSavedRef.current = newState;
+        const newState = normalizeStoredState(snap.data() || {});
+        const dirtyKeys = dirtyKeysRef.current;
+        const hasLocalChanges = dirtyKeys.size > 0;
+        const stateForScreen = { ...newState };
+        const stateForBaseline = { ...newState };
 
-        // 화면 갱신
-        setSettings(newState.settings);
-        setLogs(newState.logs); setReviews(newState.reviews); setBooks(newState.books);
-        setTodos(newState.todos); setTracks(newState.tracks);
-        setMaterials(newState.materials); setMaterialLog(newState.materialLog);
-        setExamScores(newState.examScores); setMoods(newState.moods);
-        setSchedules(newState.schedules); setChecklists(newState.checklists);
-        setMcqProgress(newState.mcqProgress); setRoutines(newState.routines);
-        setRoutineLog(newState.routineLog); setWeeklyPlans(newState.weeklyPlans);
-        setCourses(newState.courses);
+        if (hasLocalChanges) {
+          dirtyKeys.forEach(key => {
+            stateForScreen[key] = localStateRef.current[key];
+            stateForBaseline[key] = lastSavedRef.current[key] ?? newState[key];
+          });
+        }
+
+        lastSavedRef.current = stateForBaseline;
+        applyAppState(stateForScreen);
 
         setLoaded(true);
-        setSyncStatus(`saved`);
+        setSyncStatus(hasLocalChanges ? `saving` : `saved`);
       },
       (err) => {
         // alert 쓰지 말 것 — 모바일에서 무한 반복 가능
@@ -1139,24 +1177,21 @@ const globalStyles = (
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     saveTimerRef.current = setTimeout(async () => {
-      const currentState = {
-        settings, logs, reviews, books, todos, tracks,
-        materials, materialLog, examScores, moods, schedules, checklists,
-        mcqProgress, routines, routineLog, weeklyPlans, courses,
-      };
+      const stateAtSave = localStateRef.current;
 
       // 기준점과 비교해 바뀐 필드만 골라냄
       const patch = {};
-      let hasChanges = false;
-      for (const key in currentState) {
-        if (currentState[key] !== lastSavedRef.current[key]) {
-          patch[key] = currentState[key];
-          hasChanges = true;
+      const changedKeys = [];
+      PERSISTED_STATE_KEYS.forEach(key => {
+        if (stateAtSave[key] !== lastSavedRef.current[key]) {
+          patch[key] = stateAtSave[key];
+          changedKeys.push(key);
+          dirtyKeysRef.current.add(key);
         }
-      }
+      });
 
-      if (!hasChanges) {
-        setSyncStatus(`saved`);
+      if (changedKeys.length === 0) {
+        setSyncStatus(dirtyKeysRef.current.size > 0 ? `saving` : `saved`);
         return;
       }
 
@@ -1164,10 +1199,19 @@ const globalStyles = (
       patch.updatedAt = new Date().toISOString();
 
       const ok = await saveStateToFirestore(user.uid, patch);
-      setSyncStatus(ok ? `saved` : `error`);
-
       if (ok) {
-        lastSavedRef.current = currentState;
+        const nextBaseline = { ...lastSavedRef.current };
+        changedKeys.forEach(key => {
+          if (localStateRef.current[key] === stateAtSave[key]) {
+            nextBaseline[key] = stateAtSave[key];
+            dirtyKeysRef.current.delete(key);
+          }
+        });
+        lastSavedRef.current = nextBaseline;
+        setSyncStatus(dirtyKeysRef.current.size > 0 ? `saving` : `saved`);
+      } else {
+        setSyncStatus(`error`);
+        setTimeout(() => setSyncRetryTick(t => t + 1), 5000);
       }
     }, 2500);
 
@@ -1175,7 +1219,7 @@ const globalStyles = (
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+  }, [user, loaded, syncRetryTick, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
@@ -4067,10 +4111,15 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings }) 
   
   // 개별 강의 복습 토글 기능
   function toggleReview(id, lecNum) {
-    setCourses(courses.map(c => {
-      if (c.id !== id) return c;
-      const nextLecs = c.lectures.map(l => l.num === lecNum ? { ...l, reviewed: !l.reviewed } : l);
-      return { ...c, lectures: nextLecs };
+    const course = courses.find(c => c.id === id); if (!course) return;
+    updateCourse(id, course.lectures.map(l => {
+      if (l.num !== lecNum) return l;
+      const nextReviewed = !l.reviewed;
+      return {
+        ...l,
+        reviewed: nextReviewed,
+        tags: nextReviewed ? (l.tags || []).filter(t => t !== `again`) : (l.tags || []),
+      };
     }));
   }
   
@@ -4126,7 +4175,7 @@ function CourseQueuePanel({ courses, today, settings, onCompleteLecture, onRevie
                 <CourseQueueLine label={`수강`} color={subColor} lectures={queue.watch} actionLabel={`완강`} onAction={(lecNum) => onCompleteLecture(course.id, lecNum)} />
               )}
               {queue.review.length > 0 && (
-                <CourseQueueLine label={`복습`} color={C.accent} lectures={queue.review} actionLabel={`체크`} onAction={(lecNum) => onReviewLecture(course.id, lecNum)} />
+                <CourseQueueLine label={`복습`} color={C.accent} lectures={queue.review} compact actionLabel={`복습완료`} onAction={(lecNum) => onReviewLecture(course.id, lecNum)} />
               )}
             </div>
           );
@@ -4136,17 +4185,25 @@ function CourseQueuePanel({ courses, today, settings, onCompleteLecture, onRevie
   );
 }
 
-function CourseQueueLine({ label, color, lectures, actionLabel, onAction }) {
+function CourseQueueLine({ label, color, lectures, actionLabel, onAction, compact = false }) {
   return (
     <div style={{ display:`flex`, flexDirection:`column`, gap:3, marginTop:4 }}>
       {lectures.map(l => (
-        <div key={`${label}-${l.num}`} style={{ display:`flex`, alignItems:`center`, gap:6, fontSize:10 }}>
+        <div key={`${label}-${l.num}`} onClick={compact ? () => onAction(l.num) : undefined}
+          style={{ display:`flex`, alignItems:`center`, gap:6, fontSize:10, cursor: compact ? `pointer` : `default`, padding: compact ? `2px 0` : 0 }}>
           <span className={`kserif`} style={{ color, fontWeight:600, minWidth:28 }}>{label}</span>
           <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.num}강</span>
           <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
-          <button onClick={() => onAction(l.num)} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, padding:`3px 6px`, cursor:`pointer`, fontSize:9, flexShrink:0 }}>
-            {actionLabel}
-          </button>
+          {compact ? (
+            <button title={actionLabel} aria-label={actionLabel} onClick={(e) => { e.stopPropagation(); onAction(l.num); }}
+              style={{ background:`transparent`, border:`none`, color, padding:`2px`, cursor:`pointer`, flexShrink:0, display:`flex`, alignItems:`center` }}>
+              <CheckSquare size={15} />
+            </button>
+          ) : (
+            <button onClick={() => onAction(l.num)} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, padding:`3px 6px`, cursor:`pointer`, fontSize:9, flexShrink:0 }}>
+              {actionLabel}
+            </button>
+          )}
         </div>
       ))}
     </div>
@@ -4538,6 +4595,16 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                       메모
                     </button>
                     <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.durationMin || `-`}분</span>
+                    <button onClick={(e) => { e.stopPropagation(); onToggleReview && onToggleReview(l.num); }}
+                      style={{
+                        background: l.reviewed ? C.good : C.bg,
+                        color: l.reviewed ? `#fff` : C.ink,
+                        border:`1px solid ${l.reviewed ? C.good : C.line}`,
+                        padding:`3px 7px`, fontSize:9, cursor:`pointer`, flexShrink:0,
+                        display:`flex`, alignItems:`center`, gap:3,
+                      }}>
+                      {l.reviewed ? <CheckSquare size={11} /> : <Square size={11} />} {l.reviewed ? `복습완료` : `복습체크`}
+                    </button>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 60 }}>
                       {isRunning ? (
