@@ -422,6 +422,12 @@ function fmtMin(n) {
   return `${m}분`;
 }
 function fmtHour(n) { return `${Math.round((n / 60) * 10) / 10}h`; }
+function fmtSavedAt(iso) {
+  if (!iso) return ``;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return ``;
+  return d.toLocaleTimeString(`ko-KR`, { hour:`2-digit`, minute:`2-digit` });
+}
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 /* ICS (Apple/Google Calendar) export */
@@ -963,6 +969,66 @@ const PERSISTED_STATE_KEYS = [
   `materials`, `materialLog`, `examScores`, `moods`, `schedules`, `checklists`,
   `mcqProgress`, `routines`, `routineLog`, `weeklyPlans`, `courses`,
 ];
+const LOCAL_DRAFT_PREFIX = `bar-exam-journal-local-draft`;
+
+function localDraftKey(uidValue) {
+  return `${LOCAL_DRAFT_PREFIX}:${uidValue}`;
+}
+
+function buildPersistedSnapshot(state) {
+  const out = {};
+  PERSISTED_STATE_KEYS.forEach(key => { out[key] = state[key]; });
+  return stripUndefined(out);
+}
+
+function sameStoredValue(a, b) {
+  try {
+    return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  } catch {
+    return false;
+  }
+}
+
+function hasStateDiff(a, b) {
+  if (!a || !b) return true;
+  return PERSISTED_STATE_KEYS.some(key => !sameStoredValue(a[key], b[key]));
+}
+
+function readLocalDraft(uidValue) {
+  try {
+    const raw = localStorage.getItem(localDraftKey(uidValue));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === `object` ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalDraft(uidValue, state, updatedAt = new Date().toISOString()) {
+  try {
+    const payload = {
+      schemaVersion: APP_SCHEMA_VERSION,
+      updatedAt,
+      ...buildPersistedSnapshot(state),
+    };
+    localStorage.setItem(localDraftKey(uidValue), JSON.stringify(payload));
+  } catch {}
+}
+
+function shouldRestoreLocalDraft(draft, remoteUpdatedAt, remoteState) {
+  if (!draft?.updatedAt) return false;
+  const draftState = normalizeStoredState(draft);
+  if (!hasStateDiff(draftState, remoteState)) return false;
+  if (!remoteUpdatedAt) return true;
+  return draft.updatedAt > remoteUpdatedAt;
+}
+
+function markDirtyDiff(dirtySet, localState, baselineState) {
+  PERSISTED_STATE_KEYS.forEach(key => {
+    if (!sameStoredValue(localState[key], baselineState[key])) dirtySet.add(key);
+  });
+}
 
 function blankUserState() {
   return {
@@ -1048,6 +1114,7 @@ export default function App() {
   const [today, setToday] = useState(todayISO());
   const [syncStatus, setSyncStatus] = useState(`idle`); // idle | saving | saved | error
   const [syncRetryTick, setSyncRetryTick] = useState(0);
+  const [lastSavedAt, setLastSavedAt] = useState(null);
   // ↓ [추가] 모바일 하단 탭 고정 및 줌 방지를 위한 뷰포트 강제 세팅
   useEffect(() => {
     let meta = document.querySelector(`meta[name="viewport"]`);
@@ -1090,8 +1157,14 @@ const globalStyles = (
         @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
         .lift:active { transform: scale(0.98); }
         .lift { transition: transform .15s ease; }
+        .tap { transition: background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease; }
+        .tap:active { transform: translateY(1px); }
         .hide-scroll::-webkit-scrollbar { display: none; }
         .hide-scroll { scrollbar-width: none; }
+        @media (max-width: 420px) {
+          .home-core-grid { gap: 6px !important; }
+          .home-core-grid button { padding-left: 8px !important; padding-right: 8px !important; }
+        }
       `}</style>
     </>
   );
@@ -1101,6 +1174,7 @@ const globalStyles = (
   const dirtyKeysRef = useRef(new Set());
   const loadedRef = useRef(false);
   const saveTimerRef = useRef(null);
+  const lastSavedAtRef = useRef(null);
 
   const currentState = {
     settings, logs, reviews, books, todos, tracks,
@@ -1109,6 +1183,7 @@ const globalStyles = (
   };
   localStateRef.current = currentState;
   loadedRef.current = loaded;
+  lastSavedAtRef.current = lastSavedAt;
 
   if (loaded && user && Object.keys(lastSavedRef.current).length > 0) {
     PERSISTED_STATE_KEYS.forEach(key => {
@@ -1136,6 +1211,7 @@ const globalStyles = (
     setLoaded(false);
     dirtyKeysRef.current.clear();
     lastSavedRef.current = {};
+    setLastSavedAt(null);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     const ref = doc(fbDB, `users`, user.uid);
@@ -1151,18 +1227,50 @@ const globalStyles = (
 
         // 신규 사용자: 문서가 아직 없음 → 기본값으로 초기화
         if (!snap.exists()) {
+          const draft = readLocalDraft(user.uid);
+          if (draft) {
+            const draftState = normalizeStoredState(draft);
+            const blank = blankUserState();
+            lastSavedRef.current = blank;
+            dirtyKeysRef.current.clear();
+            markDirtyDiff(dirtyKeysRef.current, draftState, blank);
+            applyAppState(draftState);
+            setLoaded(true);
+            setLastSavedAt(null);
+            setSyncStatus(`saving`);
+            return;
+          }
           const blank = blankUserState();
           lastSavedRef.current = blank;
           dirtyKeysRef.current.clear();
           applyAppState(blank);
           setLoaded(true);
+          setLastSavedAt(null);
           setSyncStatus(`saved`);
           return;
         }
 
-        const newState = normalizeStoredState(snap.data() || {});
+        const rawData = snap.data() || {};
+        const newState = normalizeStoredState(rawData);
+        const remoteUpdatedAt = rawData.updatedAt || null;
         const dirtyKeys = dirtyKeysRef.current;
         const hasLocalChanges = dirtyKeys.size > 0;
+
+        if (!hasLocalChanges) {
+          const draft = readLocalDraft(user.uid);
+          if (shouldRestoreLocalDraft(draft, remoteUpdatedAt, newState)) {
+            const draftState = normalizeStoredState(draft);
+            lastSavedRef.current = newState;
+            dirtyKeys.clear();
+            markDirtyDiff(dirtyKeys, draftState, newState);
+            applyAppState(draftState);
+            setLoaded(true);
+            setLastSavedAt(remoteUpdatedAt);
+            setSyncStatus(`saving`);
+            return;
+          }
+        }
+
         const stateForScreen = { ...newState };
         const stateForBaseline = { ...newState };
 
@@ -1177,11 +1285,25 @@ const globalStyles = (
         applyAppState(stateForScreen);
 
         setLoaded(true);
+        setLastSavedAt(remoteUpdatedAt);
         setSyncStatus(hasLocalChanges ? `saving` : `saved`);
       },
       (err) => {
         // alert 쓰지 말 것 — 모바일에서 무한 반복 가능
         console.error(`[snapshot error - 저장 차단됨]`, err);
+        if (!loadedRef.current) {
+          const draft = readLocalDraft(user.uid);
+          if (draft) {
+            const draftState = normalizeStoredState(draft);
+            const blank = blankUserState();
+            lastSavedRef.current = blank;
+            dirtyKeysRef.current.clear();
+            markDirtyDiff(dirtyKeysRef.current, draftState, blank);
+            applyAppState(draftState);
+            setLoaded(true);
+            setLastSavedAt(draft.updatedAt || null);
+          }
+        }
         setSyncStatus(`error`);
       }
     );
@@ -1228,6 +1350,8 @@ const globalStyles = (
           }
         });
         lastSavedRef.current = nextBaseline;
+        setLastSavedAt(patch.updatedAt);
+        writeLocalDraft(user.uid, localStateRef.current, patch.updatedAt);
         setSyncStatus(dirtyKeysRef.current.size > 0 ? `saving` : `saved`);
       } else {
         setSyncStatus(`error`);
@@ -1240,6 +1364,11 @@ const globalStyles = (
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [user, loaded, syncRetryTick, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+
+  useEffect(() => {
+    if (!loaded || !user) return;
+    writeLocalDraft(user.uid, localStateRef.current);
+  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
@@ -1425,7 +1554,18 @@ VITE_FIREBASE_APP_ID`}</pre>
     <div style={{ minHeight:`100vh`, background:C.bg, color:C.ink, paddingBottom:84, fontFamily:`Noto Sans KR, sans-serif` }}>
       {globalStyles}
 
-      <TopBar dday={dday} examLabel={settings.examLabel} examDate={settings.examDate} user={user} syncStatus={syncStatus} />
+      <TopBar
+        dday={dday}
+        examLabel={settings.examLabel}
+        examDate={settings.examDate}
+        user={user}
+        syncStatus={syncStatus}
+        lastSavedAt={lastSavedAt}
+        onRetrySync={() => {
+          setSyncStatus(`saving`);
+          setSyncRetryTick(t => t + 1);
+        }}
+      />
 
       <main style={{ maxWidth:720, margin:`0 auto`, padding:`0 18px` }}>
         {view === `home` && <HomeView {...sharedProps} dday={dday} user={user} onGoTo={setView} />}
@@ -1558,24 +1698,26 @@ function LoginView() {
 
 /* ============================================================ TOP BAR / NAV ============================================================ */
 
-function TopBar({ dday, examLabel, examDate, user, syncStatus }) {
+function TopBar({ dday, examLabel, examDate, user, syncStatus, lastSavedAt, onRetrySync }) {
   const overdue = dday < 0;
   const displayName = user?.displayName || user?.email?.split(`@`)[0] || `사용자`;
+  const savedAtText = fmtSavedAt(lastSavedAt);
   const syncMeta = {
     saving: { label: `저장 중`, color: C.muted, Icon: Cloud },
-    saved: { label: `저장됨`, color: C.good, Icon: Cloud },
+    saved: { label: savedAtText ? `저장됨 ${savedAtText}` : `저장됨`, color: C.good, Icon: Cloud },
     error: { label: `저장 실패`, color: C.accent, Icon: CloudOff },
   }[syncStatus];
   const SyncIcon = syncMeta?.Icon;
   return (
-    <header style={{ borderBottom:`1px solid ${C.line}`, background:C.paper, padding:`14px 18px 12px` }}>
-      <div style={{ maxWidth:720, margin:`0 auto`, display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:12 }}>
+    <header style={{ position:`sticky`, top:0, zIndex:9998, borderBottom:`1px solid ${C.line}`, background:`rgba(251,247,236,0.96)`, backdropFilter:`blur(10px)`, padding:`12px 18px 11px` }}>
+      <div style={{ maxWidth:720, margin:`0 auto`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:12 }}>
         <div style={{ minWidth:0, flex:1 }}>
-          <div style={{ display:`flex`, alignItems:`center`, gap:8 }}>
-            <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.22em`, color:C.muted, textTransform:`uppercase` }}>BAR EXAM JOURNAL · {displayName}</div>
+          <div style={{ display:`flex`, alignItems:`center`, gap:6, minWidth:0, flexWrap:`wrap` }}>
+            <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.18em`, color:C.muted, textTransform:`uppercase`, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>BAR EXAM JOURNAL · {displayName}</div>
             {syncMeta && (
               <span style={{
                 border:`1px solid ${syncMeta.color}`,
+                background: syncStatus === `saved` ? `rgba(60,90,58,0.08)` : syncStatus === `error` ? `rgba(122,30,30,0.08)` : C.bg,
                 color:syncMeta.color,
                 padding:`2px 5px`,
                 display:`inline-flex`,
@@ -1588,11 +1730,17 @@ function TopBar({ dday, examLabel, examDate, user, syncStatus }) {
                 <SyncIcon size={10} /> {syncMeta.label}
               </span>
             )}
+            {syncStatus === `error` && (
+              <button onClick={onRetrySync}
+                style={{ background:C.accent, color:`#fff`, border:`none`, padding:`3px 6px`, fontSize:9, lineHeight:1, cursor:`pointer`, flexShrink:0 }}>
+                재시도
+              </button>
+            )}
           </div>
-          <div className={`kserif`} style={{ fontSize:16, fontWeight:600, marginTop:3, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{examLabel}</div>
+          <div className={`kserif`} style={{ fontSize:15, fontWeight:600, marginTop:4, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{examLabel}</div>
         </div>
         <div style={{ textAlign:`right`, flexShrink:0 }}>
-          <div className={`serif`} style={{ fontSize:32, fontWeight:600, lineHeight:1, color: overdue ? C.muted : C.accent }}>
+          <div className={`serif`} style={{ fontSize:30, fontWeight:600, lineHeight:1, color: overdue ? C.muted : C.accent }}>
             D{overdue ? `+` : `−`}{Math.abs(dday)}
           </div>
           <div className={`mono`} style={{ fontSize:10, color:C.muted, marginTop:3, letterSpacing:`0.05em` }}>{examDate.replaceAll(`-`,`.`)}</div>
@@ -1618,7 +1766,7 @@ function BottomNav({ view, setView }) {
       background: C.paper, borderTop: `1px solid ${C.line}`,
       display: `grid`, gridTemplateColumns: `repeat(${items.length}, 1fr)`,
       // ↓ 변경: 최하단 여백 및 iOS/모바일 렌더링 버그 고정 옵션
-      paddingBottom: `max(env(safe-area-inset-bottom, 0px), 8px)`,
+      padding:`5px 4px max(env(safe-area-inset-bottom, 0px), 8px)`,
       zIndex: 9999,
       WebkitTransform: `translateZ(0)`, 
     }}>
@@ -1626,14 +1774,13 @@ function BottomNav({ view, setView }) {
         const active = view === it.key || (it.key === `more` && moreViews.includes(view));
         const Icon = it.icon;
         return (
-          <button key={it.key} onClick={() => setView(it.key)}
+          <button key={it.key} onClick={() => setView(it.key)} className={`tap`}
             style={{
-              background:`transparent`, border:`none`, padding:`10px 0 10px`,
+              background: active ? C.bg : `transparent`, border:`1px solid ${active ? C.lineSoft : `transparent`}`, padding:`7px 0 6px`,
               color: active ? C.accent : C.muted,
               display:`flex`, flexDirection:`column`, alignItems:`center`, gap:2,
-              cursor:`pointer`, position:`relative`,
+              cursor:`pointer`, position:`relative`, minHeight:48,
             }}>
-            {active && <span style={{ position:`absolute`, top:0, left:`50%`, transform:`translateX(-50%)`, width:18, height:2, background:C.accent }} />}
             <Icon size={17} strokeWidth={active ? 2.2 : 1.6} />
             <span className={`kserif`} style={{ fontSize:9, letterSpacing:0, fontWeight: active ? 600 : 400 }}>{it.label}</span>
           </button>
@@ -1874,7 +2021,7 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans }) {
 
 function HomeAction({ icon: Icon, label, value, sub, onClick, color = C.accent }) {
   return (
-    <button onClick={onClick}
+    <button onClick={onClick} className={`lift tap`}
       style={{
         background:C.paper,
         border:`1px solid ${C.line}`,
@@ -1897,7 +2044,91 @@ function HomeAction({ icon: Icon, label, value, sub, onClick, color = C.accent }
   );
 }
 
-function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examScores, moods, setMoods, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], user, onGoTo }) {
+function HomeTodayPanel({ today, courseItems, reviews, todosOpen, onGoTo, onCourseDone, onReviewDone }) {
+  const visibleCourses = courseItems.slice(0, 4);
+  const visibleReviews = reviews.slice(0, 3);
+  const empty = visibleCourses.length === 0 && visibleReviews.length === 0 && todosOpen === 0;
+  const hiddenCourseCount = Math.max(0, courseItems.length - visibleCourses.length);
+  const hiddenCount = hiddenCourseCount + Math.max(0, reviews.length - visibleReviews.length);
+
+  return (
+    <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`13px 14px`, marginBottom:18 }}>
+      <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:10 }}>
+        <div>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:600, color:C.ink }}>오늘 처리</div>
+          <div className={`mono`} style={{ fontSize:9, color:C.muted, marginTop:3 }}>
+            강의 {courseItems.length} · 회독 {reviews.length} · 일정 {todosOpen}
+          </div>
+        </div>
+        <div style={{ display:`flex`, gap:5, flexShrink:0 }}>
+          <button onClick={() => onGoTo(`courses`)} className={`tap`} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, fontSize:10, cursor:`pointer`, padding:`5px 7px` }}>
+            강의
+          </button>
+          <button onClick={() => onGoTo(`review`)} className={`tap`} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, fontSize:10, cursor:`pointer`, padding:`5px 7px` }}>
+            회독
+          </button>
+        </div>
+      </div>
+
+      {empty ? (
+        <div style={{ fontSize:11, color:C.muted, padding:`8px 0` }}>오늘 바로 처리할 항목이 없습니다.</div>
+      ) : (
+        <div style={{ display:`flex`, flexDirection:`column`, gap:7 }}>
+          {visibleCourses.map(item => {
+            const subColor = SUBJECTS[item.course.subject]?.color || C.muted;
+            const tags = getLectureTagLabels(item.lecture);
+            return (
+              <div key={`${item.type}-${item.course.id}-${item.lecture.num}`} style={{ display:`flex`, alignItems:`center`, gap:7, borderBottom:`1px dashed ${C.lineSoft}`, paddingBottom:7, minHeight:44 }}>
+                <span className={`kserif`} style={{ color:item.type === `watch` ? subColor : C.accent, fontSize:10, fontWeight:600, minWidth:28 }}>{item.type === `watch` ? `수강` : `복습`}</span>
+                <span className={`mono`} style={{ color:C.muted, fontSize:10, minWidth:30 }}>{item.lecture.num}강</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ color:C.ink, fontSize:11, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.lecture.title}</div>
+                  <div style={{ color:C.muted, fontSize:9, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                    {item.course.name}{tags.length > 0 ? ` · ${tags.slice(0, 2).join(` · `)}` : ``}
+                  </div>
+                </div>
+                <button onClick={() => onCourseDone(item)} className={`tap`}
+                  style={{ background:item.type === `watch` ? C.bg : C.ink, color:item.type === `watch` ? C.ink : `#fff`, border:`1px solid ${item.type === `watch` ? C.line : C.ink}`, padding:`5px 8px`, minWidth:42, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
+                  {item.type === `watch` ? `완강` : `완료`}
+                </button>
+              </div>
+            );
+          })}
+
+          {visibleReviews.map(r => (
+            <div key={r.id} style={{ display:`flex`, alignItems:`center`, gap:7, borderBottom:`1px dashed ${C.lineSoft}`, paddingBottom:7, minHeight:44 }}>
+              <span className={`kserif`} style={{ color:C.accent, fontSize:10, fontWeight:600, minWidth:28 }}>회독</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ color:C.ink, fontSize:11, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{r.title}</div>
+                <div style={{ color:C.muted, fontSize:9 }}>{r.dueDate === today ? `오늘 마감` : `${r.dueDate.slice(5)} 마감`}</div>
+              </div>
+              <button onClick={() => onReviewDone(r.id)} className={`tap`}
+                style={{ background:C.bg, color:C.ink, border:`1px solid ${C.line}`, padding:`5px 8px`, minWidth:42, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
+                완료
+              </button>
+            </div>
+          ))}
+
+          {hiddenCount > 0 && (
+            <button onClick={() => onGoTo(hiddenCourseCount > 0 ? `courses` : `review`)} className={`tap`}
+              style={{ background:C.ink, border:`none`, color:`#fff`, padding:`7px 8px`, fontSize:10, cursor:`pointer`, textAlign:`center` }}>
+              남은 항목 {hiddenCount}개 더 보기
+            </button>
+          )}
+
+          {todosOpen > 0 && (
+            <button onClick={() => onGoTo(`calendar`)} className={`tap`}
+              style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, padding:`7px 8px`, fontSize:10, cursor:`pointer`, textAlign:`left` }}>
+              오늘 일정 {todosOpen}개 남음
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, tracks, examScores, moods, setMoods, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, user, onGoTo }) {
   const todayLog = logs[today] || {};
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
@@ -1953,13 +2184,14 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
   }, [reviews, today]);
 
   const courseQueueSummary = useMemo(() => {
-    return courses.reduce((acc, course) => {
-      const queue = buildCourseDailyQueue(course, today, settings);
-      acc.watch += queue.watch.length;
-      acc.review += queue.review.length;
+    return buildCourseQueueItems(courses, today, settings).reduce((acc, item) => {
+      if (item.type === `watch`) acc.watch += 1;
+      if (item.type === `review`) acc.review += 1;
       return acc;
     }, { watch: 0, review: 0 });
   }, [courses, today, settings]);
+
+  const courseQueueItems = useMemo(() => buildCourseQueueItems(courses, today, settings), [courses, today, settings]);
 
   const daysStudied = Object.keys(logs).filter(d => Object.values(logs[d] || {}).some(v => (v || 0) > 0)).length;
 
@@ -1978,6 +2210,45 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
   const recentScores = examScores.slice(-3).reverse();
   const inD30 = dday > 0 && dday <= 30;
   const inD7 = dday > 0 && dday <= 7;
+
+  function logCourseTime(subject, studyType, minutes) {
+    if (!setLogs || minutes <= 0) return;
+    const key = `${subject}::${studyType}`;
+    setLogs(prev => {
+      const dl = prev[today] || {};
+      return { ...prev, [today]: { ...dl, [key]: (dl[key] || 0) + minutes } };
+    });
+  }
+
+  function completeHomeCourseItem(item) {
+    if (!setCourses) return;
+    const { course, lecture, type } = item;
+    if (type === `watch`) {
+      const shouldLog = !lecture.completed;
+      setCourses(prev => prev.map(c => c.id === course.id ? {
+        ...c,
+        lectures: c.lectures.map(l => l.num === lecture.num ? { ...l, progress: 100, completed: true } : l),
+        lastUpdated: today,
+      } : c));
+      if (shouldLog) logCourseTime(course.subject, COURSE_WATCH_TYPE, lecture.durationMin || 0);
+      return;
+    }
+
+    const sourceKey = courseLectureReviewKey(course.id, lecture.num);
+    setCourses(prev => prev.map(c => c.id === course.id ? {
+      ...c,
+      lectures: c.lectures.map(l => l.num === lecture.num ? completeCourseLectureReview(l, today) : l),
+      lastUpdated: today,
+    } : c));
+    if (setReviews) {
+      setReviews(prev => prev.map(r => r.sourceKey === sourceKey ? advanceReviewCycle(r, today) : r));
+    }
+  }
+
+  function completeHomeReview(id) {
+    if (!setReviews) return;
+    setReviews(prev => prev.map(r => r.id === id ? advanceReviewCycle(r, today) : r));
+  }
 
   return (
     <div className={`fadeIn`} style={{ paddingTop:20 }}>
@@ -2018,7 +2289,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
       )}
 
       <SectionTitle>오늘 핵심</SectionTitle>
-      <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:8, marginBottom:18 }}>
+      <div className={`home-core-grid`} style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:8, marginBottom:18 }}>
         <HomeAction
           icon={FileText}
           label={`강의`}
@@ -2044,6 +2315,16 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           onClick={() => onGoTo(`log`)}
         />
       </div>
+
+      <HomeTodayPanel
+        today={today}
+        courseItems={courseQueueItems}
+        reviews={dueReviews}
+        todosOpen={todayTodosOpen}
+        onGoTo={onGoTo}
+        onCourseDone={completeHomeCourseItem}
+        onReviewDone={completeHomeReview}
+      />
 
       {todayMock ? (
         <div style={{ marginBottom:18 }}>
@@ -3950,10 +4231,10 @@ function ReviewCard({ review, onReviewed, onDelete }) {
         )}
         {displayNote && <div style={{ fontSize:10, color:C.muted, marginTop:4, fontStyle:`italic`, whiteSpace:`pre-wrap` }}>{displayNote}</div>}
       </div>
-      <button onClick={onReviewed} style={{ background:C.ink, color:`#fff`, border:`none`, padding:`5px 8px`, cursor:`pointer`, fontSize:10 }}>
+      <button onClick={onReviewed} className={`tap`} style={{ background:C.ink, color:`#fff`, border:`none`, width:32, height:32, cursor:`pointer`, fontSize:10, display:`grid`, placeItems:`center`, flexShrink:0 }}>
         <Check size={11} />
       </button>
-      <button onClick={onDelete} style={{ background:`none`, border:`none`, cursor:`pointer`, padding:0 }}>
+      <button onClick={onDelete} className={`tap`} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, cursor:`pointer`, width:30, height:30, display:`grid`, placeItems:`center`, flexShrink:0 }}>
         <X size={12} color={C.muted} />
       </button>
     </div>
@@ -4210,6 +4491,44 @@ function MaterialsReview({ today, materials, setMaterials, materialLog, setMater
 }
 /* ============================================================ COURSES (인강 진도율) ============================================================ */
 
+function lectureHasTag(lecture, tag) {
+  return (lecture.tags || []).includes(tag);
+}
+
+function getLectureTagLabels(lecture) {
+  return (lecture.tags || []).map(key => COURSE_TAGS.find(t => t.key === key)?.label).filter(Boolean);
+}
+
+function getLectureReviewIntervals(lecture) {
+  if (lectureHasTag(lecture, `hard`)) return [1, 3, 5];
+  if (lectureHasTag(lecture, `again`)) return [1, 2, 3];
+  return [5, 3, 2];
+}
+
+function completeCourseLectureReview(lecture, today) {
+  const tags = lecture.tags || [];
+  const isHard = tags.includes(`hard`);
+  const nextHardRound = isHard ? (lecture.hardReviewCount || 0) + 1 : 0;
+  const hardDelays = [1, 3, 5];
+  const nextDelay = hardDelays[Math.min(nextHardRound, hardDelays.length - 1)];
+  return stripUndefined({
+    ...lecture,
+    reviewed: true,
+    lastReviewed: today,
+    tags: tags.filter(t => t !== `again`),
+    nextReviewDate: isHard ? addDays(today, nextDelay) : null,
+    hardReviewCount: isHard ? nextHardRound : 0,
+  });
+}
+
+function advanceReviewCycle(review, today) {
+  return {
+    ...review,
+    lastReviewed: today,
+    cycleIndex: Math.min((review.cycleIndex || 0) + 1, (review.intervals || [5, 3, 2]).length - 1),
+  };
+}
+
 function buildCourseDailyQueue(course, today, settings) {
   const lectures = [...(course.lectures || [])].sort((a, b) => a.num - b.num);
   const targetEndDate = course.targetEndDate || settings?.examDate || addDays(today, 30);
@@ -4218,7 +4537,16 @@ function buildCourseDailyQueue(course, today, settings) {
   const daysUntilReviewTarget = Math.max(1, daysDiff(today, targetReviewDate));
 
   const watchCandidates = lectures.filter(l => !l.completed);
-  const reviewCandidates = lectures.filter(l => l.completed && (!l.reviewed || (l.tags || []).includes(`again`)));
+  const reviewCandidates = lectures
+    .filter(l => {
+      if (!l.completed) return false;
+      const hasScheduledReview = !!l.nextReviewDate;
+      const isDueScheduledReview = hasScheduledReview && l.nextReviewDate <= today;
+      if (lectureHasTag(l, `again`)) return true;
+      if (isDueScheduledReview) return true;
+      return !l.reviewed && !hasScheduledReview;
+    })
+    .sort((a, b) => (a.nextReviewDate || today).localeCompare(b.nextReviewDate || today) || a.num - b.num);
   const watchCount = watchCandidates.length ? Math.max(1, Math.ceil(watchCandidates.length / daysUntilTarget)) : 0;
   const reviewCount = reviewCandidates.length ? Math.max(1, Math.ceil(reviewCandidates.length / daysUntilReviewTarget)) : 0;
 
@@ -4230,12 +4558,22 @@ function buildCourseDailyQueue(course, today, settings) {
   };
 }
 
+function buildCourseQueueItems(courses, today, settings) {
+  return courses.flatMap(course => {
+    const queue = buildCourseDailyQueue(course, today, settings);
+    return [
+      ...queue.watch.map(lecture => ({ type:`watch`, course, lecture })),
+      ...queue.review.map(lecture => ({ type:`review`, course, lecture })),
+    ];
+  });
+}
+
 function courseLectureReviewKey(courseId, lectureNum) {
   return `course:${courseId}:lecture:${lectureNum}`;
 }
 
 function buildLectureReviewPayload(course, lecture) {
-  const tags = (lecture.tags || []).map(key => COURSE_TAGS.find(t => t.key === key)?.label).filter(Boolean);
+  const tags = getLectureTagLabels(lecture);
   const lines = [];
   if (tags.length > 0) lines.push(`태그: ${tags.join(`, `)}`);
   if ((lecture.note || ``).trim()) lines.push((lecture.note || ``).trim());
@@ -4244,6 +4582,7 @@ function buildLectureReviewPayload(course, lecture) {
     note: lines.join(`\n`),
     hasContent: tags.length > 0 || !!(lecture.note || ``).trim(),
     sourceKey: courseLectureReviewKey(course.id, lecture.num),
+    intervals: getLectureReviewIntervals(lecture),
   };
 }
 
@@ -4307,6 +4646,7 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
           title: payload.title,
           subject: course.subject,
           note: payload.note,
+          intervals: payload.intervals,
           sourceType: `courseLecture`,
           courseId: course.id,
           lectureNum: lecture.num,
@@ -4321,7 +4661,7 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
         created: today,
         lastReviewed: today,
         cycleIndex: 0,
-        intervals: [5, 3, 2],
+        intervals: payload.intervals,
         note: payload.note,
         sourceType: `courseLecture`,
         sourceKey: payload.sourceKey,
@@ -4341,21 +4681,28 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
   }
   function reviewQueuedLecture(id, lecNum) {
     const course = courses.find(c => c.id === id); if (!course) return;
-    updateCourse(id, course.lectures.map(l => l.num === lecNum ? { ...l, reviewed: true, tags: (l.tags || []).filter(t => t !== `again`) } : l));
+    const lecture = course.lectures.find(l => l.num === lecNum);
+    updateCourse(id, course.lectures.map(l => l.num === lecNum ? completeCourseLectureReview(l, today) : l));
+    if (setReviews && lecture) {
+      const sourceKey = courseLectureReviewKey(course.id, lecture.num);
+      setReviews(prev => prev.map(r => r.sourceKey === sourceKey ? advanceReviewCycle(r, today) : r));
+    }
   }
   
   // 개별 강의 복습 토글 기능
   function toggleReview(id, lecNum) {
     const course = courses.find(c => c.id === id); if (!course) return;
+    const lecture = course.lectures.find(l => l.num === lecNum);
+    const nextReviewed = lecture ? !lecture.reviewed : false;
     updateCourse(id, course.lectures.map(l => {
       if (l.num !== lecNum) return l;
-      const nextReviewed = !l.reviewed;
-      return {
-        ...l,
-        reviewed: nextReviewed,
-        tags: nextReviewed ? (l.tags || []).filter(t => t !== `again`) : (l.tags || []),
-      };
+      if (nextReviewed) return completeCourseLectureReview(l, today);
+      return { ...l, reviewed: false };
     }));
+    if (nextReviewed && setReviews) {
+      const sourceKey = courseLectureReviewKey(course.id, lecNum);
+      setReviews(prev => prev.map(r => r.sourceKey === sourceKey ? advanceReviewCycle(r, today) : r));
+    }
   }
   
   const filtered = filter === `전체` ? courses : courses.filter(c => c.subject === filter);
@@ -4418,22 +4765,25 @@ function CourseMiniStat({ label, value, tone = C.ink }) {
 function CourseQueuePanel({ courses, today, settings, onCompleteLecture, onReviewLecture }) {
   const queued = courses.map(course => ({ course, queue: buildCourseDailyQueue(course, today, settings) }))
     .filter(({ queue }) => queue.watch.length > 0 || queue.review.length > 0);
+  const totalWatch = queued.reduce((s, x) => s + x.queue.watch.length, 0);
+  const totalReview = queued.reduce((s, x) => s + x.queue.review.length, 0);
 
   if (queued.length === 0) return null;
 
   return (
-    <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px`, marginBottom:14 }}>
-      <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8, marginBottom:8 }}>
+    <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`13px 14px`, marginBottom:14 }}>
+      <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:9 }}>
         <div className={`kserif`} style={{ fontSize:12, fontWeight:600, color:C.ink }}>오늘의 강의 큐</div>
-        <div className={`mono`} style={{ fontSize:10, color:C.muted }}>
-          수강 {queued.reduce((s, x) => s + x.queue.watch.length, 0)} · 복습 {queued.reduce((s, x) => s + x.queue.review.length, 0)}
+        <div style={{ display:`flex`, gap:5, flexShrink:0 }}>
+          <span className={`mono`} style={{ fontSize:10, color:C.ink, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`3px 6px` }}>수강 {totalWatch}</span>
+          <span className={`mono`} style={{ fontSize:10, color:C.accent, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`3px 6px` }}>복습 {totalReview}</span>
         </div>
       </div>
       <div style={{ display:`flex`, flexDirection:`column`, gap:8 }}>
         {queued.map(({ course, queue }) => {
           const subColor = SUBJECTS[course.subject]?.color || C.muted;
           return (
-            <div key={course.id} style={{ borderTop:`1px dashed ${C.lineSoft}`, paddingTop:8 }}>
+            <div key={course.id} style={{ borderTop:`1px dashed ${C.lineSoft}`, borderLeft:`3px solid ${subColor}`, padding:`8px 0 0 9px` }}>
               <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:5 }}>
                 <div style={{ minWidth:0 }}>
                   <span className={`kserif`} style={{ color:subColor, fontSize:11, fontWeight:600 }}>{course.subject}</span>
@@ -4460,17 +4810,22 @@ function CourseQueueLine({ label, color, lectures, actionLabel, onAction, compac
     <div style={{ display:`flex`, flexDirection:`column`, gap:3, marginTop:4 }}>
       {lectures.map(l => (
         <div key={`${label}-${l.num}`} onClick={compact ? () => onAction(l.num) : undefined}
-          style={{ display:`flex`, alignItems:`center`, gap:6, fontSize:10, cursor: compact ? `pointer` : `default`, padding: compact ? `2px 0` : 0 }}>
+          style={{ display:`flex`, alignItems:`center`, gap:6, fontSize:10, cursor: compact ? `pointer` : `default`, minHeight:34, padding: compact ? `3px 0` : `2px 0` }}>
           <span className={`kserif`} style={{ color, fontWeight:600, minWidth:28 }}>{label}</span>
           <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.num}강</span>
           <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+          {getLectureTagLabels(l).slice(0, 2).map(tag => (
+            <span key={tag} style={{ color:C.accent, border:`1px solid ${C.lineSoft}`, padding:`1px 4px`, fontSize:8, flexShrink:0 }}>
+              {tag}
+            </span>
+          ))}
           {compact ? (
-            <button title={actionLabel} aria-label={actionLabel} onClick={(e) => { e.stopPropagation(); onAction(l.num); }}
-              style={{ background:`transparent`, border:`none`, color, padding:`2px`, cursor:`pointer`, flexShrink:0, display:`flex`, alignItems:`center` }}>
+            <button title={actionLabel} aria-label={actionLabel} onClick={(e) => { e.stopPropagation(); onAction(l.num); }} className={`tap`}
+              style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color, width:30, height:30, cursor:`pointer`, flexShrink:0, display:`grid`, placeItems:`center` }}>
               <CheckSquare size={15} />
             </button>
           ) : (
-            <button onClick={() => onAction(l.num)} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, padding:`3px 6px`, cursor:`pointer`, fontSize:9, flexShrink:0 }}>
+            <button onClick={() => onAction(l.num)} className={`tap`} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, padding:`5px 8px`, cursor:`pointer`, fontSize:9, flexShrink:0 }}>
               {actionLabel}
             </button>
           )}
@@ -4613,7 +4968,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
     const updatedLectures = course.lectures.map(l => {
       if (l.num === lecNum) {
         const prevReviewMin = l.reviewDurationMin || 0;
-        return { ...l, reviewed: true, reviewDurationMin: prevReviewMin + elapsedMin, tags: (l.tags || []).filter(t => t !== `again`) };
+        return { ...completeCourseLectureReview(l, today), reviewDurationMin: prevReviewMin + elapsedMin };
       }
       return l;
     });
@@ -4693,8 +5048,17 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   function toggleLectureTag(lecNum, tagKey) {
     const lec = course.lectures.find(l => l.num === lecNum);
     const current = lec?.tags || [];
-    const nextTags = current.includes(tagKey) ? current.filter(t => t !== tagKey) : [...current, tagKey];
-    updateLectureMeta(lecNum, { tags: nextTags });
+    const adding = !current.includes(tagKey);
+    const nextTags = adding ? [...current, tagKey] : current.filter(t => t !== tagKey);
+    const patch = { tags: nextTags };
+    if (tagKey === `hard`) {
+      patch.hardReviewCount = adding ? 0 : 0;
+      patch.nextReviewDate = adding ? addDays(today, 1) : (nextTags.includes(`again`) ? today : null);
+    }
+    if (tagKey === `again`) {
+      patch.nextReviewDate = adding ? today : (nextTags.includes(`hard`) ? (lec?.nextReviewDate || addDays(today, 1)) : null);
+    }
+    updateLectureMeta(lecNum, patch);
   }
 
   return (
@@ -4874,23 +5238,23 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
               
               return (
                 <div key={l.num} style={{ borderBottom:`1px dashed ${C.lineSoft}`, padding:`6px 0` }}>
-                  <div style={{ display:`flex`, gap:6, fontSize:11, alignItems: 'center' }}>
+                  <div style={{ display:`flex`, gap:6, fontSize:11, alignItems: 'center', minHeight:36 }}>
                     <span className={`mono`} style={{ color:C.muted, minWidth:26 }}>{l.num}강</span>
                     <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
                     {activeTags.length > 0 && (
                       <span style={{ color:C.accent, fontSize:9, maxWidth:82, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, flexShrink:0 }}>{activeTags.join(`·`)}</span>
                     )}
-                    <button onClick={() => setMemoOpenNum(memoOpen ? null : l.num)}
-                      style={{ background:(l.note || activeTags.length) ? C.ink : C.bg, color:(l.note || activeTags.length) ? `#fff` : C.muted, border:`1px solid ${(l.note || activeTags.length) ? C.ink : C.line}`, padding:`3px 6px`, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
+                    <button onClick={() => setMemoOpenNum(memoOpen ? null : l.num)} className={`tap`}
+                      style={{ background:(l.note || activeTags.length) ? C.ink : C.bg, color:(l.note || activeTags.length) ? `#fff` : C.muted, border:`1px solid ${(l.note || activeTags.length) ? C.ink : C.line}`, padding:`5px 7px`, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
                       메모
                     </button>
                     <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.durationMin || `-`}분</span>
-                    <button onClick={(e) => { e.stopPropagation(); onToggleReview && onToggleReview(l.num); }}
+                    <button onClick={(e) => { e.stopPropagation(); onToggleReview && onToggleReview(l.num); }} className={`tap`}
                       style={{
                         background: l.reviewed ? C.good : C.bg,
                         color: l.reviewed ? `#fff` : C.ink,
                         border:`1px solid ${l.reviewed ? C.good : C.line}`,
-                        padding:`3px 7px`, fontSize:9, cursor:`pointer`, flexShrink:0,
+                        padding:`5px 8px`, fontSize:9, cursor:`pointer`, flexShrink:0,
                         display:`flex`, alignItems:`center`, gap:3,
                       }}>
                       {l.reviewed ? <CheckSquare size={11} /> : <Square size={11} />} {l.reviewed ? `완료` : `복습`}
@@ -4902,12 +5266,12 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                           <span className="mono" style={{ color: C.accent, fontSize: 10, fontWeight: 600 }}>
                             {Math.floor(tick / 60)}:{(tick % 60).toString().padStart(2, '0')}
                           </span>
-                          <button onClick={(e) => stopReviewTimer(e, l.num)} style={{ background: C.accent, color: '#fff', border: 'none', padding: '3px 6px', fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
+                          <button onClick={(e) => stopReviewTimer(e, l.num)} className={`tap`} style={{ background: C.accent, color: '#fff', border: 'none', padding: '5px 7px', fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
                             정지
                           </button>
                         </div>
                       ) : (
-                        <button onClick={(e) => { e.stopPropagation(); setActiveTimerLec(l.num); setTimerStartAt(Date.now()); setTick(0); }} style={{ background: C.bg, color: C.ink, border: `1px solid ${C.line}`, padding: '3px 6px', fontSize: 9, borderRadius: 3, cursor: 'pointer', display:`flex`, alignItems:`center`, gap:3 }}>
+                        <button onClick={(e) => { e.stopPropagation(); setActiveTimerLec(l.num); setTimerStartAt(Date.now()); setTick(0); }} className={`tap`} style={{ background: C.bg, color: C.ink, border: `1px solid ${C.line}`, padding: '5px 7px', fontSize: 9, borderRadius: 3, cursor: 'pointer', display:`flex`, alignItems:`center`, gap:3 }}>
                           <Clock size={10} /> 시작
                         </button>
                       )}
