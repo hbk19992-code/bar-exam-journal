@@ -4146,42 +4146,42 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
   function syncLectureReviewTopic(course, lecture) {
     if (!setReviews) return;
     const payload = buildLectureReviewPayload(course, lecture);
-    const existing = reviews.find(r => r.sourceKey === payload.sourceKey);
+    setReviews(prev => {
+      const existing = prev.find(r => r.sourceKey === payload.sourceKey);
 
-    if (!payload.hasContent) {
-      if (existing) setReviews(reviews.filter(r => r.id !== existing.id));
-      return;
-    }
+      if (!payload.hasContent) {
+        return existing ? prev.filter(r => r.id !== existing.id) : prev;
+      }
 
-    if (existing) {
-      setReviews(reviews.map(r => r.id === existing.id ? {
-        ...r,
+      if (existing) {
+        return prev.map(r => r.id === existing.id ? {
+          ...r,
+          title: payload.title,
+          subject: course.subject,
+          note: payload.note,
+          sourceType: `courseLecture`,
+          courseId: course.id,
+          lectureNum: lecture.num,
+          updatedFromLectureAt: today,
+        } : r);
+      }
+
+      return [...prev, {
+        id: uid(),
         title: payload.title,
         subject: course.subject,
+        created: today,
+        lastReviewed: today,
+        cycleIndex: 0,
+        intervals: [5, 3, 2],
         note: payload.note,
         sourceType: `courseLecture`,
+        sourceKey: payload.sourceKey,
         courseId: course.id,
         lectureNum: lecture.num,
         updatedFromLectureAt: today,
-      } : r));
-      return;
-    }
-
-    setReviews([...reviews, {
-      id: uid(),
-      title: payload.title,
-      subject: course.subject,
-      created: today,
-      lastReviewed: today,
-      cycleIndex: 0,
-      intervals: [5, 3, 2],
-      note: payload.note,
-      sourceType: `courseLecture`,
-      sourceKey: payload.sourceKey,
-      courseId: course.id,
-      lectureNum: lecture.num,
-      updatedFromLectureAt: today,
-    }]);
+      }];
+    });
   }
   function logReviewTime(id, minutes) {
     const course = courses.find(c => c.id === id); if (!course) return;
@@ -4211,15 +4211,41 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
   }
   
   const filtered = filter === `전체` ? courses : courses.filter(c => c.subject === filter);
+  const stats = filtered.reduce((acc, c) => {
+    const lectures = c.lectures || [];
+    acc.total += lectures.length;
+    acc.completed += lectures.filter(l => l.completed).length;
+    acc.reviewed += lectures.filter(l => l.reviewed).length;
+    acc.tagged += lectures.filter(l => (l.tags || []).length > 0 || (l.note || ``).trim()).length;
+    return acc;
+  }, { total: 0, completed: 0, reviewed: 0, tagged: 0 });
+  const watchPct = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
+  const reviewPct = stats.total ? Math.round((stats.reviewed / stats.total) * 100) : 0;
 
   return (
-    <>
-      <div style={{ fontSize:11, color:C.muted, marginBottom:14, lineHeight:1.6 }}>사이트의 강의 진도표를 복사해서 붙여넣으면 자동으로 파싱해요. <b>완강 강의의 분량은 그 날짜 학습시간에 자동 합산</b>됩니다.</div>
-      <div style={{ display:`flex`, gap:6, marginBottom:10, flexWrap:`wrap` }}>
-        {[`전체`, ...Object.keys(SUBJECTS)].map(s => (<button key={s} onClick={() => setFilter(s)} style={{ background: filter === s ? C.ink : C.paper, color: filter === s ? `#fff` : C.muted, border: `1px solid ${filter === s ? C.ink : C.line}`, padding:`4px 10px`, fontSize:11, cursor:`pointer` }}>{s}</button>))}
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
+      <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:12, marginBottom:14 }}>
+        <div>
+          <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>강의</h1>
+          <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>오늘 기준 · {fmtKDate(today)}</div>
+        </div>
+        <button onClick={() => setShowAdd(true)} style={{ background:C.ink, color:`#fff`, border:`none`, padding:`8px 11px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5, flexShrink:0 }}>
+          <Plus size={13} /> 추가
+        </button>
       </div>
+
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, 1fr)`, gap:6, marginBottom:12 }}>
+        <CourseMiniStat label={`강의`} value={filtered.length} />
+        <CourseMiniStat label={`수강`} value={`${stats.completed}/${stats.total}`} tone={watchPct === 100 ? C.good : C.ink} />
+        <CourseMiniStat label={`복습`} value={`${stats.reviewed}/${stats.total}`} tone={reviewPct === 100 ? C.good : C.ink} />
+        <CourseMiniStat label={`메모`} value={stats.tagged} tone={stats.tagged > 0 ? C.accent : C.muted} />
+      </div>
+
+      <div style={{ display:`flex`, gap:6, marginBottom:12, overflowX:`auto`, paddingBottom:2 }} className={`hide-scroll`}>
+        {[`전체`, ...Object.keys(SUBJECTS)].map(s => (<button key={s} onClick={() => setFilter(s)} style={{ background: filter === s ? C.ink : C.paper, color: filter === s ? `#fff` : C.muted, border: `1px solid ${filter === s ? C.ink : C.line}`, padding:`5px 10px`, fontSize:11, cursor:`pointer`, whiteSpace:`nowrap` }}>{s}</button>))}
+      </div>
+
       <CourseQueuePanel courses={filtered} today={today} settings={settings} onCompleteLecture={completeQueuedLecture} onReviewLecture={reviewQueuedLecture} />
-      <button onClick={() => setShowAdd(true)} style={{ width:`100%`, background:C.ink, color:`#fff`, border:`none`, padding:`10px`, cursor:`pointer`, marginBottom:14, fontSize:12, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:6 }}><Plus size={14} /> 강의 추가</button>
       {showAdd && <AddCourseForm onAdd={addCourse} onCancel={() => setShowAdd(false)} />}
       {filtered.length === 0 ? (
         <div style={{ textAlign:`center`, padding:30, color:C.muted, fontSize:12, background:C.paper, border:`1px dashed ${C.line}` }}>{courses.length === 0 ? `강의를 추가해 보세요` : `이 과목에 등록된 강의가 없습니다.`}</div>
@@ -4228,7 +4254,16 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
           {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs) => updateCourse(c.id, lecs)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onLectureMetaChange={(lecture) => syncLectureReviewTopic(c, lecture)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} />))}
         </div>
       )}
-    </>
+    </div>
+  );
+}
+
+function CourseMiniStat({ label, value, tone = C.ink }) {
+  return (
+    <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`8px 9px` }}>
+      <div className={`mono`} style={{ color:tone, fontSize:14, fontWeight:700, lineHeight:1.1, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{value}</div>
+      <div style={{ color:C.muted, fontSize:10, marginTop:4 }}>{label}</div>
+    </div>
   );
 }
 
