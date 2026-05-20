@@ -1,9 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from `react`;
-import { initializeApp } from `firebase/app`;
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+  signInWithPopup, signOut, onAuthStateChanged,
 } from `firebase/auth`;
-import { getFirestore, doc, setDoc, onSnapshot } from `firebase/firestore`;
+import { doc, setDoc, onSnapshot } from `firebase/firestore`;
+import {
+  auth as fbAuth,
+  db as fbDB,
+  provider as googleProvider,
+  firebaseReady,
+  firebaseEnvReady,
+  missingFirebaseEnvKeys,
+  firebaseInitError,
+} from "./firebase.js";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip,
   PieChart, Pie, Cell, CartesianGrid,
@@ -17,31 +25,6 @@ import {
   Copy, MessageCircle,
 } from `lucide-react`;
 
-/* ============================================================ FIREBASE CONFIG ============================================================ */
-/* 본인 Firebase 콘솔 → 프로젝트 설정 → 일반 → 내 앱에서 복사한 값으로 교체하세요 */
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
-
-const FIREBASE_OK = !!(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId);
-
-let fbApp = null, fbAuth = null, fbDB = null, googleProvider = null;
-if (FIREBASE_OK) {
-  try {
-    fbApp = initializeApp(firebaseConfig);
-    fbAuth = getAuth(fbApp);
-    fbDB = getFirestore(fbApp);
-    googleProvider = new GoogleAuthProvider();
-  } catch (e) {
-    console.error(`[Firebase init failed]`, e);
-  }
-}
-
 /* ============================================================ THEME & DATA ============================================================ */
 
 const FONT_IMPORT = `@import url(https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap);`;
@@ -52,6 +35,16 @@ const C = {
   accent: `#7A1E1E`, accentSoft: `#A84040`,
   good: `#3C5A3A`, warn: `#B86A1E`, book: `#5B4A33`,
   trackTint: `#F0E8D2`,
+};
+
+const APP_SCHEMA_VERSION = 1;
+const FIREBASE_ENV_LABELS = {
+  apiKey: `VITE_FIREBASE_API_KEY`,
+  authDomain: `VITE_FIREBASE_AUTH_DOMAIN`,
+  projectId: `VITE_FIREBASE_PROJECT_ID`,
+  storageBucket: `VITE_FIREBASE_STORAGE_BUCKET`,
+  messagingSenderId: `VITE_FIREBASE_MESSAGING_SENDER_ID`,
+  appId: `VITE_FIREBASE_APP_ID`,
 };
 
 const SUBJECTS = {
@@ -98,19 +91,6 @@ const SCHEDULE_PALETTE = [
   `#7E9B6C`, //
   `#6E8AAB`, //
 ];
-
-/* 본인 Google 이메일을 아래 배열에 추가하세요. 이 이메일로 로그인했을 때만 15회 변시 점수가 표시됩니다. */
-const OWNER_EMAILS = [
-  `hbk19992@gmail.com`,
-];
-
-const PREV_SCORES = {
-  공법: { 선택형: 52.5, 사례형_1문: 48.25, 사례형_2문: 37.45, 기록형: 40.42, total: 178.62, max: 400 },
-  형사법: { 선택형: 62.5, 사례형_1문: 50.46, 사례형_2문: 31.99, 기록형: 28.28, total: 173.23, max: 400 },
-  민사법: { 선택형: 87.5, 사례형_1문: 79.09, 사례형_2문: 37.36, 사례형_3문: 53.06, 기록형: 85.93, total: 342.94, max: 700 },
-  선택법: { sel1: 43.59, sel2: 26.09, total: 69.68, max: 160 },
-  grandTotal: 764.47, grandMax: 1660,
-};
 
 const CYCLE_DEFS = [
   { id: 1, label: `사이클 1`, blocks: [
@@ -349,9 +329,6 @@ const DEFAULT_SETTINGS = {
   d30Mode: true,
   autoGenMockReview: true,
   cycleEnabled: true, // 사이클(블록) 기능 사용 여부
-
-  d30Mode: true, //
-  autoGenMockReview: true, //
 };
 
 /* ============================================================ UTILS ============================================================ */
@@ -448,13 +425,7 @@ let _xlsxPromise = null;
 function loadXLSX() {
   if (typeof window !== `undefined` && window.XLSX) return Promise.resolve(window.XLSX);
   if (_xlsxPromise) return _xlsxPromise;
-  _xlsxPromise = new Promise((resolve, reject) => {
-    const s = document.createElement(`script`);
-    s.src=`https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js`;
-    s.onload = () => resolve(window.XLSX);
-    s.onerror = () => reject(new Error(`XLSX 로드 실패`));
-    document.head.appendChild(s);
-  });
+  _xlsxPromise = import(`xlsx`).then(mod => mod.default || mod);
   return _xlsxPromise;
 }
 
@@ -910,6 +881,7 @@ function getCycleInfo(dateISO, settings) {
 /* ============================================================ FIRESTORE STORAGE ============================================================ */
 
 const DEFAULT_STATE = {
+  schemaVersion: APP_SCHEMA_VERSION,
   settings: DEFAULT_SETTINGS,
   logs: {}, reviews: [], books: [], todos: {},
   tracks: {},
@@ -926,7 +898,27 @@ const DEFAULT_STATE = {
   courses: [], // [{ id, name, subject, studyType, lectures: [{num, title, durationMin, progress, completed}], createdAt, lastUpdated }]
 };
 
+function asPlainObject(value, fallback = {}) {
+  return value && typeof value === `object` && !Array.isArray(value) ? value : fallback;
+}
+
+function asArray(value, fallback = []) {
+  return Array.isArray(value) ? value : fallback;
+}
+
+function normalizeSettings(value = {}) {
+  const raw = asPlainObject(value);
+  return {
+    ...DEFAULT_SETTINGS,
+    ...raw,
+    weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...asPlainObject(raw.weeklyTargets) },
+    cycleDefs: asArray(raw.cycleDefs, CYCLE_DEFS),
+    mockExams: asArray(raw.mockExams, DEFAULT_SETTINGS.mockExams),
+  };
+}
+
 async function saveStateToFirestore(uid, partial) {
+  if (!fbDB) return false;
   try {
     await setDoc(doc(fbDB, `users`, uid), partial, { merge: true });
     return true;
@@ -970,16 +962,21 @@ export default function App() {
       meta.name = `viewport`;
       document.head.appendChild(meta);
     }
-    meta.content = `width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover`;
+    meta.content = `width=device-width, initial-scale=1.0, viewport-fit=cover`;
   }, []);
 
   // Auth listener
   useEffect(() => {
+    const t = setInterval(() => setToday(todayISO()), 60000);
+    if (!firebaseReady || !fbAuth) {
+      setAuthChecked(true);
+      return () => clearInterval(t);
+    }
+
     const unsub = onAuthStateChanged(fbAuth, (u) => {
       setUser(u);
       setAuthChecked(true);
     });
-    const t = setInterval(() => setToday(todayISO()), 60000);
     return () => { unsub(); clearInterval(t); };
   }, []);
 const globalStyles = (
@@ -1004,31 +1001,26 @@ const globalStyles = (
       `}</style>
     </>
   );
-  /* === 다기기 동기화 보호용 ref들 ===
-     - saveInFlightRef: 자기가 방금 저장한 echo가 onSnapshot으로 돌아올 때 무시하는 플래그
-     - lastSavedRef: 마지막으로 서버에서 받은(또는 서버에 저장한) 기준 상태.
-                     다음 저장 때 이 기준과 비교해서 진짜 바뀐 필드만 patch */
-  const saveInFlightRef = useRef(false);
+  /* 마지막으로 서버에서 받은 기준 상태와 비교해 바뀐 최상위 필드만 저장한다. */
   const lastSavedRef = useRef({});
   const saveTimerRef = useRef(null);
 
   // === 데이터 로드 (onSnapshot 실시간 동기화) ===
   useEffect(() => {
-    if (!user) { setLoaded(false); return; }
+    if (!firebaseReady || !fbDB || !user) { setLoaded(false); return; }
     setLoaded(false);
 
     const ref = doc(fbDB, `users`, user.uid);
 
     const unsub = onSnapshot(ref,
       (snap) => {
-        // 자기 echo는 무시
+        // 로컬 대기 스냅샷은 건너뛰고, 서버 확정 스냅샷은 기준 상태로 반영한다.
         if (snap.metadata.hasPendingWrites) return;
-        if (saveInFlightRef.current) return;
 
         // 신규 사용자: 문서가 아직 없음 → 기본값으로 초기화
         if (!snap.exists()) {
           const blank = {
-            settings: DEFAULT_SETTINGS,
+            settings: normalizeSettings(),
             logs: {}, reviews: [], books: [], todos: {}, tracks: {},
             materials: DEFAULT_MATERIALS, materialLog: {},
             examScores: [], moods: {}, schedules: [],
@@ -1051,28 +1043,23 @@ const globalStyles = (
 
         const d = snap.data() || {};
         const newState = {
-          settings: {
-            ...DEFAULT_SETTINGS, ...(d.settings || {}),
-            weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...((d.settings && d.settings.weeklyTargets) || {}) },
-            cycleDefs: (d.settings && d.settings.cycleDefs) || CYCLE_DEFS,
-            mockExams: (d.settings && d.settings.mockExams) || DEFAULT_SETTINGS.mockExams,
-          },
-          logs: d.logs || {},
-          reviews: d.reviews || [],
-          books: d.books || [],
-          todos: d.todos || {},
-          tracks: d.tracks || {},
-          materials: (d.materials && d.materials.length) ? d.materials : DEFAULT_MATERIALS,
-          materialLog: d.materialLog || {},
-          examScores: d.examScores || [],
-          moods: d.moods || {},
-          schedules: d.schedules || [],
-          checklists: (d.checklists && d.checklists.length) ? d.checklists : DEFAULT_CHECKLISTS,
-          mcqProgress: d.mcqProgress || {},
-          routines: (d.routines && d.routines.length) ? d.routines : DEFAULT_ROUTINES,
-          routineLog: d.routineLog || {},
-          weeklyPlans: d.weeklyPlans || {},
-          courses: d.courses || [],
+          settings: normalizeSettings(d.settings),
+          logs: asPlainObject(d.logs),
+          reviews: asArray(d.reviews),
+          books: asArray(d.books),
+          todos: asPlainObject(d.todos),
+          tracks: asPlainObject(d.tracks),
+          materials: asArray(d.materials, DEFAULT_MATERIALS),
+          materialLog: asPlainObject(d.materialLog),
+          examScores: asArray(d.examScores),
+          moods: asPlainObject(d.moods),
+          schedules: asArray(d.schedules),
+          checklists: asArray(d.checklists, DEFAULT_CHECKLISTS),
+          mcqProgress: asPlainObject(d.mcqProgress),
+          routines: asArray(d.routines, DEFAULT_ROUTINES),
+          routineLog: asPlainObject(d.routineLog),
+          weeklyPlans: asPlainObject(d.weeklyPlans),
+          courses: asArray(d.courses),
       
         };
 
@@ -1105,7 +1092,7 @@ const globalStyles = (
 
   // === 자동 저장 (debounced) — 변경된 필드만 patch로 ===
   useEffect(() => {
-    if (!loaded || !user) return;
+    if (!firebaseReady || !fbDB || !loaded || !user) return;
 
     setSyncStatus(`saving`);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -1132,7 +1119,7 @@ const globalStyles = (
         return;
       }
 
-      saveInFlightRef.current = true;
+      patch.schemaVersion = APP_SCHEMA_VERSION;
       patch.updatedAt = new Date().toISOString();
 
       const ok = await saveStateToFirestore(user.uid, patch);
@@ -1141,9 +1128,6 @@ const globalStyles = (
       if (ok) {
         lastSavedRef.current = currentState;
       }
-
-      // snapshot이 자기 echo를 받을 시간 여유 후 해제
-      setTimeout(() => { saveInFlightRef.current = false; }, 800);
     }, 2500);
 
     // 언마운트/로그아웃 시 대기 중인 저장 취소
@@ -1228,21 +1212,59 @@ const globalStyles = (
 
   const dday = useMemo(() => daysDiff(today, settings.examDate), [today, settings.examDate]);
 
-  if (!FIREBASE_OK) {
+  function applyImportedData(imported) {
+    const data = asPlainObject(imported, null);
+    if (!data) {
+      alert(`JSON 파일 형식이 올바르지 않습니다.`);
+      return;
+    }
+    if (!confirm(`JSON 백업을 현재 데이터 위에 복원할까요? 클라우드 데이터도 다음 자동 저장 때 갱신됩니다.`)) return;
+
+    setSettings(normalizeSettings(data.settings));
+    setLogs(asPlainObject(data.logs));
+    setReviews(asArray(data.reviews));
+    setBooks(asArray(data.books));
+    setTodos(asPlainObject(data.todos));
+    setTracks(asPlainObject(data.tracks));
+    setMaterials(asArray(data.materials, DEFAULT_MATERIALS));
+    setMaterialLog(asPlainObject(data.materialLog));
+    setExamScores(asArray(data.examScores));
+    setMoods(asPlainObject(data.moods));
+    setSchedules(asArray(data.schedules));
+    setChecklists(asArray(data.checklists, DEFAULT_CHECKLISTS));
+    setMcqProgress(asPlainObject(data.mcqProgress));
+    setRoutines(asArray(data.routines, DEFAULT_ROUTINES));
+    setRoutineLog(asPlainObject(data.routineLog));
+    setWeeklyPlans(asPlainObject(data.weeklyPlans));
+    setCourses(asArray(data.courses));
+    setSyncStatus(`saving`);
+  }
+
+  if (!firebaseReady) {
+    const missingKeys = missingFirebaseEnvKeys.map(key => FIREBASE_ENV_LABELS[key] || key);
+    const setupMessage = firebaseEnvReady
+      ? `Firebase 초기화에 실패했습니다. Firebase 콘솔 설정과 승인된 도메인을 확인해주세요.`
+      : `Vercel → Settings → Environment Variables 에 아래 값을 등록한 뒤 재배포하세요:`;
+
     return (
       <div style={{ minHeight:`100vh`, background:C.bg, display:`grid`, placeItems:`center`, padding:24, fontFamily:`Noto Sans KR, sans-serif` }}>
         {globalStyles}
         <div style={{ maxWidth:420, background:C.paper, border:`1px solid ${C.accent}`, padding:`20px 22px` }}>
           <div className={`kserif`} style={{ fontSize:11, letterSpacing:`0.22em`, color:C.accent, fontWeight:600, marginBottom:8 }}>SETUP REQUIRED</div>
-          <div className={`serif`} style={{ fontSize:18, fontWeight:600, color:C.ink, marginBottom:10 }}>Firebase 환경변수가 설정되지 않았습니다</div>
+          <div className={`serif`} style={{ fontSize:18, fontWeight:600, color:C.ink, marginBottom:10 }}>{firebaseEnvReady ? `Firebase 초기화에 실패했습니다` : `Firebase 환경변수가 설정되지 않았습니다`}</div>
           <div style={{ fontSize:12, color:C.muted, lineHeight:1.7 }}>
-            Vercel → Settings → Environment Variables 에 아래 6개를 등록한 뒤 재배포하세요:
-            <pre style={{ background:C.bg, padding:`10px 12px`, marginTop:10, fontSize:10, fontFamily:`JetBrains Mono, monospace`, overflow:`auto` }}>{`VITE_FIREBASE_API_KEY
+            {setupMessage}
+            <pre style={{ background:C.bg, padding:`10px 12px`, marginTop:10, fontSize:10, fontFamily:`JetBrains Mono, monospace`, overflow:`auto` }}>{missingKeys.length ? missingKeys.join(`\n`) : `VITE_FIREBASE_API_KEY
 VITE_FIREBASE_AUTH_DOMAIN
 VITE_FIREBASE_PROJECT_ID
 VITE_FIREBASE_STORAGE_BUCKET
 VITE_FIREBASE_MESSAGING_SENDER_ID
 VITE_FIREBASE_APP_ID`}</pre>
+            {firebaseInitError && (
+              <div className={`mono`} style={{ marginTop:8, fontSize:10, color:C.accent }}>
+                {firebaseInitError.message || String(firebaseInitError)}
+              </div>
+            )}
             등록 후 반드시 Deployments → Redeploy 눌러주세요. 환경변수는 새 빌드에만 반영됩니다.
           </div>
         </div>
@@ -1317,14 +1339,17 @@ VITE_FIREBASE_APP_ID`}</pre>
                 setLogs({}); setReviews([]); setBooks([]); setTodos({});
                 setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
                 setExamScores([]); setMoods({}); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
-                setWeeklyPlans({});setCourses([]);
+                setMcqProgress({}); setRoutines(DEFAULT_ROUTINES); setRoutineLog({});
+                setWeeklyPlans({}); setCourses([]);
               }
             }}
             onExport={() => {
               const data = JSON.stringify({
+                schemaVersion: APP_SCHEMA_VERSION,
+                exportedAt: new Date().toISOString(),
                 settings, logs, reviews, books, todos,
                 tracks, materials, materialLog, examScores, moods, schedules, checklists,
-                weeklyPlans,
+                mcqProgress, routines, routineLog, weeklyPlans, courses,
               }, null, 2);
               const blob = new Blob([data], { type: `application/json` });
               const url = URL.createObjectURL(blob);
@@ -1332,6 +1357,7 @@ VITE_FIREBASE_APP_ID`}</pre>
               a.href = url; a.download=`변시기록_${today}.json`; a.click();
               URL.revokeObjectURL(url);
             }}
+            onImport={applyImportedData}
             onExportXLSX={async () => {
               try {
                 await exportXLSX({
@@ -1360,6 +1386,11 @@ function LoginView() {
 
   async function loginGoogle() {
     setError(``); setSigning(true);
+    if (!firebaseReady || !fbAuth || !googleProvider) {
+      setError(`Firebase 설정이 완료되지 않았습니다. Vercel 환경변수와 승인된 도메인을 확인해주세요.`);
+      setSigning(false);
+      return;
+    }
     try {
       await signInWithPopup(fbAuth, googleProvider);
     } catch (e) {
@@ -1554,10 +1585,9 @@ function CycleCard({ info, today, withMinor = true }) {
   );
 }
 
-function PrevScoreCard({ user }) {
+function PrevScoreCard({ scores }) {
   const [open, setOpen] = useState(false);
-  //
-  if (!user?.email || !OWNER_EMAILS.includes(user.email)) return null;
+  if (!scores) return null;
   return (
     <div style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:16 }}>
       <button onClick={() => setOpen(o => !o)}
@@ -1565,8 +1595,8 @@ function PrevScoreCard({ user }) {
         <div style={{ textAlign:`left` }}>
           <div className={`kserif`} style={{ fontSize:11, letterSpacing:`0.22em`, color:C.muted, fontWeight:600 }}>15회 변시 기준점</div>
           <div className={`serif`} style={{ fontSize:22, fontWeight:600, color:C.ink, marginTop:4 }}>
-            {PREV_SCORES.grandTotal.toFixed(2)}
-            <span style={{ fontSize:12, color:C.muted, marginLeft:6, fontWeight:400 }}>/ {PREV_SCORES.grandMax}</span>
+            {scores.grandTotal.toFixed(2)}
+            <span style={{ fontSize:12, color:C.muted, marginLeft:6, fontWeight:400 }}>/ {scores.grandMax}</span>
           </div>
         </div>
         <ChevronDown size={18} color={C.muted} style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s` }} />
@@ -1574,7 +1604,8 @@ function PrevScoreCard({ user }) {
       {open && (
         <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`14px 16px 18px`, fontSize:12 }}>
           {Object.keys(SUBJECTS).map(sub => {
-            const s = PREV_SCORES[sub];
+            const s = scores[sub];
+            if (!s) return null;
             const pct = Math.round((s.total / s.max) * 100);
             return (
               <div key={sub} style={{ marginBottom:12 }}>
@@ -2093,7 +2124,7 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
         <MessageCircle size={14} /> 오늘 계획 카톡으로 복사
       </button>
 
-      <PrevScoreCard user={user} />
+      <PrevScoreCard />
       <div style={{ height:20 }} />
     </div>
   );
@@ -4970,7 +5001,7 @@ function RoutineEditor({ routines, setRoutines }) {
   );
 }
 
-function SettingsView({ settings, setSettings, schedules = [], setSchedules, routines = [], setRoutines, user, onLogout, onReset, onExport, onExportXLSX }) {
+function SettingsView({ settings, setSettings, schedules = [], setSchedules, routines = [], setRoutines, user, onLogout, onReset, onExport, onImport, onExportXLSX }) {
   const [examDate, setExamDate] = useState(settings.examDate);
   const [examLabel, setExamLabel] = useState(settings.examLabel);
   const [targets, setTargets] = useState(settings.weeklyTargets);
@@ -5025,6 +5056,20 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
     if (!setSchedules) return;
     setSchedules((schedules || []).filter(s => s.id !== id));
   }
+
+  async function importJSON(event) {
+    const file = event.target.files?.[0];
+    event.target.value = ``;
+    if (!file) return;
+    try {
+      const text = await file.text();
+      onImport?.(JSON.parse(text));
+    } catch (e) {
+      console.error(e);
+      alert(`JSON 복원 실패: ` + (e.message || e));
+    }
+  }
+
   const palette = SCHEDULE_PALETTE;
 
   return (
@@ -5246,6 +5291,10 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
           <button onClick={onReset} style={{ background:C.bg, border:`1px solid ${C.accent}`, color:C.accent, padding:`10px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5 }}>
             <RefreshCw size={13} /> 전체 초기화
           </button>
+          <label style={{ gridColumn:`1 / -1`, background:C.bg, border:`1px solid ${C.line}`, padding:`10px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5 }}>
+            <FileText size={13} /> JSON 복원
+            <input type={`file`} accept={`application/json,.json`} onChange={importJSON} style={{ display:`none` }} />
+          </label>
         </div>
       </div>
 
