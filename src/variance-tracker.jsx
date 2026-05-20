@@ -1431,6 +1431,7 @@ VITE_FIREBASE_APP_ID`}</pre>
         {view === `home` && <HomeView {...sharedProps} dday={dday} user={user} onGoTo={setView} />}
         {view === `log` && <LogView {...sharedProps} initialDate={today} />}
         {view === `calendar` && <CalendarView {...sharedProps} onGoToLog={() => setView(`log`)} />}
+        {view === `courses` && <CoursesReview {...sharedProps} />}
         {view === `review` && <ReviewView {...sharedProps} />}
         {view === `exams` && <ExamsView {...sharedProps} />}
         {view === `check` && <ChecklistView {...sharedProps} />}
@@ -1588,6 +1589,7 @@ function BottomNav({ view, setView }) {
     { key:`log`, icon:BookOpen, label:`기록` },
     { key:`calendar`, icon:CalendarIcon, label:`캘린더` },
     { key:`exams`, icon:TrendingUp, label:`기출` },
+    { key:`courses`, icon:FileText, label:`강의` },
     { key:`review`, icon:RotateCw, label:`회독` },
     { key:`check`, icon:CheckSquare, label:`체크` },
     { key:`report`, icon:BarChart3, label:`리포트` },
@@ -3475,12 +3477,11 @@ function ExamsView({ examScores }) {
 
 /* ============================================================ REVIEW (회독) ============================================================ */
 
-function ReviewView({ today, reviews, setReviews, books, setBooks, materials, setMaterials, materialLog, setMaterialLog, mcqProgress, setMcqProgress, courses, setCourses, logs, setLogs }) {
+function ReviewView({ today, reviews, setReviews, books, setBooks, materials, setMaterials, materialLog, setMaterialLog, mcqProgress, setMcqProgress }) {
   const [tab, setTab] = useState(`matrix`);
 
   const tabs = [
     { key:`matrix`, label:`매트릭스`, icon:Layers },
-    { key:`courses`, label:`강의`, icon:FileText },
     { key:`topics`, label:`주제`, icon:RotateCw },
     { key:`books`, label:`문제집`, icon:BookOpen },
     { key:`materials`, label:`자료`, icon:Library },
@@ -3513,7 +3514,6 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
       </div>
 
       {tab === `matrix` && <McqMatrix today={today} mcqProgress={mcqProgress} setMcqProgress={setMcqProgress} />}
-      {tab === `courses` && <CoursesReview today={today} courses={courses} setCourses={setCourses} logs={logs} setLogs={setLogs} />}
       {tab === `topics` && <TopicsReview today={today} reviews={reviews} setReviews={setReviews} />}
       {tab === `books` && <BooksReview today={today} books={books} setBooks={setBooks} />}
       {tab === `materials` && <MaterialsReview today={today} materials={materials} setMaterials={setMaterials} materialLog={materialLog} setMaterialLog={setMaterialLog} />}
@@ -3796,6 +3796,9 @@ function ReviewCard({ review, onReviewed, onDelete }) {
         </div>
         <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
           <span style={{ color:subColor, fontWeight:600 }}>{review.subject}</span> · 회독 {review.cycleIndex + 1}회차
+          {review.sourceType === `courseLecture` && (
+            <span style={{ color:C.accent, fontWeight:600 }}> · 강의 메모</span>
+          )}
         </div>
         {review.note && <div style={{ fontSize:10, color:C.muted, marginTop:4, fontStyle:`italic` }}>{review.note}</div>}
       </div>
@@ -4079,7 +4082,24 @@ function buildCourseDailyQueue(course, today, settings) {
   };
 }
 
-function CoursesReview({ today, courses, setCourses, logs, setLogs, settings }) {
+function courseLectureReviewKey(courseId, lectureNum) {
+  return `course:${courseId}:lecture:${lectureNum}`;
+}
+
+function buildLectureReviewPayload(course, lecture) {
+  const tags = (lecture.tags || []).map(key => COURSE_TAGS.find(t => t.key === key)?.label).filter(Boolean);
+  const lines = [];
+  if (tags.length > 0) lines.push(`태그: ${tags.join(`, `)}`);
+  if ((lecture.note || ``).trim()) lines.push((lecture.note || ``).trim());
+  return {
+    title: `[강의] ${course.name} ${lecture.num}강 · ${lecture.title}`,
+    note: lines.join(`\n`),
+    hasContent: tags.length > 0 || !!(lecture.note || ``).trim(),
+    sourceKey: courseLectureReviewKey(course.id, lecture.num),
+  };
+}
+
+function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, reviews = [], setReviews }) {
   const [showAdd, setShowAdd] = useState(false); const [filter, setFilter] = useState(`전체`);
   function autoLogTime(subject, studyType, minutes) {
     if (minutes <= 0) return; const key = `${subject}::${studyType}`;
@@ -4118,7 +4138,51 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings }) 
     autoLogTime(prev.subject, COURSE_WATCH_TYPE, addedMin);
   }
   function updateCourseMeta(id, patch) { setCourses(courses.map(c => c.id === id ? { ...c, ...patch, lastUpdated: today } : c)); }
-  function delCourse(id) { if (!confirm(`이 강의를 삭제할까요? 이미 합산된 학습시간은 그대로 유지됩니다.`)) return; setCourses(courses.filter(c => c.id !== id)); }
+  function delCourse(id) {
+    if (!confirm(`이 강의를 삭제할까요? 이미 합산된 학습시간은 그대로 유지됩니다.`)) return;
+    setCourses(courses.filter(c => c.id !== id));
+    if (setReviews) setReviews(reviews.filter(r => !(r.sourceType === `courseLecture` && r.courseId === id)));
+  }
+  function syncLectureReviewTopic(course, lecture) {
+    if (!setReviews) return;
+    const payload = buildLectureReviewPayload(course, lecture);
+    const existing = reviews.find(r => r.sourceKey === payload.sourceKey);
+
+    if (!payload.hasContent) {
+      if (existing) setReviews(reviews.filter(r => r.id !== existing.id));
+      return;
+    }
+
+    if (existing) {
+      setReviews(reviews.map(r => r.id === existing.id ? {
+        ...r,
+        title: payload.title,
+        subject: course.subject,
+        note: payload.note,
+        sourceType: `courseLecture`,
+        courseId: course.id,
+        lectureNum: lecture.num,
+        updatedFromLectureAt: today,
+      } : r));
+      return;
+    }
+
+    setReviews([...reviews, {
+      id: uid(),
+      title: payload.title,
+      subject: course.subject,
+      created: today,
+      lastReviewed: today,
+      cycleIndex: 0,
+      intervals: [5, 3, 2],
+      note: payload.note,
+      sourceType: `courseLecture`,
+      sourceKey: payload.sourceKey,
+      courseId: course.id,
+      lectureNum: lecture.num,
+      updatedFromLectureAt: today,
+    }]);
+  }
   function logReviewTime(id, minutes) {
     const course = courses.find(c => c.id === id); if (!course) return;
     autoLogTime(course.subject, COURSE_REVIEW_TYPE, minutes);
@@ -4161,7 +4225,7 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings }) 
         <div style={{ textAlign:`center`, padding:30, color:C.muted, fontSize:12, background:C.paper, border:`1px dashed ${C.line}` }}>{courses.length === 0 ? `강의를 추가해 보세요` : `이 과목에 등록된 강의가 없습니다.`}</div>
       ) : (
         <div style={{ display:`flex`, flexDirection:`column`, gap:10 }}>
-          {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs) => updateCourse(c.id, lecs)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} />))}
+          {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs) => updateCourse(c.id, lecs)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onLectureMetaChange={(lecture) => syncLectureReviewTopic(c, lecture)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} />))}
         </div>
       )}
     </>
@@ -4334,7 +4398,7 @@ function AddCourseForm({ onAdd, onCancel }) {
   );
 }
 
-function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete, onLogReviewTime, onToggleReview }) {
+function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete, onLogReviewTime, onLectureMetaChange, onToggleReview }) {
   const [open, setOpen] = useState(false); 
   const [updateMode, setUpdateMode] = useState(false); 
   const [text, setText] = useState(``);
@@ -4432,7 +4496,14 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   }
 
   function updateLectureMeta(lecNum, patch) {
-    onUpdate(course.lectures.map(l => l.num === lecNum ? { ...l, ...patch } : l));
+    let updatedLecture = null;
+    const nextLectures = course.lectures.map(l => {
+      if (l.num !== lecNum) return l;
+      updatedLecture = { ...l, ...patch };
+      return updatedLecture;
+    });
+    onUpdate(nextLectures);
+    if (updatedLecture) onLectureMetaChange && onLectureMetaChange(updatedLecture);
   }
 
   function toggleLectureTag(lecNum, tagKey) {
