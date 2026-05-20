@@ -22,7 +22,7 @@ import {
   Home, Target, Clock, Download, RefreshCw, Minus, BookMarked,
   Calendar as CalendarIcon, Square, CheckSquare, Repeat,
   Layers, FileText, TrendingUp, Smile, Library, LogOut, Cloud, CloudOff, Sheet,
-  Copy, MessageCircle,
+  Copy, MessageCircle, MoreHorizontal,
 } from "lucide-react";
 
 /* ============================================================ THEME & DATA ============================================================ */
@@ -1433,6 +1433,7 @@ VITE_FIREBASE_APP_ID`}</pre>
         {view === `calendar` && <CalendarView {...sharedProps} onGoToLog={() => setView(`log`)} />}
         {view === `courses` && <CoursesReview {...sharedProps} />}
         {view === `review` && <ReviewView {...sharedProps} />}
+        {view === `more` && <MoreView onGoTo={setView} />}
         {view === `exams` && <ExamsView {...sharedProps} />}
         {view === `check` && <ChecklistView {...sharedProps} />}
         {view === `report` && <ReportView {...sharedProps} />}
@@ -1560,15 +1561,33 @@ function LoginView() {
 function TopBar({ dday, examLabel, examDate, user, syncStatus }) {
   const overdue = dday < 0;
   const displayName = user?.displayName || user?.email?.split(`@`)[0] || `사용자`;
+  const syncMeta = {
+    saving: { label: `저장 중`, color: C.muted, Icon: Cloud },
+    saved: { label: `저장됨`, color: C.good, Icon: Cloud },
+    error: { label: `저장 실패`, color: C.accent, Icon: CloudOff },
+  }[syncStatus];
+  const SyncIcon = syncMeta?.Icon;
   return (
     <header style={{ borderBottom:`1px solid ${C.line}`, background:C.paper, padding:`14px 18px 12px` }}>
       <div style={{ maxWidth:720, margin:`0 auto`, display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:12 }}>
         <div style={{ minWidth:0, flex:1 }}>
           <div style={{ display:`flex`, alignItems:`center`, gap:8 }}>
             <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.22em`, color:C.muted, textTransform:`uppercase` }}>BAR EXAM JOURNAL · {displayName}</div>
-            {syncStatus === `saving` && <Cloud size={11} color={C.muted} />}
-            {syncStatus === `saved` && <Cloud size={11} color={C.good} />}
-            {syncStatus === `error` && <CloudOff size={11} color={C.accent} />}
+            {syncMeta && (
+              <span style={{
+                border:`1px solid ${syncMeta.color}`,
+                color:syncMeta.color,
+                padding:`2px 5px`,
+                display:`inline-flex`,
+                alignItems:`center`,
+                gap:3,
+                fontSize:9,
+                lineHeight:1,
+                flexShrink:0,
+              }}>
+                <SyncIcon size={10} /> {syncMeta.label}
+              </span>
+            )}
           </div>
           <div className={`kserif`} style={{ fontSize:16, fontWeight:600, marginTop:3, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{examLabel}</div>
         </div>
@@ -1584,16 +1603,14 @@ function TopBar({ dday, examLabel, examDate, user, syncStatus }) {
 }
 
 function BottomNav({ view, setView }) {
+  const moreViews = [`exams`, `check`, `report`, `settings`];
   const items = [
     { key:`home`, icon:Home, label:`홈` },
     { key:`log`, icon:BookOpen, label:`기록` },
     { key:`calendar`, icon:CalendarIcon, label:`캘린더` },
-    { key:`exams`, icon:TrendingUp, label:`기출` },
     { key:`courses`, icon:FileText, label:`강의` },
     { key:`review`, icon:RotateCw, label:`회독` },
-    { key:`check`, icon:CheckSquare, label:`체크` },
-    { key:`report`, icon:BarChart3, label:`리포트` },
-    { key:`settings`, icon:SettingsIcon, label:`설정` },
+    { key:`more`, icon:MoreHorizontal, label:`더보기` },
   ];
   return (
     <nav style={{
@@ -1606,7 +1623,7 @@ function BottomNav({ view, setView }) {
       WebkitTransform: `translateZ(0)`, 
     }}>
       {items.map(it => {
-        const active = view === it.key;
+        const active = view === it.key || (it.key === `more` && moreViews.includes(view));
         const Icon = it.icon;
         return (
           <button key={it.key} onClick={() => setView(it.key)}
@@ -1623,6 +1640,49 @@ function BottomNav({ view, setView }) {
         );
       })}
     </nav>
+  );
+}
+
+function MoreView({ onGoTo }) {
+  const items = [
+    { key:`exams`, icon:TrendingUp, label:`기출`, desc:`선택형·사례형 점수` },
+    { key:`check`, icon:CheckSquare, label:`체크`, desc:`시험 전 확인 목록` },
+    { key:`report`, icon:BarChart3, label:`리포트`, desc:`시간·진도 통계` },
+    { key:`settings`, icon:SettingsIcon, label:`설정`, desc:`동기화·백업·시험일` },
+  ];
+
+  return (
+    <div className={`fadeIn`} style={{ padding:`20px 0 24px` }}>
+      <div style={{ marginBottom:16 }}>
+        <h1 className={`serif`} style={{ margin:0, fontSize:30, fontWeight:600, color:C.ink }}>더보기</h1>
+      </div>
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(2, minmax(0, 1fr))`, gap:10 }}>
+        {items.map(it => {
+          const Icon = it.icon;
+          return (
+            <button key={it.key} onClick={() => onGoTo(it.key)}
+              style={{
+                background:C.paper,
+                border:`1px solid ${C.line}`,
+                padding:`15px 14px`,
+                textAlign:`left`,
+                cursor:`pointer`,
+                minHeight:92,
+                display:`flex`,
+                flexDirection:`column`,
+                justifyContent:`space-between`,
+                gap:12,
+              }}>
+              <Icon size={18} color={C.accent} />
+              <div>
+                <div className={`kserif`} style={{ fontSize:14, fontWeight:600, color:C.ink }}>{it.label}</div>
+                <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>{it.desc}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1812,7 +1872,32 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans }) {
 
 /* ============================================================ HOME ============================================================ */
 
-function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examScores, moods, setMoods, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, user, onGoTo }) {
+function HomeAction({ icon: Icon, label, value, sub, onClick, color = C.accent }) {
+  return (
+    <button onClick={onClick}
+      style={{
+        background:C.paper,
+        border:`1px solid ${C.line}`,
+        padding:`12px 10px`,
+        cursor:`pointer`,
+        textAlign:`left`,
+        minHeight:94,
+        display:`flex`,
+        flexDirection:`column`,
+        justifyContent:`space-between`,
+        gap:8,
+      }}>
+      <Icon size={16} color={color} />
+      <div>
+        <div className={`kserif`} style={{ fontSize:11, fontWeight:600, color:C.muted }}>{label}</div>
+        <div className={`serif`} style={{ fontSize:19, fontWeight:600, color:C.ink, lineHeight:1.15, marginTop:3 }}>{value}</div>
+        {sub && <div style={{ fontSize:9, color:C.muted, marginTop:4, whiteSpace:`nowrap`, overflow:`hidden`, textOverflow:`ellipsis` }}>{sub}</div>}
+      </div>
+    </button>
+  );
+}
+
+function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examScores, moods, setMoods, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], user, onGoTo }) {
   const todayLog = logs[today] || {};
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
@@ -1866,6 +1951,15 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
     });
     return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   }, [reviews, today]);
+
+  const courseQueueSummary = useMemo(() => {
+    return courses.reduce((acc, course) => {
+      const queue = buildCourseDailyQueue(course, today, settings);
+      acc.watch += queue.watch.length;
+      acc.review += queue.review.length;
+      return acc;
+    }, { watch: 0, review: 0 });
+  }, [courses, today, settings]);
 
   const daysStudied = Object.keys(logs).filter(d => Object.values(logs[d] || {}).some(v => (v || 0) > 0)).length;
 
@@ -1922,6 +2016,34 @@ function HomeView({ today, dday, settings, logs, reviews, todos, tracks, examSco
           <div style={{ marginTop:6, opacity:0.85 }}>회차 회독 위주로 · 객관식 복수 회차/일</div>
         </div>
       )}
+
+      <SectionTitle>오늘 핵심</SectionTitle>
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:8, marginBottom:18 }}>
+        <HomeAction
+          icon={FileText}
+          label={`강의`}
+          value={`${courseQueueSummary.watch + courseQueueSummary.review}개`}
+          sub={`수강 ${courseQueueSummary.watch} · 복습 ${courseQueueSummary.review}`}
+          color={C.book}
+          onClick={() => onGoTo(`courses`)}
+        />
+        <HomeAction
+          icon={RotateCw}
+          label={`회독`}
+          value={`${dueReviews.length}개`}
+          sub={dueReviews.length > 0 ? `오늘 마감` : `대기 없음`}
+          color={C.accent}
+          onClick={() => onGoTo(`review`)}
+        />
+        <HomeAction
+          icon={Clock}
+          label={`기록`}
+          value={fmtMin(todayMinutes)}
+          sub={`트랙 ${tracksDone}/5`}
+          color={C.good}
+          onClick={() => onGoTo(`log`)}
+        />
+      </div>
 
       {todayMock ? (
         <div style={{ marginBottom:18 }}>
@@ -3784,6 +3906,18 @@ function AddReviewForm({ onAdd, onCancel }) {
 function ReviewCard({ review, onReviewed, onDelete }) {
   const isDue = review.daysUntilDue <= 0;
   const subColor = SUBJECTS[review.subject].color;
+  const noteLines = (review.note || ``).split(`\n`);
+  const lectureTagLine = review.sourceType === `courseLecture`
+    ? noteLines.find(line => line.startsWith(`태그:`))
+    : ``;
+  const lectureTags = lectureTagLine
+    ? lectureTagLine.replace(/^태그:\s*/, ``).split(`,`).map(t => t.trim()).filter(Boolean)
+    : [];
+  const displayNote = noteLines
+    .filter(line => !(review.sourceType === `courseLecture` && line.startsWith(`태그:`)))
+    .join(`\n`)
+    .trim();
+
   return (
     <div style={{ background:C.paper, border:`1px solid ${isDue ? C.accent : C.line}`, padding:`12px 14px`, display:`flex`, alignItems:`center`, gap:10 }}>
       <div style={{ width:3, alignSelf:`stretch`, background:subColor }} />
@@ -3800,7 +3934,21 @@ function ReviewCard({ review, onReviewed, onDelete }) {
             <span style={{ color:C.accent, fontWeight:600 }}> · 강의 메모</span>
           )}
         </div>
-        {review.note && <div style={{ fontSize:10, color:C.muted, marginTop:4, fontStyle:`italic` }}>{review.note}</div>}
+        {review.sourceType === `courseLecture` && (
+          <div style={{ display:`flex`, alignItems:`center`, gap:4, flexWrap:`wrap`, marginTop:6 }}>
+            {review.lectureNum && (
+              <span className={`mono`} style={{ fontSize:9, color:C.accent, border:`1px solid ${C.accent}`, padding:`2px 5px` }}>
+                {review.lectureNum}강
+              </span>
+            )}
+            {lectureTags.map(tag => (
+              <span key={tag} style={{ fontSize:9, color:C.muted, border:`1px solid ${C.line}`, padding:`2px 5px`, background:C.bg }}>
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+        {displayNote && <div style={{ fontSize:10, color:C.muted, marginTop:4, fontStyle:`italic`, whiteSpace:`pre-wrap` }}>{displayNote}</div>}
       </div>
       <button onClick={onReviewed} style={{ background:C.ink, color:`#fff`, border:`none`, padding:`5px 8px`, cursor:`pointer`, fontSize:10 }}>
         <Check size={11} />
@@ -4436,6 +4584,7 @@ function AddCourseForm({ onAdd, onCancel }) {
 function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete, onLogReviewTime, onLectureMetaChange, onToggleReview }) {
   const [open, setOpen] = useState(false); 
   const [updateMode, setUpdateMode] = useState(false); 
+  const [manageOpen, setManageOpen] = useState(false);
   const [text, setText] = useState(``);
   const [memoOpenNum, setMemoOpenNum] = useState(null);
   
@@ -4567,12 +4716,12 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
             <span style={{ color:subColor, fontWeight:600 }}>{course.subject}</span> · {typeLabel}
             {remainingLectures > 0 && actualPace !== null && (
               <span style={{ color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent, fontWeight: 600 }}>
-                수강 {isPaceGood ? `🟢` : isPaceWarning ? `🟡` : `🔴`}
+                수강 {isPaceGood ? `안정` : isPaceWarning ? `주의` : `지연`}
               </span>
             )}
             {remainingReviews > 0 && actualReviewPace !== null && (
               <span style={{ color: isReviewGood ? C.good : isReviewWarning ? C.warn : C.accent, fontWeight: 600 }}>
-                복습 {isReviewGood ? `🟢` : isReviewWarning ? `🟡` : `🔴`}
+                복습 {isReviewGood ? `안정` : isReviewWarning ? `주의` : `지연`}
               </span>
             )}
           </div>
@@ -4588,117 +4737,129 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
         <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 14px` }}>
           <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:10 }}>
             <div className={`mono`} style={{ fontSize:10, color:C.muted }}>총 {total}강 · 마지막 갱신 {course.lastUpdated || `-`}</div>
-            <div style={{ display:`flex`, gap:6, flexShrink:0 }}>
-              <button onClick={() => setUpdateMode(true)} style={{ background:updateMode ? C.ink : C.bg, color:updateMode ? `#fff` : C.ink, border:`1px solid ${updateMode ? C.ink : C.line}`, padding:`5px 8px`, cursor:`pointer`, fontSize:10, display:`flex`, alignItems:`center`, gap:4 }}>
-                <RefreshCw size={11} /> 목록 갱신
-              </button>
-              <button onClick={onDelete} style={{ background:C.bg, color:C.accent, border:`1px solid ${C.line}`, padding:`5px 8px`, cursor:`pointer`, fontSize:10, display:`flex`, alignItems:`center`, gap:4 }}>
-                <Trash2 size={11} /> 삭제
-              </button>
-            </div>
+            <button onClick={() => setManageOpen(o => !o)}
+              style={{ background:manageOpen ? C.ink : C.bg, color:manageOpen ? `#fff` : C.ink, border:`1px solid ${manageOpen ? C.ink : C.line}`, padding:`5px 8px`, cursor:`pointer`, fontSize:10, display:`flex`, alignItems:`center`, gap:4, flexShrink:0 }}>
+              <SettingsIcon size={11} /> 관리
+            </button>
           </div>
 
-          <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, marginBottom:10 }}>
-            <div style={{ fontSize:10, color:C.muted }}>
-              완강 기준 <span className={`mono`} style={{ color:subColor, fontWeight:600 }}>{completeThreshold}%</span>
-            </div>
-            <div style={{ display:`flex`, gap:4, flexShrink:0 }}>
-              {COURSE_COMPLETE_THRESHOLDS.map(t => (
-                <button key={t} onClick={() => onUpdateMeta && onUpdateMeta({ completeThreshold: t })}
-                  style={{
-                    background: completeThreshold === t ? subColor : C.paper,
-                    color: completeThreshold === t ? `#fff` : C.muted,
-                    border:`1px solid ${completeThreshold === t ? subColor : C.line}`,
-                    padding:`4px 7px`, fontSize:10, cursor:`pointer`,
-                  }}>{t}%</button>
-              ))}
-            </div>
-          </div>
-
-          {updateMode && (
-            <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:12, marginBottom:12 }}>
-              <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:6 }}>
-                <div style={{ fontSize:10, color:C.muted }}>새 진도표 붙여넣기</div>
-                <div className={`mono`} style={{ fontSize:10, color: parsedUpdate.length > 0 ? C.ink : C.muted, fontWeight: parsedUpdate.length > 0 ? 600 : 400 }}>
-                  {parsedUpdate.length > 0 ? `${parsedUpdate.length}강 인식` : `대기`}
+          {manageOpen && (
+            <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:10, marginBottom:12 }}>
+              <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:10 }}>
+                <div style={{ fontSize:10, color:C.muted }}>목록 · 기준 · 목표일</div>
+                <div style={{ display:`flex`, gap:6, flexShrink:0 }}>
+                  <button onClick={() => setUpdateMode(true)} style={{ background:updateMode ? C.ink : C.paper, color:updateMode ? `#fff` : C.ink, border:`1px solid ${updateMode ? C.ink : C.line}`, padding:`5px 8px`, cursor:`pointer`, fontSize:10, display:`flex`, alignItems:`center`, gap:4 }}>
+                    <RefreshCw size={11} /> 목록 갱신
+                  </button>
+                  <button onClick={onDelete} style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`5px 8px`, cursor:`pointer`, fontSize:10, display:`flex`, alignItems:`center`, gap:4 }}>
+                    <Trash2 size={11} /> 삭제
+                  </button>
                 </div>
               </div>
-              <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
-                placeholder={`사이트의 최신 강의 목록을 통째로 붙여넣으세요.\n기존 복습 체크와 복습 시간은 유지됩니다.`}
-                style={{ width:`100%`, background:C.paper, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:10, outline:`none`, resize:`vertical`, fontFamily:`JetBrains Mono, monospace`, lineHeight:1.5 }} />
 
-              {parsedUpdate.length > 0 && (
-                <div style={{ background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, marginBottom:10 }}>
-                  <div style={{ display:`flex`, gap:12, fontSize:10, marginBottom:6, flexWrap:`wrap` }}>
-                    <span className={`kserif`}>추가 <span className={`mono`} style={{ color:addedLectureCount > 0 ? subColor : C.muted, fontWeight:600 }}>{addedLectureCount}</span></span>
-                    <span className={`kserif`}>제외 <span className={`mono`} style={{ color:removedLectureCount > 0 ? C.accent : C.muted, fontWeight:600 }}>{removedLectureCount}</span></span>
-                    <span className={`kserif`}>새 완강 <span className={`mono`} style={{ color:newlyCompletedCount > 0 ? C.good : C.muted, fontWeight:600 }}>{newlyCompletedCount}</span></span>
-                    <span className={`kserif`}>합산될 학습시간 <span className={`mono`} style={{ color:newlyCompletedMin > 0 ? subColor : C.muted, fontWeight:600 }}>+{fmtMin(newlyCompletedMin)}</span></span>
+              <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, marginBottom:(updateMode || remainingLectures > 0 || remainingReviews > 0) ? 10 : 0 }}>
+                <div style={{ fontSize:10, color:C.muted }}>
+                  완강 기준 <span className={`mono`} style={{ color:subColor, fontWeight:600 }}>{completeThreshold}%</span>
+                </div>
+                <div style={{ display:`flex`, gap:4, flexShrink:0 }}>
+                  {COURSE_COMPLETE_THRESHOLDS.map(t => (
+                    <button key={t} onClick={() => onUpdateMeta && onUpdateMeta({ completeThreshold: t })}
+                      style={{
+                        background: completeThreshold === t ? subColor : C.paper,
+                        color: completeThreshold === t ? `#fff` : C.muted,
+                        border:`1px solid ${completeThreshold === t ? subColor : C.line}`,
+                        padding:`4px 7px`, fontSize:10, cursor:`pointer`,
+                      }}>{t}%</button>
+                  ))}
+                </div>
+              </div>
+
+              {updateMode && (
+                <div style={{ background:C.paper, border:`1px solid ${C.lineSoft}`, padding:12, marginBottom:10 }}>
+                  <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:6 }}>
+                    <div style={{ fontSize:10, color:C.muted }}>새 진도표 붙여넣기</div>
+                    <div className={`mono`} style={{ fontSize:10, color: parsedUpdate.length > 0 ? C.ink : C.muted, fontWeight: parsedUpdate.length > 0 ? 600 : 400 }}>
+                      {parsedUpdate.length > 0 ? `${parsedUpdate.length}강 인식` : `대기`}
+                    </div>
                   </div>
-                  <div style={{ maxHeight:110, overflowY:`auto`, fontSize:10 }}>
-                    {parsedUpdate.map(l => {
-                      const wasReviewed = !!existingByNum.get(l.num)?.reviewed;
-                      return (
-                        <div key={l.num} style={{ display:`flex`, gap:6, padding:`2px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
-                          <span className={`mono`} style={{ color:C.muted, minWidth:24 }}>{l.num}강</span>
-                          <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
-                          {wasReviewed && <span className={`mono`} style={{ color:C.good, minWidth:30 }}>복습</span>}
-                          <span className={`mono`} style={{ color:C.muted, minWidth:34, textAlign:`right` }}>{l.durationMin || `-`}분</span>
-                          <span className={`mono`} style={{ color: l.completed ? C.good : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:38, textAlign:`right` }}>
-                            {l.completed ? `완강` : `${l.progress}%`}
-                          </span>
+                  <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
+                    placeholder={`사이트의 최신 강의 목록을 통째로 붙여넣으세요.\n기존 복습 체크와 복습 시간은 유지됩니다.`}
+                    style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:10, outline:`none`, resize:`vertical`, fontFamily:`JetBrains Mono, monospace`, lineHeight:1.5 }} />
+
+                  {parsedUpdate.length > 0 && (
+                    <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, marginBottom:10 }}>
+                      <div style={{ display:`flex`, gap:12, fontSize:10, marginBottom:6, flexWrap:`wrap` }}>
+                        <span className={`kserif`}>추가 <span className={`mono`} style={{ color:addedLectureCount > 0 ? subColor : C.muted, fontWeight:600 }}>{addedLectureCount}</span></span>
+                        <span className={`kserif`}>제외 <span className={`mono`} style={{ color:removedLectureCount > 0 ? C.accent : C.muted, fontWeight:600 }}>{removedLectureCount}</span></span>
+                        <span className={`kserif`}>새 완강 <span className={`mono`} style={{ color:newlyCompletedCount > 0 ? C.good : C.muted, fontWeight:600 }}>{newlyCompletedCount}</span></span>
+                        <span className={`kserif`}>합산될 학습시간 <span className={`mono`} style={{ color:newlyCompletedMin > 0 ? subColor : C.muted, fontWeight:600 }}>+{fmtMin(newlyCompletedMin)}</span></span>
+                      </div>
+                      <div style={{ maxHeight:110, overflowY:`auto`, fontSize:10 }}>
+                        {parsedUpdate.map(l => {
+                          const wasReviewed = !!existingByNum.get(l.num)?.reviewed;
+                          return (
+                            <div key={l.num} style={{ display:`flex`, gap:6, padding:`2px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
+                              <span className={`mono`} style={{ color:C.muted, minWidth:24 }}>{l.num}강</span>
+                              <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                              {wasReviewed && <span className={`mono`} style={{ color:C.good, minWidth:30 }}>복습</span>}
+                              <span className={`mono`} style={{ color:C.muted, minWidth:34, textAlign:`right` }}>{l.durationMin || `-`}분</span>
+                              <span className={`mono`} style={{ color: l.completed ? C.good : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:38, textAlign:`right` }}>
+                                {l.completed ? `완강` : `${l.progress}%`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display:`flex`, gap:6 }}>
+                    <button onClick={cancelUpdateList} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:`7px`, cursor:`pointer`, fontSize:11 }}>취소</button>
+                    <button onClick={submitUpdateList} disabled={!canUpdateList}
+                      style={{ flex:2, background: canUpdateList ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px`, cursor: canUpdateList ? `pointer` : `default`, fontSize:11, fontWeight:600 }}>
+                      {newlyCompletedMin > 0 ? `갱신 · +${fmtMin(newlyCompletedMin)} 합산` : `목록 갱신`}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(remainingLectures > 0 || remainingReviews > 0) && (
+                <div style={{ background: C.paper, border: `1px solid ${C.lineSoft}`, padding: `12px`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {remainingLectures > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap:10, fontSize: 11 }}>
+                      <div>
+                        <span style={{ fontWeight: 600, color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent }}>
+                          수강 페이스
+                        </span>
+                        <div style={{ color: C.muted, marginTop: 4 }}>
+                          현재 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{actualPace.toFixed(1)}</span>강/일 · 필요 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{requiredPace}</span>강/일
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display:`flex`, gap:6 }}>
-                <button onClick={cancelUpdateList} style={{ flex:1, background:C.paper, border:`1px solid ${C.line}`, padding:`7px`, cursor:`pointer`, fontSize:11 }}>취소</button>
-                <button onClick={submitUpdateList} disabled={!canUpdateList}
-                  style={{ flex:2, background: canUpdateList ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px`, cursor: canUpdateList ? `pointer` : `default`, fontSize:11, fontWeight:600 }}>
-                  {newlyCompletedMin > 0 ? `갱신 · +${fmtMin(newlyCompletedMin)} 합산` : `목록 갱신`}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {(remainingLectures > 0 || remainingReviews > 0) && (
-            <div style={{ background: C.bg, border: `1px solid ${C.lineSoft}`, padding: `12px`, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {remainingLectures > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-                  <div>
-                    <span style={{ fontWeight: 600, color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent }}>
-                      수강 페이스 {isPaceGood ? `🟢` : isPaceWarning ? `🟡` : `🔴`}
-                    </span>
-                    <div style={{ color: C.muted, marginTop: 4 }}>
-                      현재 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{actualPace.toFixed(1)}</span>강/일 · 필요 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{requiredPace}</span>강/일
+                      </div>
+                      <div style={{ textAlign: 'right', display: 'flex', gap: 10, flexWrap:`wrap`, justifyContent:`flex-end` }}>
+                        <div>
+                          <div style={{ color: C.muted, marginBottom: 2 }}>시작일</div>
+                          <input type="date" value={startDate} onChange={e => onUpdateMeta && onUpdateMeta({ startDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.bg, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
+                        </div>
+                        <div>
+                          <div style={{ color: C.muted, marginBottom: 2 }}>목표일 (D-{daysUntilTarget})</div>
+                          <input type="date" value={targetEndDate} onChange={e => onUpdateMeta && onUpdateMeta({ targetEndDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.bg, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right', display: 'flex', gap: 10 }}>
-                    <div>
-                      <div style={{ color: C.muted, marginBottom: 2 }}>시작일</div>
-                      <input type="date" value={startDate} onChange={e => onUpdateMeta && onUpdateMeta({ startDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.paper, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
+                  )}
+                  {remainingLectures > 0 && remainingReviews > 0 && <div style={{ borderTop: `1px dashed ${C.lineSoft}` }} />}
+                  {remainingReviews > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap:10, fontSize: 11 }}>
+                      <div>
+                        <span style={{ fontWeight: 600, color: isReviewGood ? C.good : isReviewWarning ? C.warn : C.accent }}>복습 페이스</span>
+                        <div style={{ color: C.muted, marginTop: 4 }}>현재 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{actualReviewPace.toFixed(1)}</span>강/일 · 필요 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{requiredReviewPace}</span>강/일</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ color: C.muted, marginBottom: 2 }}>목표일 (D-{daysUntilReviewTarget})</div>
+                        <input type="date" value={targetReviewDate} onChange={e => onUpdateMeta && onUpdateMeta({ targetReviewDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.bg, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ color: C.muted, marginBottom: 2 }}>목표일 (D-{daysUntilTarget})</div>
-                      <input type="date" value={targetEndDate} onChange={e => onUpdateMeta && onUpdateMeta({ targetEndDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.paper, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-              {remainingLectures > 0 && remainingReviews > 0 && <div style={{ borderTop: `1px dashed ${C.lineSoft}` }} />}
-              {remainingReviews > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-                  <div>
-                    <span style={{ fontWeight: 600, color: isReviewGood ? C.good : isReviewWarning ? C.warn : C.accent }}>복습 페이스 {isReviewGood ? `🟢` : isReviewWarning ? `🟡` : `🔴`}</span>
-                    <div style={{ color: C.muted, marginTop: 4 }}>현재 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{actualReviewPace.toFixed(1)}</span>강/일 · 필요 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{requiredReviewPace}</span>강/일</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ color: C.muted, marginBottom: 2 }}>목표일 (D-{daysUntilReviewTarget})</div>
-                    <input type="date" value={targetReviewDate} onChange={e => onUpdateMeta && onUpdateMeta({ targetReviewDate: e.target.value })} style={{ border: `1px solid ${C.line}`, background: C.paper, outline: 'none', padding: '1px 3px', fontSize: 10, color: C.ink, fontFamily: `JetBrains Mono, monospace` }} />
-                  </div>
+                  )}
                 </div>
               )}
             </div>
@@ -4732,7 +4893,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                         padding:`3px 7px`, fontSize:9, cursor:`pointer`, flexShrink:0,
                         display:`flex`, alignItems:`center`, gap:3,
                       }}>
-                      {l.reviewed ? <CheckSquare size={11} /> : <Square size={11} />} {l.reviewed ? `복습완료` : `복습체크`}
+                      {l.reviewed ? <CheckSquare size={11} /> : <Square size={11} />} {l.reviewed ? `완료` : `복습`}
                     </button>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 60 }}>
@@ -4746,14 +4907,14 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                           </button>
                         </div>
                       ) : (
-                        <button onClick={(e) => { e.stopPropagation(); setActiveTimerLec(l.num); setTimerStartAt(Date.now()); setTick(0); }} style={{ background: C.bg, color: C.ink, border: `1px solid ${C.line}`, padding: '3px 6px', fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
-                          ▶ 복습시작
+                        <button onClick={(e) => { e.stopPropagation(); setActiveTimerLec(l.num); setTimerStartAt(Date.now()); setTick(0); }} style={{ background: C.bg, color: C.ink, border: `1px solid ${C.line}`, padding: '3px 6px', fontSize: 9, borderRadius: 3, cursor: 'pointer', display:`flex`, alignItems:`center`, gap:3 }}>
+                          <Clock size={10} /> 시작
                         </button>
                       )}
                       
                       {!isRunning && l.reviewed && l.reviewDurationMin !== undefined && (
                         <span className="mono" style={{ fontSize: 9, color: isReviewOk ? C.good : C.accent }}>
-                          {l.reviewDurationMin}분 {isReviewOk ? '🟢' : '🔴'}
+                          {l.reviewDurationMin}분 {isReviewOk ? `적정` : `초과`}
                         </span>
                       )}
                     </div>
