@@ -676,7 +676,36 @@ function parseCourseText(text) {
     return lectures.sort((a, b) => a.num - b.num);
   }
 
-  // 2. 기존 양식 매칭 (N강 제목 N분 N% [완강])
+  // 2. 바로수강 양식 — "N강[코드] 제목 play" 다음 줄에 "강의시간 N분 ... [완강]"
+  if (/강의시간\s+\d+\s*분/.test(text)) {
+    const baroLines = text.split(/\r?\n/);
+    let pending = null;
+    for (const raw of baroLines) {
+      const line = raw.trim();
+      if (!line) continue;
+
+      const titleMatch = line.match(/^(\d+)강(\[.*?\])?\s+(.+?)\s+play\s*$/);
+      if (titleMatch) {
+        pending = { num: parseInt(titleMatch[1], 10), title: titleMatch[3].trim() };
+        continue;
+      }
+
+      if (pending) {
+        const infoMatch = line.match(/^강의시간\s+(\d+)\s*분/);
+        if (infoMatch) {
+          const durationMin = parseInt(infoMatch[1], 10);
+          const completed = /완강/.test(line);
+          if (!lectures.find(l => l.num === pending.num)) {
+            lectures.push({ num: pending.num, title: pending.title, durationMin, progress: completed ? 100 : 0, completed });
+          }
+          pending = null;
+        }
+      }
+    }
+    if (lectures.length > 0) return lectures.sort((a, b) => a.num - b.num);
+  }
+
+  // 3. 기존 양식 매칭 (N강 제목 N분 N% [완강])
   const lines = text.split(/\r?\n/);
   for (const raw of lines) {
     const line = raw.replace(/\s+/g, ` `).trim();
