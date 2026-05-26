@@ -414,6 +414,11 @@ function fmtKDate(iso) {
   const days = [`일`, `월`, `화`, `수`, `목`, `금`, `토`];
   return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2, `0`)}.${String(d.getDate()).padStart(2, `0`)} (${days[d.getDay()]})`;
 }
+function fmtShortDate(iso) {
+  if (!iso) return `-`;
+  const [, m, d] = iso.split(`-`);
+  return `${Number(m)}/${Number(d)}`;
+}
 function fmtMin(n) {
   if (!n) return `0분`;
   const h = Math.floor(n / 60), m = n % 60;
@@ -2104,10 +2109,10 @@ function PrevScoreCard({ scores }) {
 
 /* ============================================================ WEEKLY PLAN (주간계획 · 과목별 메모) ============================================================ */
 
-function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans }) {
+function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans, defaultOpen = true }) {
   const weekStart = weekStartOf(today);
   const plan = weeklyPlans[weekStart] || {};
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   const [drafts, setDrafts] = useState(plan);
 
   // 주가 바뀌면 draft도 갱신
@@ -2244,6 +2249,196 @@ function HomeWorkHeader({ dday, todayMinutes, tracksDone, courseQueueSummary, du
   );
 }
 
+function HomeCoursePaceStrip({ summary, onGoTo }) {
+  const [open, setOpen] = useState(false);
+  const active = summary?.active || [];
+  if (active.length === 0) return null;
+
+  const top = active[0];
+  const statusMeta = {
+    delayed: { label:`지연`, color:C.accent },
+    caution: { label:`주의`, color:C.warn },
+    onTrack: { label:`정상`, color:C.good },
+    done: { label:`완강`, color:C.good },
+  };
+  const tone = summary.delayed > 0 ? C.accent : summary.caution > 0 ? C.warn : C.good;
+  const headline = summary.delayed > 0
+    ? `지연 ${summary.delayed}개`
+    : summary.caution > 0
+    ? `주의 ${summary.caution}개`
+    : `정상`;
+  const topEstimate = top.projectedEndDate
+    ? `현재 속도면 ${fmtShortDate(top.projectedEndDate)} 완강`
+    : `오늘 1강 시작 필요`;
+  const topLag = top.plannedBehind > 0
+    ? ` · 계획보다 ${top.plannedBehind}강 밀림`
+    : top.lagDays > 0
+    ? ` · 예상 ${top.lagDays}일 지연`
+    : ``;
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:10 }}>
+      <button onClick={() => setOpen(o => !o)} className={`tap`}
+        style={{
+          width:`100%`,
+          background:`transparent`,
+          border:`none`,
+          padding:`10px 12px`,
+          display:`flex`,
+          alignItems:`center`,
+          gap:10,
+          cursor:`pointer`,
+          textAlign:`left`,
+        }}>
+        <div style={{ width:3, alignSelf:`stretch`, background:tone, minHeight:34 }} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:`flex`, alignItems:`center`, gap:6, marginBottom:3 }}>
+            <span className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>강의 페이스</span>
+            <span className={`mono`} style={{ fontSize:9, color:tone, border:`1px solid ${tone}`, padding:`1px 5px`, lineHeight:1.3 }}>
+              {headline}
+            </span>
+          </div>
+          <div style={{ fontSize:10, color:C.muted, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+            <span style={{ color:C.ink, fontWeight:600 }}>{top.course.name}</span> · {topEstimate}{topLag}
+          </div>
+        </div>
+        <ChevronDown size={14} color={C.muted} style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s`, flexShrink:0 }} />
+      </button>
+
+      {open && (
+        <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`2px 12px 11px 25px` }}>
+          {active.slice(0, 5).map(item => {
+            const meta = statusMeta[item.status] || statusMeta.onTrack;
+            const pct = item.total ? Math.round((item.completed / item.total) * 100) : 0;
+            const estimate = item.projectedEndDate ? fmtShortDate(item.projectedEndDate) : `계산 전`;
+            return (
+              <div key={item.course.id} style={{ padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
+                <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8 }}>
+                  <div style={{ minWidth:0, flex:1 }}>
+                    <span className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, display:`block` }}>
+                      {item.course.name}
+                    </span>
+                    <span style={{ fontSize:9, color:C.muted }}>
+                      목표 {fmtShortDate(item.targetEndDate)} · 예상 {estimate} · 하루 {item.requiredDailyCeil}강 필요
+                    </span>
+                  </div>
+                  <span className={`mono`} style={{ fontSize:10, color:meta.color, fontWeight:700, flexShrink:0 }}>
+                    {meta.label}
+                  </span>
+                </div>
+                <div style={{ height:3, background:C.lineSoft, marginTop:6, position:`relative` }}>
+                  <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background:meta.color }} />
+                </div>
+              </div>
+            );
+          })}
+          <button onClick={() => onGoTo(`courses`)} className={`tap`}
+            style={{ width:`100%`, marginTop:8, background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, padding:`7px 8px`, fontSize:10, cursor:`pointer` }}>
+            강의에서 목표일 조정
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HomeRoutineShelf({ today, routines = [], routineLog = {}, setRoutineLog }) {
+  const [open, setOpen] = useState(false);
+  if (!routines.length) return null;
+
+  const todayRoutines = routineLog[today] || {};
+  const doneCount = routines.filter(r => todayRoutines[r.id]).length;
+  const allDone = doneCount === routines.length;
+
+  function toggleRoutine(id) {
+    if (!setRoutineLog) return;
+    setRoutineLog(prev => {
+      const cur = prev[today] || {};
+      const nextDay = { ...cur };
+      if (nextDay[id]) delete nextDay[id]; else nextDay[id] = true;
+      const next = { ...prev };
+      if (Object.keys(nextDay).length === 0) delete next[today];
+      else next[today] = nextDay;
+      return next;
+    });
+  }
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:10 }}>
+      <button onClick={() => setOpen(o => !o)} className={`tap`}
+        style={{ width:`100%`, background:`transparent`, border:`none`, padding:`10px 12px`, display:`flex`, alignItems:`center`, gap:10, cursor:`pointer`, textAlign:`left` }}>
+        <div style={{ width:3, alignSelf:`stretch`, background:allDone ? C.good : C.line, minHeight:32 }} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>오늘 루틴</div>
+          <div className={`mono`} style={{ fontSize:10, color:allDone ? C.good : C.muted, marginTop:2 }}>{doneCount}/{routines.length} 완료</div>
+        </div>
+        <ChevronDown size={14} color={C.muted} style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s`, flexShrink:0 }} />
+      </button>
+
+      {open && (
+        <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`9px 10px 10px`, display:`grid`, gridTemplateColumns:`repeat(${Math.min(routines.length, 6)}, minmax(0, 1fr))`, gap:6 }}>
+          {routines.map(r => {
+            const done = !!todayRoutines[r.id];
+            return (
+              <button key={r.id} onClick={() => toggleRoutine(r.id)} className={`tap`}
+                style={{
+                  background: done ? C.good : C.bg,
+                  color: done ? `#fff` : C.muted,
+                  border:`1px solid ${done ? C.good : C.lineSoft}`,
+                  padding:`8px 4px`,
+                  cursor:`pointer`,
+                  minHeight:56,
+                  display:`flex`,
+                  flexDirection:`column`,
+                  alignItems:`center`,
+                  justifyContent:`center`,
+                  gap:3,
+                }}>
+                <span style={{ fontSize:16, lineHeight:1 }}>{r.icon || `✓`}</span>
+                <span className={`kserif`} style={{ fontSize:9, fontWeight:done ? 700 : 500, lineHeight:1.2, textAlign:`center`, overflow:`hidden`, textOverflow:`ellipsis`, maxWidth:`100%` }}>{r.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HomeChecklistShelf({ staleChecklists = [], today, onGoTo }) {
+  if (staleChecklists.length === 0) return null;
+  const first = staleChecklists[0];
+  const since = first.lastReviewed ? daysDiff(first.lastReviewed, today) : null;
+
+  return (
+    <button onClick={() => onGoTo(`check`)} className={`tap`}
+      style={{
+        width:`100%`,
+        background:C.paper,
+        border:`1px solid ${C.line}`,
+        borderLeft:`3px solid ${first.color || C.accent}`,
+        padding:`10px 12px`,
+        marginBottom:18,
+        display:`flex`,
+        alignItems:`center`,
+        justifyContent:`space-between`,
+        gap:10,
+        cursor:`pointer`,
+        textAlign:`left`,
+      }}>
+      <div style={{ minWidth:0 }}>
+        <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>체크리스트 점검</div>
+        <div style={{ fontSize:10, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+          {first.name}{staleChecklists.length > 1 ? ` 외 ${staleChecklists.length - 1}개` : ``}
+        </div>
+      </div>
+      <span className={`mono`} style={{ fontSize:10, color:C.accent, fontWeight:700, flexShrink:0 }}>
+        {since === null ? `미회독` : `${since}일 전`}
+      </span>
+    </button>
+  );
+}
+
 function HomeTodayPanel({ today, courseItems, reviews, todosOpen, onGoTo, onCourseDone, onReviewDone }) {
   const visibleCourses = courseItems.slice(0, 4);
   const visibleReviews = reviews.slice(0, 3);
@@ -2345,22 +2540,6 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   const upcomingMock = useMemo(() => nextMockExam(today, settings), [today, settings]);
 
   const weekStart = weekStartOf(today);
-  const weekData = useMemo(() => {
-    const arr = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = addDays(today, -i);
-      const lg = logs[d] || {};
-      const row = { date: d, day: new Date(d + `T00:00:00`).getDate() };
-      Object.keys(SUBJECTS).forEach(sub => {
-        let sum = 0;
-        getStudyTypes(sub).forEach(t => { sum += lg[`${sub}::${t.key}`] || 0; });
-        row[sub] = Math.round((sum / 60) * 10) / 10;
-      });
-      arr.push(row);
-    }
-    return arr;
-  }, [logs, today]);
-
   const weekSubjectMin = useMemo(() => {
     const out = {};
     Object.keys(SUBJECTS).forEach(sub => { out[sub] = 0; });
@@ -2374,8 +2553,6 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   }, [logs, weekStart]);
 
   const weekTotalMin = Object.values(weekSubjectMin).reduce((a, b) => a + b, 0);
-  const weekTargetMin = Object.values(settings.weeklyTargets).reduce((a, b) => a + b, 0);
-  const weekPct = weekTargetMin ? Math.round((weekTotalMin / weekTargetMin) * 100) : 0;
 
   const dueReviews = useMemo(() => {
     const list = [];
@@ -2396,6 +2573,7 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   }, [courses, today, settings]);
 
   const courseQueueItems = useMemo(() => buildCourseQueueItems(courses, today, settings), [courses, today, settings]);
+  const coursePaceSummary = useMemo(() => buildCoursePaceSummary(courses, today, settings), [courses, today, settings]);
   const overdueCourseReviews = courseQueueItems.filter(item => item.type === `review` && item.lecture.nextReviewDate && item.lecture.nextReviewDate < today).length;
   const overdueTopicReviews = dueReviews.filter(r => r.dueDate < today).length;
   const overdueTotal = overdueTodosOpen + overdueCourseReviews + overdueTopicReviews;
@@ -2414,9 +2592,12 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
     return count;
   }, [logs, today]);
 
-  const recentScores = examScores.slice(-3).reverse();
   const inD30 = dday > 0 && dday <= 30;
   const inD7 = dday > 0 && dday <= 7;
+  const staleChecklists = useMemo(() => checklists.filter(c => {
+    if (!c.lastReviewed) return c.items.length > 0;
+    return daysDiff(c.lastReviewed, today) >= 14;
+  }), [checklists, today]);
 
   function logCourseTime(subject, studyType, minutes) {
     if (!setLogs || minutes <= 0) return;
@@ -2467,6 +2648,11 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         dueReviews={dueReviews}
         todosOpen={todayTodosOpen}
         overdueTotal={overdueTotal}
+        onGoTo={onGoTo}
+      />
+
+      <HomeCoursePaceStrip
+        summary={coursePaceSummary}
         onGoTo={onGoTo}
       />
 
@@ -2568,263 +2754,17 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         </div>
       )}
 
-      <SectionTitle action={{ label:`기록`, onClick: () => onGoTo(`log`) }}>오늘 트랙 · {tracksDone}/5</SectionTitle>
-      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 12px`, marginBottom:18 }}>
-        {TRACK_TYPES.map(tt => {
-          const slot = todayTracks[tt.key] || {};
-          return (
-            <div key={tt.key} style={{ display:`flex`, alignItems:`center`, gap:8, padding:`5px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
-              <span style={{
-                width:22, height:22, background: slot.done ? tt.color : `transparent`,
-                color: slot.done ? `#fff` : tt.color, border:`1px solid ${tt.color}`,
-                display:`grid`, placeItems:`center`, fontSize:11, fontWeight:700,
-                fontFamily:`Noto Serif KR, serif`, flexShrink:0,
-              }}>{tt.short}</span>
-              <span className={`kserif`} style={{ fontSize:11.5, color:C.muted, minWidth:74 }}>{tt.label}</span>
-              <span className={`kserif`} style={{
-                fontSize:12, flex:1, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`,
-                color: slot.done ? C.ink : C.muted, fontWeight: slot.done ? 500 : 400,
-                fontStyle: slot.text ? `normal` : `italic`,
-              }}>
-                {slot.text || <span style={{ opacity:0.5 }}>—</span>}
-              </span>
-              {slot.done && <Check size={12} color={C.good} strokeWidth={2.5} />}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 루틴 — 최민하 합격수기 기반 생활 패턴 트래커 */}
-      {(() => {
-        const todayRoutines = routineLog[today] || {};
-        const doneCount = routines.filter(r => todayRoutines[r.id]).length;
-        const allDone = routines.length > 0 && doneCount === routines.length;
-        //
-        let perfectStreak = 0;
-        for (let i = 0; i < 365; i++) {
-          const d = addDays(today, -i);
-          const log = routineLog[d] || {};
-          const allRoutinesDone = routines.length > 0 && routines.every(r => log[r.id]);
-          if (allRoutinesDone) perfectStreak++;
-          else if (i > 0) break;
-        }
-        return (
-          <>
-            <SectionTitle>
-              루틴 · {doneCount}/{routines.length}
-              {allDone && <span style={{ marginLeft:8, color:`#D4A437` }}>⭐ Perfect Day</span>}
-              {perfectStreak > 1 && <span style={{ marginLeft:8, color:C.accent, fontSize:10 }}>· {perfectStreak}일 연속</span>}
-            </SectionTitle>
-            <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px`, marginBottom:22, display:`grid`, gridTemplateColumns:`repeat(${Math.min(routines.length, 6)}, 1fr)`, gap:6 }}>
-              {routines.length === 0 ? (
-                <div style={{ gridColumn:`1 / -1`, textAlign:`center`, fontSize:11, color:C.muted, padding:`10px` }}>
-                  설정 → 루틴에서 추가하세요.
-                </div>
-              ) : routines.map(r => {
-                const done = !!todayRoutines[r.id];
-                return (
-                  <button key={r.id}
-                    onClick={() => {
-                      const cur = routineLog[today] || {};
-                      const next = { ...cur };
-                      if (done) delete next[r.id]; else next[r.id] = true;
-                      const nextLog = { ...routineLog };
-                      if (Object.keys(next).length === 0) delete nextLog[today];
-                      else nextLog[today] = next;
-                      setRoutineLog(nextLog);
-                    }}
-                    style={{
-                      background: done ? `#D4A437` : C.bg,
-                      color: done ? `#fff` : C.muted,
-                      border: `1px solid ${done ? `#D4A437` : C.line}`,
-                      padding:`8px 4px`, cursor:`pointer`,
-                      display:`flex`, flexDirection:`column`, alignItems:`center`, gap:3,
-                      transition:`all .15s ease`,
-                    }}>
-                    <span style={{ fontSize:18, lineHeight:1 }}>{r.icon || `✓`}</span>
-                    <span className={`kserif`} style={{ fontSize:9, fontWeight: done ? 600 : 400, lineHeight:1.2, textAlign:`center` }}>{r.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        );
-      })()}
-
-      <SectionTitle>오늘 {fmtKDate(today).slice(5)}</SectionTitle>
-      <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, 1fr)`, gap:8, marginBottom:22 }}>
-        <Stat icon={Clock} label={`공부 시간`} value={fmtMin(todayMinutes)} />
-        <Stat icon={Layers} label={`트랙`} value={`${tracksDone}/5`} />
-        <Stat icon={RotateCw} label={`회독`} value={`${dueReviews.length}`} />
-        <Stat icon={CheckSquare} label={`할일`} value={`${todayTodosOpen}`} />
-      </div>
-
-      <WeeklyPlanCard today={today} weeklyPlans={weeklyPlans} setWeeklyPlans={setWeeklyPlans} />
-
-      <SectionTitle action={{ label:`리포트`, onClick: () => onGoTo(`report`) }}>이번 주 목표 · {weekPct}%</SectionTitle>
-      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`14px 16px`, marginBottom:22 }}>
-        <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, marginBottom:10 }}>
-          <span className={`mono`} style={{ fontSize:11, color:C.muted }}>{weekStart.slice(5)} ~ {addDays(weekStart, 6).slice(5)}</span>
-          <span className={`serif`} style={{ fontSize:15, fontWeight:600 }}>
-            {fmtHour(weekTotalMin)}<span style={{ color:C.muted, fontSize:11, fontWeight:400 }}> / {fmtHour(weekTargetMin)}</span>
-          </span>
-        </div>
-        {Object.keys(SUBJECTS).map(sub => {
-          const cur = weekSubjectMin[sub] || 0;
-          const tgt = settings.weeklyTargets[sub] || 0;
-          const pct = tgt ? Math.min(100, Math.round((cur / tgt) * 100)) : 0;
-          const over = tgt && cur > tgt;
-          return (
-            <div key={sub} style={{ marginBottom:10 }}>
-              <div style={{ display:`flex`, justifyContent:`space-between`, fontSize:12, marginBottom:4 }}>
-                <span className={`kserif`} style={{ color:SUBJECTS[sub].color, fontWeight:600 }}>{sub}</span>
-                <span className={`mono`} style={{ color:C.muted, fontSize:11 }}>
-                  {fmtHour(cur)} / {fmtHour(tgt)} <span style={{ color: over ? C.good : pct >= 80 ? C.ink : C.muted, fontWeight:600 }}>{pct}%</span>
-                </span>
-              </div>
-              <div style={{ height:4, background:C.lineSoft, position:`relative` }}>
-                <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background:SUBJECTS[sub].color, transition:`width .3s ease` }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {recentScores.length > 0 && (
-        <>
-          <SectionTitle action={{ label:`기출`, onClick: () => onGoTo(`exams`) }}>최근 객관식</SectionTitle>
-          <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 14px`, marginBottom:22 }}>
-            {recentScores.map(s => (
-              <div key={s.id} style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, padding:`6px 0`, fontSize:12, borderBottom:`1px dashed ${C.lineSoft}` }}>
-                <span className={`kserif`} style={{ color: SUBJECTS[s.subject]?.color, fontWeight:600 }}>
-                  {s.round}회 {s.subject.replace(`법`, ``)}
-                </span>
-                <span className={`mono`} style={{ color: C.ink }}>
-                  <span style={{ color: C.accent, fontWeight:600 }}>{s.wrong}</span>
-                  <span style={{ color: C.muted }}> 틀림 · {s.date.slice(5)}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      <SectionTitle>최근 7일</SectionTitle>
-      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`16px 10px 8px`, marginBottom:22 }}>
-        <div style={{ width:`100%`, height:170 }}>
-          <ResponsiveContainer>
-            <BarChart data={weekData} barCategoryGap={`25%`}>
-              <XAxis dataKey={`day`} tick={{ fill:C.muted, fontSize:11, fontFamily:`JetBrains Mono` }} axisLine={{ stroke:C.line }} tickLine={false} />
-              <YAxis tick={{ fill:C.muted, fontSize:10, fontFamily:`JetBrains Mono` }} axisLine={false} tickLine={false} width={28} unit={`h`} />
-              <Tooltip cursor={{ fill:C.lineSoft }}
-                contentStyle={{ background:C.paper, border:`1px solid ${C.line}`, borderRadius:0, fontSize:12 }}
-                formatter={(v, name) => [`${v}h`, name]} labelFormatter={(l) => `${l}일`} />
-              {Object.keys(SUBJECTS).map(sub => <Bar key={sub} dataKey={sub} stackId={`a`} fill={SUBJECTS[sub].color} />)}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ display:`flex`, flexWrap:`wrap`, gap:10, paddingTop:10, borderTop:`1px dashed ${C.lineSoft}`, justifyContent:`center` }}>
-          {Object.keys(SUBJECTS).map(sub => (
-            <span key={sub} style={{ display:`flex`, alignItems:`center`, gap:6, fontSize:11, color:C.muted }}>
-              <span style={{ width:8, height:8, background:SUBJECTS[sub].color, display:`inline-block` }} />{sub}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {dueReviews.length > 0 && (
-        <>
-          <SectionTitle action={{ label:`전체`, onClick: () => onGoTo(`review`) }}>오늘 회독</SectionTitle>
-          <div style={{ display:`flex`, flexDirection:`column`, gap:8, marginBottom:22 }}>
-            {dueReviews.slice(0, 4).map(r => (
-              <button key={r.id} onClick={() => onGoTo(`review`)} className={`lift`}
-                style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10, cursor:`pointer`, textAlign:`left` }}>
-                <div style={{ display:`flex`, alignItems:`center`, gap:10, minWidth:0, flex:1 }}>
-                  <span style={{ width:3, alignSelf:`stretch`, background:SUBJECTS[r.subject]?.color || C.muted }} />
-                  <div style={{ minWidth:0 }}>
-                    <div className={`kserif`} style={{ fontSize:14, fontWeight:500, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{r.title}</div>
-                    <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{r.subject} · {r.roundNum}회독</div>
-                  </div>
-                </div>
-                <span className={`serif`} style={{ fontSize:13, color:C.accent, fontWeight:600 }}>
-                  {r.dueDate === today ? `TODAY` : `${daysDiff(r.dueDate, today)}일 지남`}
-                </span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* 14일 이상 안 본 체크리스트 카테고리 경고 */}
-      {(() => {
-        const stale = checklists.filter(c => {
-          if (!c.lastReviewed) return c.items.length > 0;
-          return daysDiff(c.lastReviewed, today) >= 14;
-        });
-        if (stale.length === 0) return null;
-        return (
-          <>
-            <SectionTitle action={{ label:`체크`, onClick: () => onGoTo(`check`) }}>점검 필요한 체크리스트</SectionTitle>
-            <div style={{ display:`flex`, flexDirection:`column`, gap:6, marginBottom:22 }}>
-              {stale.slice(0, 4).map(c => {
-                const since = c.lastReviewed ? daysDiff(c.lastReviewed, today) : null;
-                return (
-                  <button key={c.id} onClick={() => onGoTo(`check`)} className={`lift`}
-                    style={{ background:C.paper, border:`1px solid ${C.line}`, borderLeft:`3px solid ${c.color}`, padding:`10px 12px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10, cursor:`pointer`, textAlign:`left` }}>
-                    <div style={{ minWidth:0 }}>
-                      <div className={`kserif`} style={{ fontSize:13, fontWeight:600, color:C.ink }}>{c.name}</div>
-                      <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>{c.items.length}개 항목</div>
-                    </div>
-                    <span className={`mono`} style={{ fontSize:11, color:C.accent, fontWeight:600 }}>
-                      {since === null ? `미회독` : `${since}일 전`}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        );
-      })()}
-
-      <SectionTitle>오늘 한 줄</SectionTitle>
-      <input
-        value={moods[today] || ``}
-        onChange={e => setMoods(prev => ({ ...prev, [today]: e.target.value }))}
-        onBlur={() => {
-          if (!moods[today]) {
-            setMoods(prev => { const next = { ...prev }; delete next[today]; return next; });
-          }
-        }}
-        placeholder={`컨디션, 느낀점, 한줄메모 (예: 공동저당 어렵다, 노잼)`}
-        style={{
-          width:`100%`, background:C.paper, border:`1px solid ${C.line}`,
-          padding:`12px 14px`, fontSize:13, outline:`none`, marginBottom:22,
-          fontFamily:`Noto Serif KR, serif`,
-        }}
+      <HomeRoutineShelf
+        today={today}
+        routines={routines}
+        routineLog={routineLog}
+        setRoutineLog={setRoutineLog}
       />
-
-      <button
-        onClick={async () => {
-          const text = buildDailyPlanText({
-            date: today,
-            log: logs[today] || {},
-            tracks: tracks[today] || {},
-            todos: todos[today] || [],
-            mood: moods[today] || ``,
-          });
-          const ok = await copyToClipboard(text);
-          alert(ok ? `오늘 계획이 클립보드에 복사되었어요.\n카카오톡에서 붙여넣기 하세요.` : `복사에 실패했습니다.`);
-        }}
-        style={{
-          width:`100%`, background:`#FEE500`, color:`#3C1E1E`, border:`none`,
-          padding:`11px`, cursor:`pointer`, fontSize:12, fontWeight:600, marginBottom:22,
-          display:`flex`, alignItems:`center`, justifyContent:`center`, gap:8,
-          fontFamily:`Noto Serif KR, serif`,
-        }}>
-        <MessageCircle size={14} /> 오늘 계획 카톡으로 복사
-      </button>
-
-      <PrevScoreCard />
+      <HomeChecklistShelf
+        staleChecklists={staleChecklists}
+        today={today}
+        onGoTo={onGoTo}
+      />
       <div style={{ height:20 }} />
     </div>
   );
@@ -3440,8 +3380,19 @@ function TodoRow({ todo, onToggle, onRemove }) {
 
 /* ============================================================ LOG (기록) ============================================================ */
 
-function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores, setExamScores, initialDate }) {
+function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores, setExamScores, weeklyPlans = {}, setWeeklyPlans, todos = {}, moods = {}, setMoods, initialDate }) {
   const [date, setDate] = useState(initialDate || today);
+
+  function setDailyMood(value) {
+    if (!setMoods) return;
+    setMoods(prev => {
+      const next = { ...prev };
+      const v = (value || ``).trim();
+      if (v) next[date] = v;
+      else delete next[date];
+      return next;
+    });
+  }
 
   return (
     <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
@@ -3460,13 +3411,73 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
         <button onClick={() => setDate(today)} style={{ background:`none`, border:`none`, color:C.accent, fontSize:11, cursor:`pointer`, marginBottom:12 }}>오늘로 돌아가기 →</button>
       )}
 
+      <WeeklyPlanCard today={date} weeklyPlans={weeklyPlans} setWeeklyPlans={setWeeklyPlans} defaultOpen={false} />
+
       <TimerSection today={today} logs={logs} setLogs={setLogs} />
 
       <TracksSection date={date} tracks={tracks} setTracks={setTracks} />
 
       <TimeSection date={date} logs={logs} setLogs={setLogs} settings={settings} />
 
+      <DailyMemoSection
+        date={date}
+        log={logs[date] || {}}
+        tracks={tracks[date] || {}}
+        todos={todos[date] || []}
+        mood={moods[date] || ``}
+        onMoodChange={setDailyMood}
+      />
+
       <ScoresSection date={date} examScores={examScores} setExamScores={setExamScores} />
+    </div>
+  );
+}
+
+function DailyMemoSection({ date, log, tracks, todos, mood, onMoodChange }) {
+  return (
+    <div style={{ marginBottom:24 }}>
+      <SectionTitle>하루 메모</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px` }}>
+        <input
+          value={mood}
+          onChange={e => onMoodChange(e.target.value)}
+          onBlur={e => onMoodChange(e.target.value)}
+          placeholder={`컨디션, 느낀점, 한 줄 메모`}
+          style={{
+            width:`100%`,
+            background:C.bg,
+            border:`1px solid ${C.lineSoft}`,
+            padding:`9px 10px`,
+            fontSize:12,
+            outline:`none`,
+            fontFamily:`Noto Serif KR, serif`,
+            marginBottom:8,
+          }}
+        />
+        <button
+          onClick={async () => {
+            const text = buildDailyPlanText({ date, log, tracks, todos, mood });
+            const ok = await copyToClipboard(text);
+            alert(ok ? `${fmtKDate(date).slice(5)} 계획이 클립보드에 복사되었어요.` : `복사에 실패했습니다.`);
+          }}
+          style={{
+            width:`100%`,
+            background:`#FEE500`,
+            color:`#3C1E1E`,
+            border:`none`,
+            padding:`9px`,
+            fontSize:11,
+            cursor:`pointer`,
+            fontWeight:700,
+            display:`flex`,
+            alignItems:`center`,
+            justifyContent:`center`,
+            gap:6,
+            fontFamily:`Noto Serif KR, serif`,
+          }}>
+          <MessageCircle size={13} /> 카톡용 계획 복사
+        </button>
+      </div>
     </div>
   );
 }
@@ -4719,6 +4730,74 @@ function advanceReviewCycle(review, today) {
   };
 }
 
+function getCoursePace(course, today, settings) {
+  const lectures = course.lectures || [];
+  const total = lectures.length;
+  const completed = lectures.filter(l => l.completed).length;
+  const remaining = Math.max(0, total - completed);
+  const startDate = course.startDate || course.createdAt || today;
+  const targetEndDate = course.targetEndDate || settings?.examDate || addDays(today, 30);
+  const elapsedDays = Math.max(1, daysDiff(startDate, today) + 1);
+  const daysUntilTarget = Math.max(1, daysDiff(today, targetEndDate));
+  const planDays = Math.max(1, daysDiff(startDate, targetEndDate) + 1);
+  const elapsedInPlan = Math.max(0, Math.min(planDays, daysDiff(startDate, today) + 1));
+  const plannedCompleted = total ? Math.min(total, Math.ceil((total * elapsedInPlan) / planDays)) : 0;
+  const plannedBehind = Math.max(0, plannedCompleted - completed);
+  const actualDaily = completed > 0 ? completed / elapsedDays : 0;
+  const requiredDaily = remaining > 0 ? remaining / daysUntilTarget : 0;
+  const requiredDailyCeil = remaining > 0 ? Math.max(1, Math.ceil(requiredDaily)) : 0;
+  const projectedDays = remaining === 0 ? 0 : actualDaily > 0 ? Math.ceil(remaining / actualDaily) : null;
+  const projectedEndDate = remaining === 0 ? today : projectedDays !== null ? addDays(today, projectedDays) : null;
+  const projectedLagDays = projectedEndDate ? Math.max(0, daysDiff(targetEndDate, projectedEndDate)) : null;
+  const targetPassedDays = Math.max(0, daysDiff(targetEndDate, today));
+  const lagDays = projectedLagDays ?? targetPassedDays;
+
+  let status = `onTrack`;
+  if (remaining === 0) status = `done`;
+  else if (targetPassedDays > 0 || (projectedLagDays ?? 0) >= 4 || plannedBehind >= 3) status = `delayed`;
+  else if ((projectedLagDays ?? 0) > 0 || plannedBehind > 0 || actualDaily === 0) status = `caution`;
+
+  return {
+    course,
+    total,
+    completed,
+    remaining,
+    startDate,
+    targetEndDate,
+    elapsedDays,
+    daysUntilTarget,
+    plannedCompleted,
+    plannedBehind,
+    actualDaily,
+    requiredDaily,
+    requiredDailyCeil,
+    projectedEndDate,
+    projectedLagDays,
+    lagDays,
+    status,
+  };
+}
+
+function buildCoursePaceSummary(courses, today, settings) {
+  const rank = { delayed: 0, caution: 1, onTrack: 2, done: 3 };
+  const items = courses
+    .map(course => getCoursePace(course, today, settings))
+    .filter(item => item.total > 0)
+    .sort((a, b) => (
+      rank[a.status] - rank[b.status]
+      || (b.lagDays || 0) - (a.lagDays || 0)
+      || b.plannedBehind - a.plannedBehind
+      || a.targetEndDate.localeCompare(b.targetEndDate)
+    ));
+  return {
+    items,
+    active: items.filter(item => item.status !== `done`),
+    delayed: items.filter(item => item.status === `delayed`).length,
+    caution: items.filter(item => item.status === `caution`).length,
+    done: items.filter(item => item.status === `done`).length,
+  };
+}
+
 function buildCourseDailyQueue(course, today, settings) {
   const lectures = [...(course.lectures || [])].sort((a, b) => a.num - b.num);
   const targetEndDate = course.targetEndDate || settings?.examDate || addDays(today, 30);
@@ -5180,25 +5259,21 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   const subColor = SUBJECTS[course.subject]?.color || C.muted; 
   const typeLabel = getStudyTypeLabel(course.subject, course.studyType || COURSE_WATCH_TYPE);
   const completeThreshold = normalizeCourseThreshold(course.completeThreshold);
-
-  const targetEndDate = course.targetEndDate || settings?.examDate || addDays(today, 30);
+  const pace = getCoursePace(course, today, settings);
+  const targetEndDate = pace.targetEndDate;
   const targetReviewDate = course.targetReviewDate || targetEndDate; 
-  
-  const daysUntilTarget = Math.max(1, daysDiff(today, targetEndDate));
+  const daysUntilTarget = pace.daysUntilTarget;
   const daysUntilReviewTarget = Math.max(1, daysDiff(today, targetReviewDate));
-  
-  const startDate = course.startDate || course.createdAt || today;
-  const daysSinceStart = Math.max(1, daysDiff(startDate, today) + 1);
-  
-  const remainingLectures = total - completed;
-  const requiredPace = Math.ceil(remainingLectures / daysUntilTarget);
-  const actualPace = completed / daysSinceStart;
-  const isPaceGood = actualPace >= requiredPace;
-  const isPaceWarning = actualPace >= (requiredPace * 0.7) && !isPaceGood;
+  const startDate = pace.startDate;
+  const remainingLectures = pace.remaining;
+  const requiredPace = pace.requiredDailyCeil;
+  const actualPace = pace.actualDaily;
+  const isPaceGood = pace.status === `done` || pace.status === `onTrack`;
+  const isPaceWarning = pace.status === `caution`;
   
   const remainingReviews = total - reviewed;
   const requiredReviewPace = Math.ceil(remainingReviews / daysUntilReviewTarget);
-  const actualReviewPace = reviewed / daysSinceStart;
+  const actualReviewPace = reviewed / pace.elapsedDays;
   const isReviewGood = actualReviewPace >= requiredReviewPace;
   const isReviewWarning = actualReviewPace >= (requiredReviewPace * 0.7) && !isReviewGood;
   
@@ -5271,6 +5346,11 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
             {remainingLectures > 0 && actualPace !== null && (
               <span style={{ color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent, fontWeight: 600 }}>
                 수강 {isPaceGood ? `안정` : isPaceWarning ? `주의` : `지연`}
+              </span>
+            )}
+            {remainingLectures > 0 && (
+              <span style={{ color:C.muted }}>
+                완강 예상 {pace.projectedEndDate ? fmtShortDate(pace.projectedEndDate) : `계산 전`}
               </span>
             )}
             {remainingReviews > 0 && actualReviewPace !== null && (
@@ -5387,6 +5467,8 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                         </span>
                         <div style={{ color: C.muted, marginTop: 4 }}>
                           현재 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{actualPace.toFixed(1)}</span>강/일 · 필요 <span className="mono" style={{ color:C.ink, fontWeight:600 }}>{requiredPace}</span>강/일
+                          <span> · 예상 </span><span className="mono" style={{ color:C.ink, fontWeight:600 }}>{pace.projectedEndDate ? fmtShortDate(pace.projectedEndDate) : `계산 전`}</span>
+                          {pace.plannedBehind > 0 && <span style={{ color:C.accent }}> · {pace.plannedBehind}강 밀림</span>}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', display: 'flex', gap: 10, flexWrap:`wrap`, justifyContent:`flex-end` }}>
