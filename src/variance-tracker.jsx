@@ -1196,9 +1196,50 @@ const globalStyles = (
         .tap:active { transform: translateY(1px); }
         .hide-scroll::-webkit-scrollbar { display: none; }
         .hide-scroll { scrollbar-width: none; }
+        .desktop-only { display: none; }
         @media (max-width: 420px) {
           .home-core-grid { gap: 6px !important; }
           .home-core-grid button { padding-left: 8px !important; padding-right: 8px !important; }
+        }
+        @media (min-width: 980px) {
+          .desktop-only { display: inline-flex; }
+          .app-shell { padding-bottom: 28px !important; }
+          .app-main { max-width: 1120px !important; padding: 0 32px 32px 112px !important; }
+          .app-main > .fadeIn:not(.home-shell) { max-width: 900px; margin-left: auto; margin-right: auto; }
+          .topbar-inner { max-width: 1120px !important; padding-left: 94px; }
+          .bottom-nav {
+            top: 92px !important;
+            bottom: auto !important;
+            left: 24px !important;
+            right: auto !important;
+            width: 68px !important;
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 4px !important;
+            padding: 8px !important;
+            border: 1px solid ${C.line} !important;
+            box-shadow: 0 10px 30px rgba(26,25,21,0.08);
+          }
+          .bottom-nav button {
+            min-height: 58px !important;
+            padding: 8px 4px !important;
+          }
+          .home-shell {
+            display: grid;
+            grid-template-columns: minmax(0, 1.16fr) minmax(320px, 0.84fr);
+            gap: 18px;
+            align-items: start;
+          }
+          .home-secondary {
+            position: sticky;
+            top: 86px;
+          }
+          .weak-board-grid {
+            display: grid;
+            grid-template-columns: 220px minmax(0, 1fr);
+            gap: 12px;
+            align-items: start;
+          }
         }
       `}</style>
     </>
@@ -1591,7 +1632,7 @@ VITE_FIREBASE_APP_ID`}</pre>
   }
 
   return (
-    <div style={{ minHeight:`100vh`, background:C.bg, color:C.ink, paddingBottom:84, fontFamily:`Noto Sans KR, sans-serif` }}>
+    <div className={`app-shell`} style={{ minHeight:`100vh`, background:C.bg, color:C.ink, paddingBottom:84, fontFamily:`Noto Sans KR, sans-serif` }}>
       {globalStyles}
 
       <TopBar
@@ -1607,7 +1648,7 @@ VITE_FIREBASE_APP_ID`}</pre>
         }}
       />
 
-      <main style={{ maxWidth:720, margin:`0 auto`, padding:`0 18px` }}>
+      <main className={`app-main`} style={{ maxWidth:720, margin:`0 auto`, padding:`0 18px` }}>
         {view === `home` && <HomeView {...sharedProps} dday={dday} user={user} onGoTo={setView} />}
         {view === `log` && <LogView {...sharedProps} initialDate={today} />}
         {view === `calendar` && <CalendarView {...sharedProps} onGoToLog={() => setView(`log`)} />}
@@ -1872,7 +1913,7 @@ function TopBar({ dday, examLabel, examDate, user, syncStatus, lastSavedAt, onRe
   const SyncIcon = syncMeta?.Icon;
   return (
     <header style={{ position:`sticky`, top:0, zIndex:9998, borderBottom:`1px solid ${C.line}`, background:`rgba(251,247,236,0.96)`, backdropFilter:`blur(10px)`, padding:`12px 18px 11px` }}>
-      <div style={{ maxWidth:720, margin:`0 auto`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:12 }}>
+      <div className={`topbar-inner`} style={{ maxWidth:720, margin:`0 auto`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:12 }}>
         <div style={{ minWidth:0, flex:1 }}>
           <div style={{ display:`flex`, alignItems:`center`, gap:6, minWidth:0, flexWrap:`wrap` }}>
             <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.18em`, color:C.muted, textTransform:`uppercase`, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>BAR EXAM JOURNAL · {displayName}</div>
@@ -1923,7 +1964,7 @@ function BottomNav({ view, setView }) {
     { key:`more`, icon:MoreHorizontal, label:`더보기` },
   ];
   return (
-    <nav style={{
+    <nav className={`bottom-nav`} style={{
       position: `fixed`, left: 0, right: 0, bottom: 0,
       background: C.paper, borderTop: `1px solid ${C.line}`,
       display: `grid`, gridTemplateColumns: `repeat(${items.length}, 1fr)`,
@@ -2342,6 +2383,90 @@ function HomeCoursePaceStrip({ summary, onGoTo }) {
   );
 }
 
+function HomeMinimumMode({ courseItems, reviews, todosOpen, staleChecklists, onGoTo, onCourseDone, onReviewDone }) {
+  const picks = [];
+  const pushPick = (pick) => {
+    if (picks.length < 3 && pick) picks.push(pick);
+  };
+
+  const courseReview = courseItems.find(item => item.type === `review`);
+  const courseWatch = courseItems.find(item => item.type === `watch`);
+  pushPick(courseReview && {
+    key:`course-review-${courseReview.course.id}-${courseReview.lecture.num}`,
+    label:`강의복습`,
+    title:`${courseReview.lecture.num}강 · ${courseReview.lecture.title}`,
+    meta:courseReview.course.name,
+    tone:C.accent,
+    actionLabel:`완료`,
+    onAction:() => onCourseDone(courseReview),
+  });
+  pushPick(reviews[0] && {
+    key:`review-${reviews[0].id}`,
+    label:`회독`,
+    title:reviews[0].title,
+    meta:`${reviews[0].subject} · ${reviews[0].roundNum || (reviews[0].cycleIndex || 0) + 1}회차`,
+    tone:SUBJECTS[reviews[0].subject]?.color || C.good,
+    actionLabel:`완료`,
+    onAction:() => onReviewDone(reviews[0].id),
+  });
+  pushPick(courseWatch && {
+    key:`course-watch-${courseWatch.course.id}-${courseWatch.lecture.num}`,
+    label:`수강`,
+    title:`${courseWatch.lecture.num}강 · ${courseWatch.lecture.title}`,
+    meta:courseWatch.course.name,
+    tone:SUBJECTS[courseWatch.course.subject]?.color || C.book,
+    actionLabel:`완강`,
+    onAction:() => onCourseDone(courseWatch),
+  });
+  pushPick(todosOpen > 0 && {
+    key:`todo-minimum`,
+    label:`일정`,
+    title:`오늘 일정 ${todosOpen}개 확인`,
+    meta:`캘린더에서 정리`,
+    tone:C.warn,
+    actionLabel:`이동`,
+    onAction:() => onGoTo(`calendar`),
+  });
+  pushPick(staleChecklists[0] && {
+    key:`check-minimum`,
+    label:`점검`,
+    title:staleChecklists[0].name,
+    meta:`체크리스트 확인`,
+    tone:staleChecklists[0].color || C.accent,
+    actionLabel:`이동`,
+    onAction:() => onGoTo(`check`),
+  });
+
+  if (picks.length === 0) return null;
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:10 }}>
+      <div style={{ padding:`11px 13px 9px`, borderBottom:`1px dashed ${C.lineSoft}`, display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:10 }}>
+        <div>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>최소치 모드</div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>오늘은 이것만 해도 흐름 유지</div>
+        </div>
+        <span className={`mono`} style={{ fontSize:10, color:C.accent, fontWeight:700 }}>{picks.length}개</span>
+      </div>
+      <div style={{ display:`flex`, flexDirection:`column` }}>
+        {picks.map((pick, idx) => (
+          <div key={pick.key} style={{ display:`flex`, alignItems:`center`, gap:9, padding:`9px 12px`, borderBottom:idx < picks.length - 1 ? `1px dashed ${C.lineSoft}` : `none` }}>
+            <span className={`kserif`} style={{ minWidth:42, color:pick.tone, fontSize:10, fontWeight:700 }}>{pick.label}</span>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ color:C.ink, fontSize:11, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{pick.title}</div>
+              <div style={{ color:C.muted, fontSize:9, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, marginTop:2 }}>{pick.meta}</div>
+            </div>
+            <button onClick={pick.onAction} className={`tap`}
+              style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, padding:`5px 8px`, minWidth:42, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
+              {pick.actionLabel}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function HomeRoutineShelf({ today, routines = [], routineLog = {}, setRoutineLog }) {
   const [open, setOpen] = useState(false);
   if (!routines.length) return null;
@@ -2639,7 +2764,8 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   }
 
   return (
-    <div className={`fadeIn`} style={{ paddingTop:20 }}>
+    <div className={`fadeIn home-shell`} style={{ paddingTop:20 }}>
+      <div className={`home-primary`}>
       <HomeWorkHeader
         dday={dday}
         todayMinutes={todayMinutes}
@@ -2651,9 +2777,14 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         onGoTo={onGoTo}
       />
 
-      <HomeCoursePaceStrip
-        summary={coursePaceSummary}
+      <HomeMinimumMode
+        courseItems={courseQueueItems}
+        reviews={dueReviews}
+        todosOpen={todayTodosOpen}
+        staleChecklists={staleChecklists}
         onGoTo={onGoTo}
+        onCourseDone={completeHomeCourseItem}
+        onReviewDone={completeHomeReview}
       />
 
       <HomeTodayPanel
@@ -2701,6 +2832,13 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
           <div style={{ marginTop:6, opacity:0.85 }}>회차 회독 위주로 · 객관식 복수 회차/일</div>
         </div>
       )}
+      </div>
+
+      <div className={`home-secondary`}>
+      <HomeCoursePaceStrip
+        summary={coursePaceSummary}
+        onGoTo={onGoTo}
+      />
 
       {todayMock ? (
         <div style={{ marginBottom:18 }}>
@@ -2765,6 +2903,7 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         today={today}
         onGoTo={onGoTo}
       />
+      </div>
       <div style={{ height:20 }} />
     </div>
   );
@@ -4082,9 +4221,10 @@ function ExamsView({ examScores }) {
 /* ============================================================ REVIEW (회독) ============================================================ */
 
 function ReviewView({ today, reviews, setReviews, books, setBooks, materials, setMaterials, materialLog, setMaterialLog, mcqProgress, setMcqProgress }) {
-  const [tab, setTab] = useState(`matrix`);
+  const [tab, setTab] = useState(`weak`);
 
   const tabs = [
+    { key:`weak`, label:`약점`, icon:Target },
     { key:`matrix`, label:`매트릭스`, icon:Layers },
     { key:`topics`, label:`주제`, icon:RotateCw },
     { key:`books`, label:`문제집`, icon:BookOpen },
@@ -4117,10 +4257,161 @@ function ReviewView({ today, reviews, setReviews, books, setBooks, materials, se
         })}
       </div>
 
+      {tab === `weak` && <WeakTopicBoard today={today} reviews={reviews} setReviews={setReviews} />}
       {tab === `matrix` && <McqMatrix today={today} mcqProgress={mcqProgress} setMcqProgress={setMcqProgress} />}
       {tab === `topics` && <TopicsReview today={today} reviews={reviews} setReviews={setReviews} />}
       {tab === `books` && <BooksReview today={today} books={books} setBooks={setBooks} />}
       {tab === `materials` && <MaterialsReview today={today} materials={materials} setMaterials={setMaterials} materialLog={materialLog} setMaterialLog={setMaterialLog} />}
+    </div>
+  );
+}
+
+function getReviewLectureTags(review) {
+  if (review.sourceType !== `courseLecture`) return [];
+  const tagLine = (review.note || ``).split(`\n`).find(line => line.startsWith(`태그:`));
+  if (!tagLine) return [];
+  return tagLine.replace(/^태그:\s*/, ``).split(`,`).map(t => t.trim()).filter(Boolean);
+}
+
+function getReviewDueInfo(review, today) {
+  const intervals = review.intervals || [5, 3, 2];
+  const idx = Math.min(review.cycleIndex || 0, intervals.length - 1);
+  const base = review.lastReviewed || review.created || today;
+  const dueDate = addDays(base, intervals[idx] || 0);
+  return {
+    dueDate,
+    daysUntilDue: daysDiff(today, dueDate),
+    roundNum: (review.cycleIndex || 0) + 1,
+  };
+}
+
+function WeakTopicBoard({ today, reviews, setReviews }) {
+  const taggedReviews = useMemo(() => {
+    return reviews
+      .filter(r => r.sourceType === `courseLecture`)
+      .map(r => ({ ...r, ...getReviewDueInfo(r, today), lectureTags: getReviewLectureTags(r) }))
+      .filter(r => r.lectureTags.length > 0)
+      .sort((a, b) => a.daysUntilDue - b.daysUntilDue || a.title.localeCompare(b.title));
+  }, [reviews, today]);
+
+  const groups = COURSE_TAGS.map(tag => {
+    const items = taggedReviews.filter(r => r.lectureTags.includes(tag.label));
+    return {
+      ...tag,
+      items,
+      due: items.filter(r => r.daysUntilDue <= 0).length,
+    };
+  });
+  const firstActive = groups.find(g => g.items.length > 0)?.key || COURSE_TAGS[0].key;
+  const [activeTag, setActiveTag] = useState(firstActive);
+  useEffect(() => {
+    if (!groups.find(g => g.key === activeTag)?.items.length && firstActive !== activeTag) {
+      setActiveTag(firstActive);
+    }
+  }, [activeTag, firstActive, groups]);
+
+  const selected = groups.find(g => g.key === activeTag) || groups[0];
+  const totalDue = taggedReviews.filter(r => r.daysUntilDue <= 0).length;
+
+  function markReviewed(id) {
+    setReviews(reviews.map(r => r.id === id ? advanceReviewCycle(r, today) : r));
+  }
+
+  function deleteReview(id) {
+    setReviews(reviews.filter(r => r.id !== id));
+  }
+
+  if (taggedReviews.length === 0) {
+    return (
+      <div style={{ background:C.paper, border:`1px dashed ${C.line}`, padding:`28px 18px`, textAlign:`center`, color:C.muted, fontSize:12, lineHeight:1.7 }}>
+        강의에서 어려움, 판례, 암기, 재복습 태그를 누르면<br />
+        이곳에 약점 주제 보드가 자동으로 만들어집니다.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:6, marginBottom:12 }}>
+        <CourseMiniStat label={`태그 주제`} value={taggedReviews.length} tone={C.ink} />
+        <CourseMiniStat label={`오늘 복습`} value={totalDue} tone={totalDue > 0 ? C.accent : C.good} />
+        <CourseMiniStat label={`태그`} value={groups.filter(g => g.items.length > 0).length} tone={C.book} />
+      </div>
+
+      <div className={`weak-board-grid`}>
+        <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:10, marginBottom:12 }}>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink, marginBottom:8 }}>태그별 보드</div>
+          <div style={{ display:`flex`, flexDirection:`column`, gap:6 }}>
+            {groups.map(group => {
+              const active = activeTag === group.key;
+              return (
+                <button key={group.key} onClick={() => setActiveTag(group.key)} className={`tap`}
+                  style={{
+                    background:active ? C.ink : C.bg,
+                    color:active ? `#fff` : C.ink,
+                    border:`1px solid ${active ? C.ink : C.lineSoft}`,
+                    padding:`8px 9px`,
+                    display:`flex`,
+                    alignItems:`center`,
+                    justifyContent:`space-between`,
+                    gap:8,
+                    cursor:`pointer`,
+                    textAlign:`left`,
+                  }}>
+                  <span className={`kserif`} style={{ fontSize:11, fontWeight:700 }}>{group.label}</span>
+                  <span className={`mono`} style={{ fontSize:10, color:active ? `rgba(255,255,255,0.78)` : group.due > 0 ? C.accent : C.muted }}>
+                    {group.due > 0 ? `${group.due}/${group.items.length}` : group.items.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 13px`, marginBottom:12 }}>
+          <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, gap:8, marginBottom:10 }}>
+            <div>
+              <div className={`kserif`} style={{ fontSize:13, fontWeight:700, color:C.ink }}>{selected.label}</div>
+              <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>강의 태그에서 자동 수집</div>
+            </div>
+            <span className={`mono`} style={{ fontSize:10, color:selected.due > 0 ? C.accent : C.muted, fontWeight:700 }}>
+              오늘 {selected.due}
+            </span>
+          </div>
+
+          {selected.items.length === 0 ? (
+            <div style={{ fontSize:11, color:C.muted, padding:`12px 0` }}>이 태그의 강의 주제가 없습니다.</div>
+          ) : (
+            <div style={{ display:`flex`, flexDirection:`column`, gap:8 }}>
+              {selected.items.map(item => {
+                const isDue = item.daysUntilDue <= 0;
+                return (
+                  <div key={item.id} style={{ border:`1px solid ${isDue ? C.accent : C.lineSoft}`, background:C.bg, padding:`9px 10px`, display:`flex`, alignItems:`center`, gap:8 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:11, color:C.ink, fontWeight:600, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.title.replace(/^\[강의\]\s*/, ``)}</div>
+                      <div style={{ display:`flex`, gap:5, flexWrap:`wrap`, marginTop:5 }}>
+                        <span className={`mono`} style={{ fontSize:9, color:SUBJECTS[item.subject]?.color || C.muted }}>{item.subject}</span>
+                        <span className={`mono`} style={{ fontSize:9, color:isDue ? C.accent : C.muted }}>{isDue ? `오늘` : `D-${item.daysUntilDue}`}</span>
+                        {item.lectureTags.slice(0, 3).map(tag => (
+                          <span key={tag} style={{ fontSize:9, color:C.muted, border:`1px solid ${C.lineSoft}`, background:C.paper, padding:`1px 4px` }}>{tag}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => markReviewed(item.id)} className={`tap`}
+                      style={{ background:isDue ? C.ink : C.paper, color:isDue ? `#fff` : C.ink, border:`1px solid ${isDue ? C.ink : C.line}`, padding:`5px 8px`, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
+                      완료
+                    </button>
+                    <button onClick={() => deleteReview(item.id)} className={`tap`}
+                      style={{ background:C.paper, border:`1px solid ${C.lineSoft}`, width:28, height:28, display:`grid`, placeItems:`center`, cursor:`pointer`, flexShrink:0 }}>
+                      <X size={11} color={C.muted} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -4389,12 +4680,7 @@ function ReviewCard({ review, onReviewed, onDelete }) {
   const isDue = review.daysUntilDue <= 0;
   const subColor = SUBJECTS[review.subject].color;
   const noteLines = (review.note || ``).split(`\n`);
-  const lectureTagLine = review.sourceType === `courseLecture`
-    ? noteLines.find(line => line.startsWith(`태그:`))
-    : ``;
-  const lectureTags = lectureTagLine
-    ? lectureTagLine.replace(/^태그:\s*/, ``).split(`,`).map(t => t.trim()).filter(Boolean)
-    : [];
+  const lectureTags = getReviewLectureTags(review);
   const displayNote = noteLines
     .filter(line => !(review.sourceType === `courseLecture` && line.startsWith(`태그:`)))
     .join(`\n`)
