@@ -676,36 +676,7 @@ function parseCourseText(text) {
     return lectures.sort((a, b) => a.num - b.num);
   }
 
-  // 2. 바로수강 양식 — "N강[코드] 제목 play" 다음 줄에 "강의시간 N분 ... [완강]"
-  if (/강의시간\s+\d+\s*분/.test(text)) {
-    const baroLines = text.split(/\r?\n/);
-    let pending = null;
-    for (const raw of baroLines) {
-      const line = raw.trim();
-      if (!line) continue;
-
-      const titleMatch = line.match(/^(\d+)강(\[.*?\])?\s+(.+?)\s+play\s*$/);
-      if (titleMatch) {
-        pending = { num: parseInt(titleMatch[1], 10), title: titleMatch[3].trim() };
-        continue;
-      }
-
-      if (pending) {
-        const infoMatch = line.match(/^강의시간\s+(\d+)\s*분/);
-        if (infoMatch) {
-          const durationMin = parseInt(infoMatch[1], 10);
-          const completed = /완강/.test(line);
-          if (!lectures.find(l => l.num === pending.num)) {
-            lectures.push({ num: pending.num, title: pending.title, durationMin, progress: completed ? 100 : 0, completed });
-          }
-          pending = null;
-        }
-      }
-    }
-    if (lectures.length > 0) return lectures.sort((a, b) => a.num - b.num);
-  }
-
-  // 3. 기존 양식 매칭 (N강 제목 N분 N% [완강])
+  // 2. 기존 양식 매칭 (N강 제목 N분 N% [완강])
   const lines = text.split(/\r?\n/);
   for (const raw of lines) {
     const line = raw.replace(/\s+/g, ` `).trim();
@@ -999,9 +970,29 @@ const PERSISTED_STATE_KEYS = [
   `mcqProgress`, `routines`, `routineLog`, `weeklyPlans`, `courses`,
 ];
 const LOCAL_DRAFT_PREFIX = `bar-exam-journal-local-draft`;
+const FEATURE_INTRO_PREFIX = `bar-exam-journal-feature-intro-hidden-until`;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 function localDraftKey(uidValue) {
   return `${LOCAL_DRAFT_PREFIX}:${uidValue}`;
+}
+
+function featureIntroKey(uidValue) {
+  return `${FEATURE_INTRO_PREFIX}:${uidValue || `anon`}`;
+}
+
+function isFeatureIntroHidden(uidValue) {
+  try {
+    return Number(localStorage.getItem(featureIntroKey(uidValue)) || 0) > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function hideFeatureIntroForSevenDays(uidValue) {
+  try {
+    localStorage.setItem(featureIntroKey(uidValue), String(Date.now() + SEVEN_DAYS_MS));
+  } catch {}
 }
 
 function buildPersistedSnapshot(state) {
@@ -1144,6 +1135,8 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState(`idle`); // idle | saving | saved | error
   const [syncRetryTick, setSyncRetryTick] = useState(0);
   const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [showFeatureIntro, setShowFeatureIntro] = useState(false);
+  const userId = user?.uid || ``;
   // ↓ [추가] 모바일 하단 탭 고정 및 줌 방지를 위한 뷰포트 강제 세팅
   useEffect(() => {
     let meta = document.querySelector(`meta[name="viewport"]`);
@@ -1169,6 +1162,14 @@ export default function App() {
     });
     return () => { unsub(); clearInterval(t); };
   }, []);
+
+  useEffect(() => {
+    if (!loaded || !userId) {
+      setShowFeatureIntro(false);
+      return;
+    }
+    setShowFeatureIntro(!isFeatureIntroHidden(userId));
+  }, [loaded, userId]);
 const globalStyles = (
     <>
       <style>{FONT_IMPORT}</style>
@@ -1579,6 +1580,11 @@ VITE_FIREBASE_APP_ID`}</pre>
     courses, setCourses,
   };
 
+  function snoozeFeatureIntro() {
+    hideFeatureIntroForSevenDays(userId);
+    setShowFeatureIntro(false);
+  }
+
   return (
     <div style={{ minHeight:`100vh`, background:C.bg, color:C.ink, paddingBottom:84, fontFamily:`Noto Sans KR, sans-serif` }}>
       {globalStyles}
@@ -1650,6 +1656,128 @@ VITE_FIREBASE_APP_ID`}</pre>
       </main>
 
       <BottomNav view={view} setView={setView} />
+      {showFeatureIntro && (
+        <FeatureIntroModal
+          onClose={() => setShowFeatureIntro(false)}
+          onSnooze={snoozeFeatureIntro}
+        />
+      )}
+    </div>
+  );
+}
+
+function FeatureIntroModal({ onClose, onSnooze }) {
+  const features = [
+    { title:`오늘 처리 홈`, body:`수강, 강의 복습, 회독, 기록, 밀린 일을 첫 화면에서 바로 확인합니다.` },
+    { title:`강의 중심 기록`, body:`강의 목록과 진도, 어려움·판례·암기 태그를 핵심 흐름으로 관리합니다.` },
+    { title:`복습 큐`, body:`강의 복습과 주제 회독을 오늘 할 일로 모아 놓고 바로 완료 처리합니다.` },
+    { title:`저장 상태`, body:`상단에서 저장 중, 저장됨, 저장 실패를 확인하고 필요할 때 재시도합니다.` },
+  ];
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="기능 안내"
+      style={{
+        position:`fixed`,
+        inset:0,
+        zIndex:10000,
+        background:`rgba(26,25,21,0.54)`,
+        display:`grid`,
+        placeItems:`center`,
+        padding:`20px 16px`,
+      }}>
+      <section className={`fadeIn`}
+        style={{
+          width:`min(100%, 430px)`,
+          background:C.paper,
+          border:`1px solid ${C.line}`,
+          boxShadow:`0 18px 48px rgba(26,25,21,0.24)`,
+          padding:`18px`,
+          color:C.ink,
+        }}>
+        <div style={{ display:`flex`, justifyContent:`space-between`, gap:12, alignItems:`flex-start`, marginBottom:12 }}>
+          <div>
+            <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.22em`, color:C.accent, fontWeight:700 }}>제작자</div>
+            <h2 className={`serif`} style={{ margin:`3px 0 0`, fontSize:34, lineHeight:1, fontWeight:600 }}>owb</h2>
+          </div>
+          <button onClick={onClose} aria-label="닫기" className={`tap`}
+            style={{
+              width:34,
+              height:34,
+              border:`1px solid ${C.line}`,
+              background:C.bg,
+              display:`grid`,
+              placeItems:`center`,
+              cursor:`pointer`,
+              flexShrink:0,
+            }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <p style={{ margin:`0 0 14px`, color:C.muted, fontSize:12, lineHeight:1.7 }}>
+          변시 기록장은 강의와 복습을 놓치지 않도록 오늘 할 일을 앞으로 꺼내는 방식으로 정리했습니다.
+        </p>
+
+        <div style={{ display:`grid`, gap:8, marginBottom:16 }}>
+          {features.map((feature, idx) => (
+            <div key={feature.title}
+              style={{
+                border:`1px solid ${C.lineSoft}`,
+                background:idx === 0 ? C.bg : `rgba(244,238,225,0.46)`,
+                padding:`10px 11px`,
+                display:`grid`,
+                gridTemplateColumns:`28px 1fr`,
+                gap:9,
+                alignItems:`start`,
+              }}>
+              <div className={`mono`}
+                style={{
+                  height:26,
+                  border:`1px solid ${idx === 0 ? C.accent : C.line}`,
+                  color:idx === 0 ? C.accent : C.muted,
+                  display:`grid`,
+                  placeItems:`center`,
+                  fontSize:10,
+                  fontWeight:700,
+                  background:C.paper,
+                }}>
+                {idx + 1}
+              </div>
+              <div style={{ minWidth:0 }}>
+                <div className={`kserif`} style={{ fontSize:13, fontWeight:700, color:C.ink }}>{feature.title}</div>
+                <div style={{ fontSize:11, color:C.muted, lineHeight:1.55, marginTop:3 }}>{feature.body}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display:`grid`, gridTemplateColumns:`1fr auto`, gap:8 }}>
+          <button onClick={onSnooze} className={`tap`}
+            style={{
+              border:`1px solid ${C.line}`,
+              background:C.bg,
+              color:C.muted,
+              padding:`12px 10px`,
+              fontSize:12,
+              fontWeight:600,
+              cursor:`pointer`,
+            }}>
+            7일간 보지 않기
+          </button>
+          <button onClick={onClose} className={`tap`}
+            style={{
+              border:`1px solid ${C.ink}`,
+              background:C.ink,
+              color:`#fff`,
+              padding:`12px 16px`,
+              fontSize:12,
+              fontWeight:700,
+              cursor:`pointer`,
+            }}>
+            확인
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -2073,6 +2201,49 @@ function HomeAction({ icon: Icon, label, value, sub, onClick, color = C.accent }
   );
 }
 
+function HomeWorkHeader({ dday, todayMinutes, tracksDone, courseQueueSummary, dueReviews, todosOpen, overdueTotal, onGoTo }) {
+  const totalWork = courseQueueSummary.watch + courseQueueSummary.review + dueReviews.length + todosOpen;
+  const tiles = [
+    { label:`수강`, value:courseQueueSummary.watch, sub:`강의`, color:C.book, view:`courses` },
+    { label:`복습`, value:courseQueueSummary.review, sub:`강의`, color:C.accent, view:`courses` },
+    { label:`회독`, value:dueReviews.length, sub:`주제`, color:C.good, view:`review` },
+    { label:`기록`, value:fmtMin(todayMinutes), sub:`트랙 ${tracksDone}/5`, color:C.ink, view:`log` },
+    { label:`밀림`, value:overdueTotal, sub:`우선`, color:overdueTotal > 0 ? C.accent : C.muted, view: overdueTotal > 0 ? `review` : `calendar` },
+  ];
+
+  return (
+    <section style={{ background:C.ink, color:`#fff`, border:`1px solid ${C.ink}`, padding:`16px 16px 14px`, marginBottom:12 }}>
+      <div style={{ display:`flex`, alignItems:`flex-start`, justifyContent:`space-between`, gap:12, marginBottom:12 }}>
+        <div style={{ minWidth:0 }}>
+          <div className={`kserif`} style={{ fontSize:11, letterSpacing:`0.16em`, color:`rgba(255,255,255,0.7)`, fontWeight:600 }}>오늘 해야 할 것</div>
+          <div className={`serif`} style={{ fontSize:28, fontWeight:600, marginTop:4, lineHeight:1 }}>
+            {totalWork > 0 ? `${totalWork}개 처리` : `정리됨`}
+          </div>
+        </div>
+        <div style={{ textAlign:`right`, flexShrink:0 }}>
+          <div className={`mono`} style={{ fontSize:11, color:`rgba(255,255,255,0.68)` }}>시험까지</div>
+          <div className={`serif`} style={{ fontSize:26, lineHeight:1, color:`#fff`, fontWeight:600 }}>
+            D{dday < 0 ? `+` : `−`}{Math.abs(dday)}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(5, minmax(0, 1fr))`, gap:5 }}>
+        {tiles.map(tile => (
+          <button key={tile.label} onClick={() => onGoTo(tile.view)} className={`tap`}
+            style={{ background:`rgba(255,255,255,0.08)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.12)`, minHeight:62, padding:`8px 4px`, cursor:`pointer`, textAlign:`center` }}>
+            <div className={`kserif`} style={{ fontSize:10, color:`rgba(255,255,255,0.68)`, fontWeight:600 }}>{tile.label}</div>
+            <div className={`mono`} style={{ fontSize: typeof tile.value === `number` ? 18 : 13, fontWeight:700, marginTop:5, color: tile.color === C.muted ? `rgba(255,255,255,0.55)` : `#fff`, whiteSpace:`nowrap`, overflow:`hidden`, textOverflow:`ellipsis` }}>
+              {tile.value}
+            </div>
+            <div style={{ fontSize:9, color:`rgba(255,255,255,0.55)`, marginTop:3, whiteSpace:`nowrap`, overflow:`hidden`, textOverflow:`ellipsis` }}>{tile.sub}</div>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function HomeTodayPanel({ today, courseItems, reviews, todosOpen, onGoTo, onCourseDone, onReviewDone }) {
   const visibleCourses = courseItems.slice(0, 4);
   const visibleReviews = reviews.slice(0, 3);
@@ -2162,6 +2333,10 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
   const todayTodosOpen = todayTodos.filter(t => !t.done && !t.hidden).length;
+  const overdueTodosOpen = Object.entries(todos || {}).reduce((sum, [date, list]) => {
+    if (date >= today) return sum;
+    return sum + (list || []).filter(t => !t.done && !t.hidden).length;
+  }, 0);
   const todayTracks = tracks[today] || {};
   const tracksDone = TRACK_TYPES.filter(tt => todayTracks[tt.key]?.done).length;
   const cycleInfo = useMemo(() => getCycleInfo(today, settings), [today, settings]);
@@ -2221,6 +2396,9 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   }, [courses, today, settings]);
 
   const courseQueueItems = useMemo(() => buildCourseQueueItems(courses, today, settings), [courses, today, settings]);
+  const overdueCourseReviews = courseQueueItems.filter(item => item.type === `review` && item.lecture.nextReviewDate && item.lecture.nextReviewDate < today).length;
+  const overdueTopicReviews = dueReviews.filter(r => r.dueDate < today).length;
+  const overdueTotal = overdueTodosOpen + overdueCourseReviews + overdueTopicReviews;
 
   const daysStudied = Object.keys(logs).filter(d => Object.values(logs[d] || {}).some(v => (v || 0) > 0)).length;
 
@@ -2281,6 +2459,27 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
 
   return (
     <div className={`fadeIn`} style={{ paddingTop:20 }}>
+      <HomeWorkHeader
+        dday={dday}
+        todayMinutes={todayMinutes}
+        tracksDone={tracksDone}
+        courseQueueSummary={courseQueueSummary}
+        dueReviews={dueReviews}
+        todosOpen={todayTodosOpen}
+        overdueTotal={overdueTotal}
+        onGoTo={onGoTo}
+      />
+
+      <HomeTodayPanel
+        today={today}
+        courseItems={courseQueueItems}
+        reviews={dueReviews}
+        todosOpen={todayTodosOpen}
+        onGoTo={onGoTo}
+        onCourseDone={completeHomeCourseItem}
+        onReviewDone={completeHomeReview}
+      />
+
       <section style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`28px 22px`, marginBottom:14, position:`relative`, overflow:`hidden` }}>
         <div style={{ display:`flex`, alignItems:`center`, gap:8, marginBottom:6 }}>
           <span style={{ width:18, height:1, background:C.accent }} />
@@ -2316,44 +2515,6 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
           <div style={{ marginTop:6, opacity:0.85 }}>회차 회독 위주로 · 객관식 복수 회차/일</div>
         </div>
       )}
-
-      <SectionTitle>오늘 핵심</SectionTitle>
-      <div className={`home-core-grid`} style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:8, marginBottom:18 }}>
-        <HomeAction
-          icon={FileText}
-          label={`강의`}
-          value={`${courseQueueSummary.watch + courseQueueSummary.review}개`}
-          sub={`수강 ${courseQueueSummary.watch} · 복습 ${courseQueueSummary.review}`}
-          color={C.book}
-          onClick={() => onGoTo(`courses`)}
-        />
-        <HomeAction
-          icon={RotateCw}
-          label={`회독`}
-          value={`${dueReviews.length}개`}
-          sub={dueReviews.length > 0 ? `오늘 마감` : `대기 없음`}
-          color={C.accent}
-          onClick={() => onGoTo(`review`)}
-        />
-        <HomeAction
-          icon={Clock}
-          label={`기록`}
-          value={fmtMin(todayMinutes)}
-          sub={`트랙 ${tracksDone}/5`}
-          color={C.good}
-          onClick={() => onGoTo(`log`)}
-        />
-      </div>
-
-      <HomeTodayPanel
-        today={today}
-        courseItems={courseQueueItems}
-        reviews={dueReviews}
-        todosOpen={todayTodosOpen}
-        onGoTo={onGoTo}
-        onCourseDone={completeHomeCourseItem}
-        onReviewDone={completeHomeReview}
-      />
 
       {todayMock ? (
         <div style={{ marginBottom:18 }}>
