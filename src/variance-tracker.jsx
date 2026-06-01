@@ -820,7 +820,65 @@ function weekStartOf(iso) {
   d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
+const WEEKDAY_LABELS = [`월`, `화`, `수`, `목`, `금`, `토`, `일`];
+const WEEKDAY_ALIASES = {
+  월: 0, 월요일: 0, monday: 0, mon: 0,
+  화: 1, 화요일: 1, tuesday: 1, tue: 1,
+  수: 2, 수요일: 2, wednesday: 2, wed: 2,
+  목: 3, 목요일: 3, thursday: 3, thu: 3,
+  금: 4, 금요일: 4, friday: 4, fri: 4,
+  토: 5, 토요일: 5, saturday: 5, sat: 5,
+  일: 6, 일요일: 6, sunday: 6, sun: 6,
+};
+
 function weekDays(startISO) { return [...Array(7)].map((_, i) => addDays(startISO, i)); }
+
+function getWeeklyDayPlans(plan = {}) {
+  return plan?._days && typeof plan._days === `object` && !Array.isArray(plan._days) ? plan._days : {};
+}
+
+function cleanWeeklyPlan(plan = {}) {
+  const next = {};
+  Object.keys(SUBJECTS).forEach(sub => {
+    const v = (plan[sub] || ``).trim();
+    if (v) next[sub] = v;
+  });
+  const days = {};
+  Object.entries(getWeeklyDayPlans(plan)).forEach(([date, value]) => {
+    const v = (value || ``).trim();
+    if (v) days[date] = v;
+  });
+  if (Object.keys(days).length > 0) next._days = days;
+  return next;
+}
+
+function parseWeeklyDayText(text, weekStart) {
+  const days = {};
+  let activeDate = null;
+  const dayPattern = /^(월(?:요일)?|화(?:요일)?|수(?:요일)?|목(?:요일)?|금(?:요일)?|토(?:요일)?|일(?:요일)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)(?:\s*[·.,:/|+-]\s*|\s+)(.*)$/i;
+
+  String(text || ``).split(/\r?\n/).forEach(rawLine => {
+    const line = rawLine.replace(/^\s*[-*•□✓]\s*/, ``).trim();
+    if (!line) return;
+
+    const match = line.match(dayPattern);
+    if (match) {
+      const key = match[1].toLowerCase();
+      const offset = WEEKDAY_ALIASES[key] ?? WEEKDAY_ALIASES[key.slice(0, 1)];
+      if (offset == null) return;
+      activeDate = addDays(weekStart, offset);
+      const body = (match[2] || ``).trim();
+      if (body) days[activeDate] = days[activeDate] ? `${days[activeDate]}\n${body}` : body;
+      return;
+    }
+
+    if (activeDate) {
+      days[activeDate] = days[activeDate] ? `${days[activeDate]}\n${line}` : line;
+    }
+  });
+
+  return days;
+}
 
 function monthGrid(year, month0) {
   const first = new Date(year, month0, 1);
@@ -967,7 +1025,7 @@ const DEFAULT_STATE = {
   mcqProgress: {}, //
   routines: DEFAULT_ROUTINES, // [{ id, name, icon, order }]
   routineLog: {},  // routineLog: { YYYY-MM-DD: { routineId: true } }
-  weeklyPlans: {}, // { weekStartISO: { 공법: "...", 형사법: "...", 민사법: "...", 선택법: "..." } }
+  weeklyPlans: {}, // { weekStartISO: { 공법: "...", _days: { dateISO: "..." } } }
   courses: [], // [{ id, name, subject, studyType, completeThreshold, lectures: [{num, title, durationMin, progress, completed, reviewed, tags, note}], createdAt, lastUpdated }]
 };
 
@@ -2179,32 +2237,137 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans, defaultOpen = true
   const weekStart = weekStartOf(today);
   const plan = weeklyPlans[weekStart] || {};
   const [open, setOpen] = useState(defaultOpen);
-  const [drafts, setDrafts] = useState(plan);
+  const [drafts, setDrafts] = useState(() => cleanWeeklyPlan(plan));
+  const [parseOpen, setParseOpen] = useState(false);
+  const [parseText, setParseText] = useState(``);
 
   // 주가 바뀌면 draft도 갱신
-  useEffect(() => { setDrafts(weeklyPlans[weekStart] || {}); }, [weekStart, weeklyPlans]);
+  useEffect(() => { setDrafts(cleanWeeklyPlan(weeklyPlans[weekStart] || {})); }, [weekStart, weeklyPlans]);
+
+  const dates = useMemo(() => weekDays(weekStart), [weekStart]);
+  const dayPlans = getWeeklyDayPlans(drafts);
+  const parsedDays = useMemo(() => parseWeeklyDayText(parseText, weekStart), [parseText, weekStart]);
+  const parsedCount = Object.keys(parsedDays).length;
+
+  function savePlan(nextPlan) {
+    const cleaned = cleanWeeklyPlan(nextPlan);
+    const next = { ...weeklyPlans };
+    if (Object.keys(cleaned).length === 0) delete next[weekStart];
+    else next[weekStart] = cleaned;
+    setWeeklyPlans(next);
+    setDrafts(cleaned);
+  }
 
   function commit(sub, val) {
-    const v = (val || ``).trim();
-    const cur = weeklyPlans[weekStart] || {};
-    const nextPlan = { ...cur };
-    if (v) nextPlan[sub] = v; else delete nextPlan[sub];
-    const next = { ...weeklyPlans };
-    if (Object.keys(nextPlan).length === 0) delete next[weekStart];
-    else next[weekStart] = nextPlan;
-    setWeeklyPlans(next);
+    savePlan({ ...drafts, [sub]: val || `` });
+  }
+
+  function commitDay(date, val) {
+    savePlan({
+      ...drafts,
+      _days: { ...getWeeklyDayPlans(drafts), [date]: val || `` },
+    });
+  }
+
+  function applyParsedDays(mode = `append`) {
+    if (parsedCount === 0) {
+      alert(`읽을 수 있는 요일 계획이 없습니다. 예: 월 민법 사례 2문`);
+      return;
+    }
+
+    const baseDays = mode === `replace` ? {} : getWeeklyDayPlans(drafts);
+    const nextDays = { ...baseDays };
+    Object.entries(parsedDays).forEach(([date, value]) => {
+      const v = (value || ``).trim();
+      if (!v) return;
+      nextDays[date] = mode === `append` && nextDays[date]
+        ? `${nextDays[date]}\n${v}`
+        : v;
+    });
+    savePlan({ ...drafts, _days: nextDays });
+    setParseText(``);
+    setParseOpen(false);
   }
 
   const filledCount = Object.keys(SUBJECTS).filter(s => (drafts[s] || ``).trim()).length;
+  const dayFilledCount = dates.filter(d => (dayPlans[d] || ``).trim()).length;
 
   return (
     <>
       <SectionTitle action={{ label: open ? `접기` : `펼치기`, onClick: () => setOpen(o => !o) }}>
-        주간 계획 · {weekStart.slice(5)} ~ {addDays(weekStart, 6).slice(5)} ({filledCount}/4)
+        주간 계획 · {weekStart.slice(5)} ~ {addDays(weekStart, 6).slice(5)} (요일 {dayFilledCount}/7 · 과목 {filledCount}/4)
       </SectionTitle>
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:22 }}>
         {open ? (
           <div style={{ padding:`10px 12px` }}>
+            <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, marginBottom:12 }}>
+              <button onClick={() => setParseOpen(v => !v)}
+                style={{ width:`100%`, background:`transparent`, border:`none`, padding:`9px 10px`, cursor:`pointer`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, color:C.ink }}>
+                <span className={`kserif`} style={{ fontSize:11, fontWeight:700, letterSpacing:`0.08em` }}>요일 계획 붙여넣기</span>
+                <ChevronDown size={14} style={{ transform: parseOpen ? `rotate(180deg)` : `none`, transition:`transform .18s ease` }} />
+              </button>
+              {parseOpen && (
+                <div style={{ padding:`0 10px 10px` }}>
+                  <textarea value={parseText} onChange={e => setParseText(e.target.value)} rows={6}
+                    placeholder={`요일별 계획을 줄마다 붙여넣으세요.\n\n예:\n월 민법 사례 2문 / 민소 암기장 30p\n화: 형소 강의 3강\n수 - 공법 기록형 목차\n금 모의고사 복습`}
+                    style={{ width:`100%`, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, outline:`none`, resize:`vertical`, fontFamily:`Noto Serif KR, serif`, lineHeight:1.55, marginBottom:8 }} />
+                  {parsedCount > 0 && (
+                    <div style={{ border:`1px solid ${C.lineSoft}`, background:C.paper, padding:`7px 8px`, marginBottom:8 }}>
+                      <div className={`mono`} style={{ fontSize:10, color:C.muted, marginBottom:5 }}>{parsedCount}일 인식</div>
+                      {dates.filter(d => parsedDays[d]).map(d => {
+                        const idx = dates.indexOf(d);
+                        return (
+                          <div key={d} style={{ display:`flex`, gap:7, fontSize:10.5, padding:`2px 0`, borderTop:`1px dashed ${C.lineSoft}` }}>
+                            <span className={`kserif`} style={{ color:C.ink, fontWeight:700, minWidth:34 }}>{WEEKDAY_LABELS[idx]} {fmtShortDate(d)}</span>
+                            <span style={{ color:C.muted, whiteSpace:`pre-wrap` }}>{parsedDays[d]}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, flexWrap:`wrap` }}>
+                    <div style={{ fontSize:10, color:C.muted }}>같은 요일에 여러 줄이 있으면 줄바꿈으로 합쳐집니다.</div>
+                    <div style={{ display:`flex`, gap:6 }}>
+                      <button onClick={() => applyParsedDays(`replace`)} disabled={parsedCount === 0}
+                        style={{ background:parsedCount ? C.paper : C.lineSoft, color:parsedCount ? C.accent : C.muted, border:`1px solid ${C.line}`, padding:`6px 9px`, fontSize:10.5, cursor:parsedCount ? `pointer` : `default` }}>
+                        요일계획 덮어쓰기
+                      </button>
+                      <button onClick={() => applyParsedDays(`append`)} disabled={parsedCount === 0}
+                        style={{ background:parsedCount ? C.ink : C.lineSoft, color:parsedCount ? `#fff` : C.muted, border:`none`, padding:`6px 10px`, fontSize:10.5, fontWeight:700, cursor:parsedCount ? `pointer` : `default`, display:`inline-flex`, alignItems:`center`, gap:5 }}>
+                        <Plus size={12} /> 추가
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom:12 }}>
+              <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink, marginBottom:7 }}>요일별 계획</div>
+              <div style={{ display:`grid`, gridTemplateColumns:`repeat(auto-fit, minmax(150px, 1fr))`, gap:6 }}>
+                {dates.map((d, i) => (
+                  <div key={d} style={{ background:C.bg, border:`1px solid ${d === today ? C.ink : C.lineSoft}`, padding:`7px 8px` }}>
+                    <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:6, marginBottom:5 }}>
+                      <span className={`kserif`} style={{ fontSize:11, color:d === today ? C.ink : C.muted, fontWeight:700 }}>{WEEKDAY_LABELS[i]}</span>
+                      <span className={`mono`} style={{ fontSize:9.5, color:C.muted }}>{fmtShortDate(d)}</span>
+                    </div>
+                    <textarea
+                      value={dayPlans[d] || ``}
+                      onChange={e => setDrafts(prev => ({ ...prev, _days: { ...getWeeklyDayPlans(prev), [d]: e.target.value } }))}
+                      onBlur={() => commitDay(d, getWeeklyDayPlans(drafts)[d])}
+                      placeholder={`계획`}
+                      rows={3}
+                      style={{
+                        width:`100%`, background:C.paper, border:`1px solid ${C.lineSoft}`,
+                        padding:`6px 7px`, fontSize:11, outline:`none`, resize:`vertical`,
+                        fontFamily:`Noto Serif KR, serif`, lineHeight:1.45,
+                      }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink, marginBottom:3 }}>과목별 메모</div>
             {Object.keys(SUBJECTS).map((sub, i) => (
               <div key={sub} style={{
                 paddingTop: i === 0 ? 0 : 8, paddingBottom: 8,
@@ -2230,14 +2393,27 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans, defaultOpen = true
           </div>
         ) : (
           <div style={{ padding:`10px 14px`, fontSize:11, color:C.muted, lineHeight:1.6 }}>
-            {filledCount === 0
+            {filledCount === 0 && dayFilledCount === 0
               ? `이번 주 과목별 목표를 메모해 두면 흐름을 잡기 좋아요.`
-              : Object.keys(SUBJECTS).filter(s => (drafts[s] || ``).trim()).map(s =>
-                  <div key={s} style={{ display:`flex`, gap:6, marginBottom:3 }}>
-                    <span className={`kserif`} style={{ color: SUBJECTS[s].color, fontWeight:600, minWidth:42, fontSize:11 }}>{s}</span>
-                    <span style={{ color:C.ink, fontSize:11, flex:1, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{drafts[s]}</span>
-                  </div>
-                )}
+              : (
+                <>
+                  {dates.filter(d => (dayPlans[d] || ``).trim()).map(d => {
+                    const i = dates.indexOf(d);
+                    return (
+                      <div key={d} style={{ display:`flex`, gap:6, marginBottom:3 }}>
+                        <span className={`kserif`} style={{ color:C.ink, fontWeight:600, minWidth:42, fontSize:11 }}>{WEEKDAY_LABELS[i]}</span>
+                        <span style={{ color:C.ink, fontSize:11, flex:1, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{dayPlans[d]}</span>
+                      </div>
+                    );
+                  })}
+                  {Object.keys(SUBJECTS).filter(s => (drafts[s] || ``).trim()).map(s =>
+                    <div key={s} style={{ display:`flex`, gap:6, marginBottom:3 }}>
+                      <span className={`kserif`} style={{ color: SUBJECTS[s].color, fontWeight:600, minWidth:42, fontSize:11 }}>{s}</span>
+                      <span style={{ color:C.ink, fontSize:11, flex:1, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{drafts[s]}</span>
+                    </div>
+                  )}
+                </>
+              )}
           </div>
         )}
       </div>
@@ -6222,8 +6398,16 @@ function AddCourseForm({ onAdd, onCancel }) {
   const [subject, setSubject] = useState(`민사법`);
   const [completeThreshold, setCompleteThreshold] = useState(DEFAULT_COURSE_COMPLETE_THRESHOLD);
   const [text, setText] = useState(``);
+  const [excludedNums, setExcludedNums] = useState([]);
 
-  const parsed = useMemo(() => applyCourseCompletionThreshold(parseCourseText(text), completeThreshold), [text, completeThreshold]);
+  useEffect(() => {
+    setExcludedNums([]);
+  }, [text]);
+
+  const parsedRaw = useMemo(() => applyCourseCompletionThreshold(parseCourseText(text), completeThreshold), [text, completeThreshold]);
+  const excludedSet = useMemo(() => new Set(excludedNums), [excludedNums]);
+  const parsed = useMemo(() => parsedRaw.filter(l => !excludedSet.has(l.num)), [parsedRaw, excludedSet]);
+  const excludedCount = parsedRaw.length - parsed.length;
   const completedCount = parsed.filter(l => l.completed).length;
   const totalMin = parsed.reduce((s, l) => s + l.durationMin, 0);
   const completedMin = parsed.filter(l => l.completed).reduce((s, l) => s + l.durationMin, 0);
@@ -6232,6 +6416,10 @@ function AddCourseForm({ onAdd, onCancel }) {
   function submit() {
     if (!canSubmit) return;
     onAdd({ name: name.trim(), subject, completeThreshold, lectures: parsed });
+  }
+
+  function excludeParsedLecture(num) {
+    setExcludedNums(prev => prev.includes(num) ? prev : [...prev, num]);
   }
 
   return (
@@ -6281,28 +6469,41 @@ function AddCourseForm({ onAdd, onCancel }) {
         placeholder={`사이트의 강의 목록을 통째로 복사해서 붙여넣으세요.\n\n예:\n1강\t[OT] 강의 소개\t29분\t100%\t완강\n2강\t채권자대위권 ①\t55분\t50%`}
         style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:10, outline:`none`, resize:`vertical`, fontFamily:`JetBrains Mono, monospace`, lineHeight:1.5 }} />
 
-      {parsed.length > 0 && (
+      {parsedRaw.length > 0 && (
         <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, marginBottom:10 }}>
           <div style={{ display:`flex`, justifyContent:`space-between`, marginBottom:6, fontSize:11 }}>
             <span style={{ color:C.muted }}>파싱 결과 미리보기</span>
-            <span className={`mono`} style={{ color:C.ink, fontWeight:600 }}>{parsed.length}강 인식</span>
+            <span className={`mono`} style={{ color:C.ink, fontWeight:600 }}>{parsed.length}강 선택</span>
           </div>
           <div style={{ display:`flex`, gap:12, fontSize:10, marginBottom:6, flexWrap:`wrap` }}>
             <span className={`kserif`}>완강 <span className={`mono`} style={{ color:C.good, fontWeight:600 }}>{completedCount}/{parsed.length}</span></span>
             <span className={`kserif`}>총분량 <span className={`mono`} style={{ color:C.ink }}>{fmtMin(totalMin)}</span></span>
             <span className={`kserif`}>합산될 학습시간 <span className={`mono`} style={{ color:SUBJECTS[subject].color, fontWeight:600 }}>+{fmtMin(completedMin)}</span></span>
+            {excludedCount > 0 && (
+              <button onClick={() => setExcludedNums([])}
+                style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`2px 6px`, fontSize:9.5, cursor:`pointer` }}>
+                제외 {excludedCount}개 복구
+              </button>
+            )}
           </div>
           <div style={{ maxHeight:120, overflowY:`auto`, fontSize:10 }}>
-            {parsed.map(l => (
-              <div key={l.num} style={{ display:`flex`, gap:6, padding:`2px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
+            {parsedRaw.map(l => {
+              const excluded = excludedSet.has(l.num);
+              return (
+              <div key={l.num} style={{ display:`flex`, gap:6, padding:`2px 0`, borderBottom:`1px dashed ${C.lineSoft}`, opacity: excluded ? 0.45 : 1 }}>
                 <span className={`mono`} style={{ color:C.muted, minWidth:24 }}>{l.num}강</span>
-                <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                <span style={{ flex:1, color: excluded ? C.muted : C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, textDecoration: excluded ? `line-through` : `none` }}>{l.title}</span>
                 <span className={`mono`} style={{ color:C.muted }}>{l.durationMin}분</span>
                 <span className={`mono`} style={{ color: l.completed ? C.good : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:38, textAlign:`right` }}>
                   {l.completed ? `완강` : `${l.progress}%`}
                 </span>
+                <button onClick={() => excluded ? setExcludedNums(prev => prev.filter(n => n !== l.num)) : excludeParsedLecture(l.num)}
+                  style={{ background:C.paper, color:excluded ? C.good : C.accent, border:`1px solid ${C.lineSoft}`, padding:`1px 5px`, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
+                  {excluded ? `복구` : `제외`}
+                </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -6324,6 +6525,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   const [manageOpen, setManageOpen] = useState(false);
   const [text, setText] = useState(``);
   const [memoOpenNum, setMemoOpenNum] = useState(null);
+  const [updateExcludedNums, setUpdateExcludedNums] = useState([]);
   
   // --- 👇 추가 및 개선된 타이머 로직 ---
   const [activeTimerLec, setActiveTimerLec] = useState(null);
@@ -6390,11 +6592,18 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   const isReviewGood = actualReviewPace >= requiredReviewPace;
   const isReviewWarning = actualReviewPace >= (requiredReviewPace * 0.7) && !isReviewGood;
   
-  const parsedUpdate = useMemo(() => applyCourseCompletionThreshold(parseCourseText(text), completeThreshold), [text, completeThreshold]);
+  useEffect(() => {
+    setUpdateExcludedNums([]);
+  }, [text]);
+
+  const parsedUpdateRaw = useMemo(() => applyCourseCompletionThreshold(parseCourseText(text), completeThreshold), [text, completeThreshold]);
+  const updateExcludedSet = useMemo(() => new Set(updateExcludedNums), [updateExcludedNums]);
+  const parsedUpdate = useMemo(() => parsedUpdateRaw.filter(l => !updateExcludedSet.has(l.num)), [parsedUpdateRaw, updateExcludedSet]);
   const existingByNum = useMemo(() => new Map(course.lectures.map(l => [l.num, l])), [course.lectures]);
   const parsedNumSet = useMemo(() => new Set(parsedUpdate.map(l => l.num)), [parsedUpdate]);
   const addedLectureCount = parsedUpdate.filter(l => !existingByNum.has(l.num)).length;
   const removedLectureCount = course.lectures.filter(l => !parsedNumSet.has(l.num)).length;
+  const excludedUpdateCount = parsedUpdateRaw.length - parsedUpdate.length;
   const newlyCompletedCount = parsedUpdate.filter(l => l.completed && !existingByNum.get(l.num)?.completed).length;
   const newlyCompletedMin = parsedUpdate
     .filter(l => l.completed && !existingByNum.get(l.num)?.completed)
@@ -6410,6 +6619,23 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
     if (!canUpdateList) return;
     onUpdate(parsedUpdate);
     cancelUpdateList();
+  }
+
+  function excludeUpdateLecture(num) {
+    setUpdateExcludedNums(prev => prev.includes(num) ? prev : [...prev, num]);
+  }
+
+  function deleteLecture(lecNum) {
+    const lecture = course.lectures.find(l => l.num === lecNum);
+    if (!lecture) return;
+    if (!confirm(`${lecNum}강을 삭제할까요? 이미 합산된 학습시간은 그대로 유지됩니다.`)) return;
+    if (activeTimerLec === lecNum) {
+      setActiveTimerLec(null);
+      setTimerStartAt(null);
+      setTick(0);
+    }
+    onUpdate(course.lectures.filter(l => l.num !== lecNum));
+    if (onLectureMetaChange) onLectureMetaChange({ ...lecture, tags: [], note: `` });
   }
 
   function updateLectureMeta(lecNum, patch) {
@@ -6525,34 +6751,45 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                 <div style={{ background:C.paper, border:`1px solid ${C.lineSoft}`, padding:12, marginBottom:10 }}>
                   <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:6 }}>
                     <div style={{ fontSize:10, color:C.muted }}>새 진도표 붙여넣기</div>
-                    <div className={`mono`} style={{ fontSize:10, color: parsedUpdate.length > 0 ? C.ink : C.muted, fontWeight: parsedUpdate.length > 0 ? 600 : 400 }}>
-                      {parsedUpdate.length > 0 ? `${parsedUpdate.length}강 인식` : `대기`}
+                    <div className={`mono`} style={{ fontSize:10, color: parsedUpdateRaw.length > 0 ? C.ink : C.muted, fontWeight: parsedUpdateRaw.length > 0 ? 600 : 400 }}>
+                      {parsedUpdateRaw.length > 0 ? `${parsedUpdate.length}강 선택` : `대기`}
                     </div>
                   </div>
                   <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
                     placeholder={`사이트의 최신 강의 목록을 통째로 붙여넣으세요.\n기존 복습 체크와 복습 시간은 유지됩니다.`}
                     style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:10, outline:`none`, resize:`vertical`, fontFamily:`JetBrains Mono, monospace`, lineHeight:1.5 }} />
 
-                  {parsedUpdate.length > 0 && (
+                  {parsedUpdateRaw.length > 0 && (
                     <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, marginBottom:10 }}>
                       <div style={{ display:`flex`, gap:12, fontSize:10, marginBottom:6, flexWrap:`wrap` }}>
                         <span className={`kserif`}>추가 <span className={`mono`} style={{ color:addedLectureCount > 0 ? subColor : C.muted, fontWeight:600 }}>{addedLectureCount}</span></span>
                         <span className={`kserif`}>제외 <span className={`mono`} style={{ color:removedLectureCount > 0 ? C.accent : C.muted, fontWeight:600 }}>{removedLectureCount}</span></span>
                         <span className={`kserif`}>새 완강 <span className={`mono`} style={{ color:newlyCompletedCount > 0 ? C.good : C.muted, fontWeight:600 }}>{newlyCompletedCount}</span></span>
                         <span className={`kserif`}>합산될 학습시간 <span className={`mono`} style={{ color:newlyCompletedMin > 0 ? subColor : C.muted, fontWeight:600 }}>+{fmtMin(newlyCompletedMin)}</span></span>
+                        {excludedUpdateCount > 0 && (
+                          <button onClick={() => setUpdateExcludedNums([])}
+                            style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`2px 6px`, fontSize:9.5, cursor:`pointer` }}>
+                            제외 {excludedUpdateCount}개 복구
+                          </button>
+                        )}
                       </div>
                       <div style={{ maxHeight:110, overflowY:`auto`, fontSize:10 }}>
-                        {parsedUpdate.map(l => {
+                        {parsedUpdateRaw.map(l => {
                           const wasReviewed = !!existingByNum.get(l.num)?.reviewed;
+                          const excluded = updateExcludedSet.has(l.num);
                           return (
-                            <div key={l.num} style={{ display:`flex`, gap:6, padding:`2px 0`, borderBottom:`1px dashed ${C.lineSoft}` }}>
+                            <div key={l.num} style={{ display:`flex`, gap:6, padding:`2px 0`, borderBottom:`1px dashed ${C.lineSoft}`, opacity: excluded ? 0.45 : 1 }}>
                               <span className={`mono`} style={{ color:C.muted, minWidth:24 }}>{l.num}강</span>
-                              <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                              <span style={{ flex:1, color: excluded ? C.muted : C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, textDecoration: excluded ? `line-through` : `none` }}>{l.title}</span>
                               {wasReviewed && <span className={`mono`} style={{ color:C.good, minWidth:30 }}>복습</span>}
                               <span className={`mono`} style={{ color:C.muted, minWidth:34, textAlign:`right` }}>{l.durationMin || `-`}분</span>
                               <span className={`mono`} style={{ color: l.completed ? C.good : C.muted, fontWeight: l.completed ? 600 : 400, minWidth:38, textAlign:`right` }}>
                                 {l.completed ? `완강` : `${l.progress}%`}
                               </span>
+                              <button onClick={() => excluded ? setUpdateExcludedNums(prev => prev.filter(n => n !== l.num)) : excludeUpdateLecture(l.num)}
+                                style={{ background:C.paper, color:excluded ? C.good : C.accent, border:`1px solid ${C.lineSoft}`, padding:`1px 5px`, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
+                                {excluded ? `복구` : `제외`}
+                              </button>
                             </div>
                           );
                         })}
@@ -6633,6 +6870,12 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                       style={{ background:(l.note || activeTags.length) ? C.ink : C.bg, color:(l.note || activeTags.length) ? `#fff` : C.muted, border:`1px solid ${(l.note || activeTags.length) ? C.ink : C.line}`, padding:`5px 7px`, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
                       메모
                     </button>
+                    {manageOpen && (
+                      <button title={`${l.num}강 삭제`} aria-label={`${l.num}강 삭제`} onClick={(e) => { e.stopPropagation(); deleteLecture(l.num); }} className={`tap`}
+                        style={{ background:C.bg, color:C.accent, border:`1px solid ${C.line}`, width:28, height:28, cursor:`pointer`, flexShrink:0, display:`grid`, placeItems:`center` }}>
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                     <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{l.durationMin || `-`}분</span>
                     <button onClick={(e) => { e.stopPropagation(); onToggleReview && onToggleReview(l.num); }} className={`tap`}
                       style={{
