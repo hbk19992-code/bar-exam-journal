@@ -485,7 +485,7 @@ async function exportXLSX(state, filename) {
   const XLSX = await loadXLSX();
   const wb = XLSX.utils.book_new();
   const {
-    settings = {}, logs = {}, tracks = {}, todos = {}, examScores = [],
+    settings = {}, logs = {}, tracks = {}, todos = {}, examScores = [], rankScores = [],
     materials = [], reviews = [], books = [], schedules = [], moods = {},
   } = state;
 
@@ -557,7 +557,27 @@ async function exportXLSX(state, filename) {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreRows), `회차점수`);
 
-  // [5] Materials
+  // [5] Essay/case rank scores
+  const rankRows = [[`날짜`, `묶음`, `회차`, `과목`, `유형`, `점수`, `등수`, `인원`, `상위비율(%)`, `평균`, `평균대비`, `메모`]];
+  [...rankScores].sort((a,b) => (a.seriesTitle || ``).localeCompare(b.seriesTitle || ``) || (a.round || 0) - (b.round || 0)).forEach(s => {
+    rankRows.push([
+      s.date || ``,
+      s.seriesTitle || ``,
+      s.round || ``,
+      s.subject || ``,
+      s.type || ``,
+      s.score ?? ``,
+      s.rank ?? ``,
+      s.totalStudents ?? ``,
+      s.topPercent ?? ``,
+      s.averageScore ?? ``,
+      s.scoreMinusAverage ?? ``,
+      s.note || ``,
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rankRows), `사례등수`);
+
+  // [6] Materials
   const matRows = [[`자료명`, `과목`, `현재 회독`, `목표 회독`, `진행률(%)`]];
   materials.forEach(m => {
     const pct = m.target > 0 ? Math.round((m.rounds / m.target) * 100) : 0;
@@ -565,14 +585,14 @@ async function exportXLSX(state, filename) {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matRows), `자료회독`);
 
-  // [6] Topics
+  // [7] Topics
   const reviewRows = [[`주제`, `과목`, `생성일`, `마지막 회독`, `회독차`, `메모`]];
   reviews.forEach(r => {
     reviewRows.push([r.title, r.subject, r.created, r.lastReviewed, r.cycleIndex + 1, r.note || ``]);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(reviewRows), `주제회독`);
 
-  // [7] Books
+  // [8] Books
   const bookRows = [[`제목`, `과목`, `현재`, `목표`, `진행률(%)`, `메모`]];
   books.forEach(b => {
     const pct = b.target > 0 ? Math.round((b.current / b.target) * 100) : 0;
@@ -580,7 +600,7 @@ async function exportXLSX(state, filename) {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bookRows), `문제집`);
 
-  // [8] Schedules
+  // [9] Schedules
   const schedRows = [[`종류`, `제목`, `시작일`, `종료일`, `기간(일)`, `색상`]];
   if (settings.examDate) {
     schedRows.push([`본시험`, settings.examLabel || ``, settings.examDate, settings.examDate, 1, ``]);
@@ -593,7 +613,7 @@ async function exportXLSX(state, filename) {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(schedRows), `일정`);
 
-  // [9] Todos
+  // [10] Todos
   const todoRows = [[`날짜`, `제목`, `완료`, `비고`]];
   Object.keys(todos).sort().forEach(d => {
     (todos[d] || []).filter(t => !t.hidden).forEach(t => {
@@ -602,7 +622,7 @@ async function exportXLSX(state, filename) {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(todoRows), `할일`);
 
-  // [10] Checklists
+  // [11] Checklists
   const clRows = [[`카테고리`, `과목`, `마지막 회독일`, `★`, `항목`]];
   (state.checklists || []).forEach(c => {
     if (c.items.length === 0) {
@@ -940,6 +960,7 @@ const DEFAULT_STATE = {
   materials: DEFAULT_MATERIALS,
   materialLog: {},
   examScores: [],
+  rankScores: [],
   moods: {},
   schedules: [], // [{ id, title, color, start, end, note }]
   checklists: DEFAULT_CHECKLISTS, // [{ id, name, subject, color, items: [{ id, text, stars }], lastReviewed }]
@@ -971,7 +992,7 @@ function normalizeSettings(value = {}) {
 
 const PERSISTED_STATE_KEYS = [
   `settings`, `logs`, `reviews`, `books`, `todos`, `tracks`,
-  `materials`, `materialLog`, `examScores`, `moods`, `schedules`, `checklists`,
+  `materials`, `materialLog`, `examScores`, `rankScores`, `moods`, `schedules`, `checklists`,
   `mcqProgress`, `routines`, `routineLog`, `weeklyPlans`, `courses`,
 ];
 const LOCAL_DRAFT_PREFIX = `bar-exam-journal-local-draft`;
@@ -1060,7 +1081,7 @@ function blankUserState() {
     settings: normalizeSettings(),
     logs: {}, reviews: [], books: [], todos: {}, tracks: {},
     materials: DEFAULT_MATERIALS, materialLog: {},
-    examScores: [], moods: {}, schedules: [],
+    examScores: [], rankScores: [], moods: {}, schedules: [],
     checklists: DEFAULT_CHECKLISTS, mcqProgress: {},
     routines: DEFAULT_ROUTINES, routineLog: {}, weeklyPlans: {}, courses: [],
   };
@@ -1078,6 +1099,7 @@ function normalizeStoredState(data = {}) {
     materials: asArray(d.materials, DEFAULT_MATERIALS),
     materialLog: asPlainObject(d.materialLog),
     examScores: asArray(d.examScores),
+    rankScores: asArray(d.rankScores),
     moods: asPlainObject(d.moods),
     schedules: asArray(d.schedules),
     checklists: asArray(d.checklists, DEFAULT_CHECKLISTS),
@@ -1127,6 +1149,7 @@ export default function App() {
   const [materials, setMaterials] = useState(DEFAULT_MATERIALS);
   const [materialLog, setMaterialLog] = useState({});
   const [examScores, setExamScores] = useState([]);
+  const [rankScores, setRankScores] = useState([]);
   const [moods, setMoods] = useState({});
   const [schedules, setSchedules] = useState([]);
   const [checklists, setChecklists] = useState(DEFAULT_CHECKLISTS);
@@ -1254,7 +1277,7 @@ const globalStyles = (
 
   const currentState = {
     settings, logs, reviews, books, todos, tracks,
-    materials, materialLog, examScores, moods, schedules, checklists,
+    materials, materialLog, examScores, rankScores, moods, schedules, checklists,
     mcqProgress, routines, routineLog, weeklyPlans, courses,
   };
   localStateRef.current = currentState;
@@ -1274,7 +1297,8 @@ const globalStyles = (
     setLogs(nextState.logs); setReviews(nextState.reviews); setBooks(nextState.books);
     setTodos(nextState.todos); setTracks(nextState.tracks);
     setMaterials(nextState.materials); setMaterialLog(nextState.materialLog);
-    setExamScores(nextState.examScores); setMoods(nextState.moods);
+    setExamScores(nextState.examScores); setRankScores(nextState.rankScores);
+    setMoods(nextState.moods);
     setSchedules(nextState.schedules); setChecklists(nextState.checklists);
     setMcqProgress(nextState.mcqProgress); setRoutines(nextState.routines);
     setRoutineLog(nextState.routineLog); setWeeklyPlans(nextState.weeklyPlans);
@@ -1439,12 +1463,12 @@ const globalStyles = (
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [user, loaded, syncRetryTick, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+  }, [user, loaded, syncRetryTick, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
 
   useEffect(() => {
     if (!loaded || !user) return;
     writeLocalDraft(user.uid, localStateRef.current);
-  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
@@ -1539,6 +1563,7 @@ const globalStyles = (
     setMaterials(asArray(data.materials, DEFAULT_MATERIALS));
     setMaterialLog(asPlainObject(data.materialLog));
     setExamScores(asArray(data.examScores));
+    setRankScores(asArray(data.rankScores));
     setMoods(asPlainObject(data.moods));
     setSchedules(asArray(data.schedules));
     setChecklists(asArray(data.checklists, DEFAULT_CHECKLISTS));
@@ -1616,7 +1641,7 @@ VITE_FIREBASE_APP_ID`}</pre>
     logs, setLogs, reviews, setReviews, books, setBooks,
     todos, setTodos, tracks, setTracks,
     materials, setMaterials, materialLog, setMaterialLog,
-    examScores, setExamScores, moods, setMoods,
+    examScores, setExamScores, rankScores, setRankScores, moods, setMoods,
     schedules, setSchedules,
     checklists, setChecklists,
     mcqProgress, setMcqProgress,
@@ -1666,7 +1691,7 @@ VITE_FIREBASE_APP_ID`}</pre>
               if (confirm(`모든 데이터를 지울까요? (설정 포함) — 클라우드의 본인 데이터도 함께 초기화됩니다.`)) {
                 setLogs({}); setReviews([]); setBooks([]); setTodos({});
                 setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
-                setExamScores([]); setMoods({}); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
+                setExamScores([]); setRankScores([]); setMoods({}); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
                 setMcqProgress({}); setRoutines(DEFAULT_ROUTINES); setRoutineLog({});
                 setWeeklyPlans({}); setCourses([]);
               }
@@ -1676,7 +1701,7 @@ VITE_FIREBASE_APP_ID`}</pre>
                 schemaVersion: APP_SCHEMA_VERSION,
                 exportedAt: new Date().toISOString(),
                 settings, logs, reviews, books, todos,
-                tracks, materials, materialLog, examScores, moods, schedules, checklists,
+                tracks, materials, materialLog, examScores, rankScores, moods, schedules, checklists,
                 mcqProgress, routines, routineLog, weeklyPlans, courses,
               }, null, 2);
               const blob = new Blob([data], { type: `application/json` });
@@ -1689,7 +1714,7 @@ VITE_FIREBASE_APP_ID`}</pre>
             onExportXLSX={async () => {
               try {
                 await exportXLSX({
-                  settings, logs, tracks, todos, examScores,
+                  settings, logs, tracks, todos, examScores, rankScores,
                   materials, reviews, books, schedules, moods, checklists,
                 }, `변시기록_${today.replaceAll( `-`, ``)}.xlsx`);
               } catch (e) {
@@ -3519,7 +3544,7 @@ function TodoRow({ todo, onToggle, onRemove }) {
 
 /* ============================================================ LOG (기록) ============================================================ */
 
-function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores, setExamScores, weeklyPlans = {}, setWeeklyPlans, todos = {}, moods = {}, setMoods, initialDate }) {
+function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores, setExamScores, rankScores = [], setRankScores, weeklyPlans = {}, setWeeklyPlans, todos = {}, moods = {}, setMoods, initialDate }) {
   const [date, setDate] = useState(initialDate || today);
 
   function setDailyMood(value) {
@@ -3568,6 +3593,8 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
       />
 
       <ScoresSection date={date} examScores={examScores} setExamScores={setExamScores} />
+
+      <RankPasteSection date={date} rankScores={rankScores} setRankScores={setRankScores} />
     </div>
   );
 }
@@ -4043,9 +4070,325 @@ function ScoresSection({ date, examScores, setExamScores }) {
   );
 }
 
+/* 사례형/기록형 등수표 텍스트 붙여넣기 */
+const RANK_SCORE_TYPES = [`사례형`, `기록형`, `선택형`, `기타`];
+
+function cleanRankCell(value) {
+  return String(value ?? ``)
+    .replace(/`/g, ``)
+    .replace(/\*\*/g, ``)
+    .replace(/"/g, ``)
+    .trim();
+}
+
+function rankNumber(value) {
+  const raw = cleanRankCell(value).replace(/,/g, ``);
+  const match = raw.match(/[+-]?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+function rankRound(value) {
+  const raw = cleanRankCell(value);
+  const match = raw.match(/(\d{1,3})\s*회?|^(\d{1,3})$/);
+  return match ? Number(match[1] || match[2]) : null;
+}
+
+function roundRankMetric(value, digits = 1) {
+  if (value == null || Number.isNaN(value)) return null;
+  const m = 10 ** digits;
+  return Math.round(value * m) / m;
+}
+
+function rankHeaderField(value) {
+  const h = cleanRankCell(value).toLowerCase().replace(/[\s_()/%-]/g, ``);
+  if (!h) return null;
+  if (h === `round` || h === `회차`) return `round`;
+  if (h === `score` || h === `내점수` || h === `점수`) return `score`;
+  if (h === `rank` || h === `등수`) return `rank`;
+  if (h.includes(`totalstudents`) || h === `total` || h.includes(`인원`)) return `totalStudents`;
+  if (h.includes(`toppercent`) || h.includes(`상위비율`) || h.includes(`백분위`)) return `topPercent`;
+  if (h.includes(`scoreminusaverage`) || h.includes(`평균대비`) || h.includes(`평균차`)) return `scoreMinusAverage`;
+  if (h.includes(`averagescore`) || h === `average` || h === `평균`) return `averageScore`;
+  if (h === `source` || h === `memo` || h === `메모`) return `note`;
+  return null;
+}
+
+function splitRankLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed) return [];
+  if (/^\|?\s*:?-{2,}/.test(trimmed)) return [];
+  if (trimmed.includes(`|`)) {
+    return trimmed.split(`|`).map(cleanRankCell).filter(Boolean);
+  }
+  if (trimmed.includes(`\t`)) {
+    return trimmed.split(`\t`).map(cleanRankCell).filter(Boolean);
+  }
+  if (trimmed.includes(`,`)) {
+    return trimmed.split(`,`).map(cleanRankCell).filter(Boolean);
+  }
+  const compact = trimmed.match(/(\d{1,3})\s*회[^\d+-]+([+-]?\d+(?:\.\d+)?)\s*점?[^\d+-]+(\d{1,3})\s*등[^\d+-]+(\d{1,3})\s*명?[^\d+-]+([+-]?\d+(?:\.\d+)?)%?[^\d+-]+([+-]?\d+(?:\.\d+)?)[^\d+-]+([+-]?\d+(?:\.\d+)?)/);
+  if (compact) return compact.slice(1);
+  return trimmed.split(/\s{2,}/).map(cleanRankCell).filter(Boolean);
+}
+
+function parseRankCells(cells, headerMap) {
+  const get = key => {
+    const idx = headerMap ? headerMap[key] : null;
+    return idx == null ? null : cells[idx];
+  };
+  const round = headerMap ? rankRound(get(`round`)) : rankRound(cells[0]);
+  const score = headerMap ? rankNumber(get(`score`)) : rankNumber(cells[1]);
+  const rank = headerMap ? rankNumber(get(`rank`)) : rankNumber(cells[2]);
+  const totalStudents = headerMap ? rankNumber(get(`totalStudents`)) : rankNumber(cells[3]);
+  const topRaw = headerMap ? rankNumber(get(`topPercent`)) : rankNumber(cells[4]);
+  const averageScore = headerMap ? rankNumber(get(`averageScore`)) : rankNumber(cells[5]);
+  const diffRaw = headerMap ? rankNumber(get(`scoreMinusAverage`)) : rankNumber(cells[6]);
+  const note = headerMap ? cleanRankCell(get(`note`) || ``) : ``;
+
+  if (!round || score == null || rank == null) return null;
+  const topPercent = topRaw != null ? roundRankMetric(topRaw) : (
+    totalStudents ? roundRankMetric((rank / totalStudents) * 100) : null
+  );
+  const scoreMinusAverage = diffRaw != null ? roundRankMetric(diffRaw) : (
+    averageScore != null ? roundRankMetric(score - averageScore) : null
+  );
+
+  return {
+    round,
+    score,
+    rank,
+    totalStudents: totalStudents || null,
+    topPercent,
+    averageScore,
+    scoreMinusAverage,
+    note: note || null,
+  };
+}
+
+function parseRankPasteText(text) {
+  const rows = [];
+  let headerMap = null;
+  const seen = new Set();
+
+  text.split(/\r?\n/).forEach(line => {
+    const cells = splitRankLine(line);
+    if (cells.length < 3) return;
+
+    const fields = cells.map(rankHeaderField);
+    if (fields.includes(`round`) && fields.includes(`rank`)) {
+      headerMap = {};
+      fields.forEach((field, idx) => {
+        if (field && headerMap[field] == null) headerMap[field] = idx;
+      });
+      return;
+    }
+
+    const parsed = parseRankCells(cells, headerMap);
+    if (!parsed) return;
+    const key = `${parsed.round}:${parsed.score}:${parsed.rank}:${parsed.totalStudents || ``}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(parsed);
+  });
+
+  return rows.sort((a, b) => a.round - b.round);
+}
+
+function rankScoreKey(score) {
+  return [
+    score.seriesTitle || ``,
+    score.subject || ``,
+    score.type || ``,
+    score.round || ``,
+  ].join(`::`);
+}
+
+function upsertRankScores(prev = [], incoming = []) {
+  const map = new Map();
+  prev.forEach(item => map.set(rankScoreKey(item), item));
+  incoming.forEach(item => {
+    const key = rankScoreKey(item);
+    const old = map.get(key);
+    map.set(key, { ...old, ...item, id: old?.id || item.id });
+  });
+  return [...map.values()].sort((a, b) => {
+    const series = (a.seriesTitle || ``).localeCompare(b.seriesTitle || ``);
+    if (series !== 0) return series;
+    return (a.round || 0) - (b.round || 0);
+  });
+}
+
+function fmtSignedNumber(value) {
+  if (value == null || Number.isNaN(value)) return `-`;
+  return `${value > 0 ? `+` : ``}${value}`;
+}
+
+function RankPasteSection({ date, rankScores = [], setRankScores }) {
+  const [seriesTitle, setSeriesTitle] = useState(`1순환 민법 사례`);
+  const [subject, setSubject] = useState(`민사법`);
+  const [type, setType] = useState(`사례형`);
+  const [text, setText] = useState(``);
+
+  const parsed = useMemo(() => parseRankPasteText(text), [text]);
+  const activeSeries = seriesTitle.trim() || `등수표`;
+  const savedRows = useMemo(() => (
+    [...rankScores]
+      .filter(s => (s.seriesTitle || `등수표`) === activeSeries && s.subject === subject && s.type === type)
+      .sort((a, b) => (a.round || 0) - (b.round || 0))
+  ), [rankScores, activeSeries, subject, type]);
+
+  const savedSummary = useMemo(() => {
+    if (savedRows.length === 0) return null;
+    const avgTop = savedRows.reduce((sum, row) => sum + (row.topPercent || 0), 0) / savedRows.length;
+    const avgDiffRows = savedRows.filter(row => row.scoreMinusAverage != null);
+    const avgDiff = avgDiffRows.length
+      ? avgDiffRows.reduce((sum, row) => sum + row.scoreMinusAverage, 0) / avgDiffRows.length
+      : null;
+    const best = [...savedRows].filter(row => row.topPercent != null).sort((a, b) => a.topPercent - b.topPercent)[0] || null;
+    const weakest = [...savedRows].filter(row => row.topPercent != null).sort((a, b) => b.topPercent - a.topPercent)[0] || null;
+    return { avgTop: roundRankMetric(avgTop), avgDiff: roundRankMetric(avgDiff), best, weakest };
+  }, [savedRows]);
+
+  function importRows() {
+    if (!setRankScores) return;
+    if (parsed.length === 0) {
+      alert(`읽을 수 있는 등수표가 없습니다. 회차/점수/등수/인원 형식으로 붙여넣어 주세요.`);
+      return;
+    }
+    const now = new Date().toISOString();
+    const incoming = parsed.map(row => ({
+      id: uid(),
+      date,
+      seriesTitle: activeSeries,
+      subject,
+      type,
+      ...row,
+      importedAt: now,
+    }));
+    setRankScores(upsertRankScores(rankScores, incoming));
+    setText(``);
+    alert(`${incoming.length}개 회차를 저장했어요. 같은 묶음·과목·유형·회차는 자동으로 덮어썼습니다.`);
+  }
+
+  function del(id) {
+    if (!setRankScores) return;
+    setRankScores(rankScores.filter(s => s.id !== id));
+  }
+
+  return (
+    <div style={{ marginBottom:24 }}>
+      <SectionTitle>사례형 등수표</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px` }}>
+        <div style={{ display:`grid`, gridTemplateColumns:`1.5fr 1fr 1fr`, gap:6, marginBottom:8 }}>
+          <input value={seriesTitle} onChange={e => setSeriesTitle(e.target.value)} placeholder={`묶음 이름`}
+            style={{ minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, outline:`none` }} />
+          <select value={subject} onChange={e => setSubject(e.target.value)}
+            style={{ minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, outline:`none` }}>
+            {Object.keys(SUBJECTS).map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={type} onChange={e => setType(e.target.value)}
+            style={{ minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, outline:`none` }}>
+            {RANK_SCORE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={7}
+          placeholder={`등수표/보고서/CSV를 그대로 붙여넣으세요.\n\n예:\n| 1회 | 12.0 | 79등 | 102명 | 77.5% | 19.2 | -7.2 |\n\n또는:\nround,score,rank,total_students,top_percent,average_score,score_minus_average`}
+          style={{ width:`100%`, resize:`vertical`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`9px 10px`, fontSize:11, outline:`none`, lineHeight:1.55, fontFamily:`JetBrains Mono, monospace`, marginBottom:8 }} />
+
+        <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom: parsed.length ? 10 : 0 }}>
+          <div style={{ fontSize:10.5, color:C.muted }}>
+            {text.trim() ? (
+              parsed.length ? `${parsed.length}개 회차 인식됨` : `아직 인식된 행이 없습니다`
+            ) : `CSV, 마크다운 표, 회차별 텍스트를 지원합니다`}
+          </div>
+          <div style={{ display:`flex`, gap:6 }}>
+            {text && (
+              <button onClick={() => setText(``)}
+                style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:11, cursor:`pointer` }}>
+                비우기
+              </button>
+            )}
+            <button onClick={importRows} disabled={parsed.length === 0}
+              style={{ background: parsed.length ? C.ink : C.lineSoft, color: parsed.length ? `#fff` : C.muted, border:`none`, padding:`7px 12px`, fontSize:11, cursor: parsed.length ? `pointer` : `default`, fontWeight:700, display:`inline-flex`, alignItems:`center`, gap:5 }}>
+              <Plus size={13} /> 저장
+            </button>
+          </div>
+        </div>
+
+        {parsed.length > 0 && (
+          <div style={{ border:`1px solid ${C.lineSoft}`, background:`rgba(255,255,255,0.28)`, marginBottom:12, overflowX:`auto` }}>
+            <table style={{ width:`100%`, borderCollapse:`collapse`, fontSize:10.5, whiteSpace:`nowrap` }}>
+              <thead>
+                <tr>
+                  {[`회차`, `점수`, `등수`, `인원`, `상위`, `평균`, `차이`].map(h => (
+                    <th key={h} style={{ padding:`6px 8px`, color:C.muted, borderBottom:`1px solid ${C.lineSoft}`, fontWeight:600, textAlign:`right` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {parsed.slice(0, 12).map(row => (
+                  <tr key={`${row.round}-${row.score}-${row.rank}`}>
+                    <td style={{ padding:`6px 8px`, textAlign:`right` }}>{row.round}회</td>
+                    <td className={`mono`} style={{ padding:`6px 8px`, textAlign:`right`, fontWeight:600 }}>{row.score}</td>
+                    <td className={`mono`} style={{ padding:`6px 8px`, textAlign:`right` }}>{row.rank}</td>
+                    <td className={`mono`} style={{ padding:`6px 8px`, textAlign:`right`, color:C.muted }}>{row.totalStudents || `-`}</td>
+                    <td className={`mono`} style={{ padding:`6px 8px`, textAlign:`right`, color:C.accent }}>{row.topPercent ?? `-`}%</td>
+                    <td className={`mono`} style={{ padding:`6px 8px`, textAlign:`right`, color:C.muted }}>{row.averageScore ?? `-`}</td>
+                    <td className={`mono`} style={{ padding:`6px 8px`, textAlign:`right`, color:(row.scoreMinusAverage || 0) >= 0 ? C.good : C.accent }}>{fmtSignedNumber(row.scoreMinusAverage)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {savedRows.length > 0 && (
+          <div>
+            <div style={{ display:`flex`, gap:8, flexWrap:`wrap`, margin:`4px 0 8px` }}>
+              <RankStat label={`저장`} value={`${savedRows.length}회`} />
+              <RankStat label={`평균 상위`} value={`${savedSummary?.avgTop ?? `-`}%`} />
+              <RankStat label={`평균대비`} value={fmtSignedNumber(savedSummary?.avgDiff)} tone={(savedSummary?.avgDiff || 0) >= 0 ? C.good : C.accent} />
+            </div>
+            <div style={{ fontSize:10, color:C.muted, marginBottom:8 }}>
+              최고 {savedSummary?.best ? `${savedSummary.best.round}회 ${savedSummary.best.rank}등` : `-`} · 보강 {savedSummary?.weakest ? `${savedSummary.weakest.round}회 ${savedSummary.weakest.rank}등` : `-`}
+            </div>
+            <div style={{ borderTop:`1px dashed ${C.lineSoft}` }}>
+              {savedRows.map(row => (
+                <div key={row.id} style={{ display:`grid`, gridTemplateColumns:`44px 1fr auto`, alignItems:`center`, gap:8, padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11 }}>
+                  <div className={`mono`} style={{ color:C.muted }}>{row.round}회</div>
+                  <div style={{ minWidth:0 }}>
+                    <span className={`mono`} style={{ color:C.ink, fontWeight:700 }}>{row.score}점</span>
+                    <span className={`mono`} style={{ color:C.accent, marginLeft:8 }}>{row.rank}등</span>
+                    {row.totalStudents && <span className={`mono`} style={{ color:C.muted, marginLeft:4 }}>/ {row.totalStudents}명</span>}
+                    <span className={`mono`} style={{ color:C.muted, marginLeft:8 }}>{row.topPercent ?? `-`}%</span>
+                    {row.averageScore != null && <span className={`mono`} style={{ color:C.muted, marginLeft:8 }}>평 {row.averageScore}</span>}
+                  </div>
+                  <button onClick={() => del(row.id)} style={{ background:`none`, border:`none`, cursor:`pointer`, padding:2, color:C.muted }}>
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RankStat({ label, value, tone = C.ink }) {
+  return (
+    <div style={{ flex:`1 1 92px`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, minWidth:92 }}>
+      <div className={`kserif`} style={{ fontSize:9, color:C.muted, letterSpacing:`0.12em`, fontWeight:700 }}>{label}</div>
+      <div className={`mono`} style={{ fontSize:14, color:tone, fontWeight:700, marginTop:2 }}>{value}</div>
+    </div>
+  );
+}
+
 /* ============================================================ EXAMS (기출 회차 점수) ============================================================ */
 
-function ExamsView({ examScores }) {
+function ExamsView({ examScores, rankScores = [] }) {
   const [filterSubject, setFilterSubject] = useState(`전체`);
 
   // matrix: subject x round
@@ -4093,12 +4436,12 @@ function ExamsView({ examScores }) {
     <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
       <div style={{ marginBottom:6 }}>
         <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>기출 회차</h1>
-        <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>객관식 회차별 점수 추이</div>
+        <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>객관식 점수와 사례형 등수 추이</div>
       </div>
 
       {chartData.length === 0 ? (
         <div style={{ background:C.paper, border:`1px dashed ${C.line}`, padding:24, textAlign:`center`, fontSize:12, color:C.muted, margin:`18px 0` }}>
-          기록 탭에서 회차 점수를 입력해 보세요
+          기록 탭에서 객관식 회차 점수를 입력해 보세요
         </div>
       ) : (
         <>
@@ -4180,6 +4523,8 @@ function ExamsView({ examScores }) {
         </>
       )}
 
+      <RankScoreOverview rankScores={rankScores} />
+
       {/* History list */}
       <SectionTitle>전체 기록</SectionTitle>
       <div style={{ display:`flex`, gap:6, marginBottom:10, flexWrap:`wrap` }}>
@@ -4215,6 +4560,92 @@ function ExamsView({ examScores }) {
         </div>
       )}
     </div>
+  );
+}
+
+function RankScoreOverview({ rankScores = [] }) {
+  const latestRows = useMemo(() => {
+    const map = new Map();
+    rankScores.forEach(row => {
+      const key = rankScoreKey(row);
+      const old = map.get(key);
+      if (!old || (row.importedAt || row.date || ``) > (old.importedAt || old.date || ``)) map.set(key, row);
+    });
+    return [...map.values()].sort((a, b) => {
+      const series = (a.seriesTitle || ``).localeCompare(b.seriesTitle || ``);
+      if (series !== 0) return series;
+      return (a.round || 0) - (b.round || 0);
+    });
+  }, [rankScores]);
+
+  const grouped = useMemo(() => {
+    const out = {};
+    latestRows.forEach(row => {
+      const key = `${row.seriesTitle || `등수표`} · ${row.subject || ``} ${row.type || ``}`.trim();
+      if (!out[key]) out[key] = [];
+      out[key].push(row);
+    });
+    return out;
+  }, [latestRows]);
+
+  if (latestRows.length === 0) return null;
+
+  return (
+    <>
+      <SectionTitle>사례형 등수 추적</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px`, marginBottom:18 }}>
+        {Object.entries(grouped).map(([title, rows], gi) => {
+          const avgTop = rows.length ? roundRankMetric(rows.reduce((sum, row) => sum + (row.topPercent || 0), 0) / rows.length) : null;
+          const avgDiffRows = rows.filter(row => row.scoreMinusAverage != null);
+          const avgDiff = avgDiffRows.length ? roundRankMetric(avgDiffRows.reduce((sum, row) => sum + row.scoreMinusAverage, 0) / avgDiffRows.length) : null;
+          const best = [...rows].filter(row => row.topPercent != null).sort((a, b) => a.topPercent - b.topPercent)[0] || null;
+          const weakest = [...rows].filter(row => row.topPercent != null).sort((a, b) => b.topPercent - a.topPercent)[0] || null;
+
+          return (
+            <div key={title} style={{ borderTop: gi > 0 ? `1px dashed ${C.lineSoft}` : `none`, paddingTop: gi > 0 ? 12 : 0, marginTop: gi > 0 ? 12 : 0 }}>
+              <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, gap:8, marginBottom:8 }}>
+                <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>{title}</div>
+                <div className={`mono`} style={{ fontSize:10, color:C.muted }}>{rows.length}회</div>
+              </div>
+              <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, 1fr)`, gap:6, marginBottom:10 }}>
+                <RankStat label={`평균 상위`} value={`${avgTop ?? `-`}%`} />
+                <RankStat label={`평균대비`} value={fmtSignedNumber(avgDiff)} tone={(avgDiff || 0) >= 0 ? C.good : C.accent} />
+                <RankStat label={`보강 회차`} value={weakest ? `${weakest.round}회` : `-`} tone={C.accent} />
+              </div>
+              <div style={{ height:80, display:`flex`, alignItems:`end`, gap:3, border:`1px solid ${C.lineSoft}`, background:C.bg, padding:`8px 7px`, marginBottom:8 }}>
+                {rows.map(row => {
+                  const pct = Math.max(0, Math.min(100, row.topPercent ?? 100));
+                  return (
+                    <div key={row.id} title={`${row.round}회 ${row.rank}등`} style={{ flex:1, minWidth:10, height:`${Math.max(8, 100 - pct)}%`, background: pct <= 35 ? C.good : pct >= 70 ? C.accent : C.warn, opacity:0.85 }} />
+                  );
+                })}
+              </div>
+              <div style={{ overflowX:`auto` }}>
+                <table style={{ width:`100%`, borderCollapse:`collapse`, fontSize:10.5, whiteSpace:`nowrap` }}>
+                  <tbody>
+                    {rows.map(row => (
+                      <tr key={row.id}>
+                        <td style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.muted }}>{row.round}회</td>
+                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, fontWeight:700 }}>{row.score}점</td>
+                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.accent }}>{row.rank}등</td>
+                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.muted }}>{row.totalStudents ? `/ ${row.totalStudents}명` : ``}</td>
+                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, textAlign:`right`, color:C.muted }}>상위 {row.topPercent ?? `-`}%</td>
+                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, textAlign:`right`, color:(row.scoreMinusAverage || 0) >= 0 ? C.good : C.accent }}>{fmtSignedNumber(row.scoreMinusAverage)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {best && weakest && (
+                <div style={{ fontSize:10, color:C.muted, marginTop:7 }}>
+                  최고 {best.round}회 {best.rank}등 · 보강 {weakest.round}회 {weakest.rank}등
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -6844,7 +7275,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
           <Sheet size={14} /> 엑셀(.xlsx)로 내보내기
         </button>
         <div style={{ fontSize:10, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
-          요약 / 학습시간 / 5트랙 / 회차점수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 — 9개 시트로 정리됩니다.
+          요약 / 학습시간 / 5트랙 / 회차점수 / 사례등수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 / 체크리스트 — 11개 시트로 정리됩니다.
         </div>
         <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr`, gap:8 }}>
           <button onClick={onExport} style={{ background:C.bg, border:`1px solid ${C.line}`, padding:`10px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5 }}>
