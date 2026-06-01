@@ -4223,6 +4223,40 @@ function fmtSignedNumber(value) {
   return `${value > 0 ? `+` : ``}${value}`;
 }
 
+function rankLine(row) {
+  if (!row) return `-`;
+  return `${row.round}회 ${row.rank}등${row.totalStudents ? `/${row.totalStudents}명` : ``}`;
+}
+
+function buildRankSummary(rows = []) {
+  if (!rows.length) return null;
+  const validScores = rows.filter(row => row.score != null);
+  const avgScore = validScores.length
+    ? roundRankMetric(validScores.reduce((sum, row) => sum + row.score, 0) / validScores.length)
+    : null;
+  const avgDiffRows = rows.filter(row => row.scoreMinusAverage != null);
+  const avgDiff = avgDiffRows.length
+    ? roundRankMetric(avgDiffRows.reduce((sum, row) => sum + row.scoreMinusAverage, 0) / avgDiffRows.length)
+    : null;
+  const pctRows = rows.filter(row => row.topPercent != null);
+  const avgTop = pctRows.length
+    ? roundRankMetric(pctRows.reduce((sum, row) => sum + row.topPercent, 0) / pctRows.length)
+    : null;
+  const bestRows = [...pctRows].sort((a, b) => a.topPercent - b.topPercent || (a.rank || 0) - (b.rank || 0)).slice(0, 3);
+  const weakestRows = [...pctRows].sort((a, b) => b.topPercent - a.topPercent || (b.rank || 0) - (a.rank || 0)).slice(0, 3);
+
+  const text = [
+    `요약`,
+    `전체 평균 점수: ${avgScore ?? `-`}점`,
+    `전체 평균대비: ${fmtSignedNumber(avgDiff)}점`,
+    `평균 상위 비율: ${avgTop ?? `-`}%`,
+    `가장 좋았던 회차: ${bestRows.length ? bestRows.map(rankLine).join(`, `) : `-`}`,
+    `가장 밀린 회차: ${weakestRows.length ? weakestRows.map(rankLine).join(`, `) : `-`}`,
+  ].join(`\n`);
+
+  return { avgScore, avgDiff, avgTop, bestRows, weakestRows, text };
+}
+
 function RankPasteSection({ date, rankScores = [], setRankScores }) {
   const [seriesTitle, setSeriesTitle] = useState(`1순환 민법 사례`);
   const [subject, setSubject] = useState(`민사법`);
@@ -4238,15 +4272,7 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
   ), [rankScores, activeSeries, subject, type]);
 
   const savedSummary = useMemo(() => {
-    if (savedRows.length === 0) return null;
-    const avgTop = savedRows.reduce((sum, row) => sum + (row.topPercent || 0), 0) / savedRows.length;
-    const avgDiffRows = savedRows.filter(row => row.scoreMinusAverage != null);
-    const avgDiff = avgDiffRows.length
-      ? avgDiffRows.reduce((sum, row) => sum + row.scoreMinusAverage, 0) / avgDiffRows.length
-      : null;
-    const best = [...savedRows].filter(row => row.topPercent != null).sort((a, b) => a.topPercent - b.topPercent)[0] || null;
-    const weakest = [...savedRows].filter(row => row.topPercent != null).sort((a, b) => b.topPercent - a.topPercent)[0] || null;
-    return { avgTop: roundRankMetric(avgTop), avgDiff: roundRankMetric(avgDiff), best, weakest };
+    return buildRankSummary(savedRows);
   }, [savedRows]);
 
   function importRows() {
@@ -4351,8 +4377,9 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
               <RankStat label={`평균대비`} value={fmtSignedNumber(savedSummary?.avgDiff)} tone={(savedSummary?.avgDiff || 0) >= 0 ? C.good : C.accent} />
             </div>
             <div style={{ fontSize:10, color:C.muted, marginBottom:8 }}>
-              최고 {savedSummary?.best ? `${savedSummary.best.round}회 ${savedSummary.best.rank}등` : `-`} · 보강 {savedSummary?.weakest ? `${savedSummary.weakest.round}회 ${savedSummary.weakest.rank}등` : `-`}
+              최고 {savedSummary?.bestRows?.[0] ? `${savedSummary.bestRows[0].round}회 ${savedSummary.bestRows[0].rank}등` : `-`} · 보강 {savedSummary?.weakestRows?.[0] ? `${savedSummary.weakestRows[0].round}회 ${savedSummary.weakestRows[0].rank}등` : `-`}
             </div>
+            <RankSummaryBox summary={savedSummary} />
             <div style={{ borderTop:`1px dashed ${C.lineSoft}` }}>
               {savedRows.map(row => (
                 <div key={row.id} style={{ display:`grid`, gridTemplateColumns:`44px 1fr auto`, alignItems:`center`, gap:8, padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11 }}>
@@ -4382,6 +4409,42 @@ function RankStat({ label, value, tone = C.ink }) {
     <div style={{ flex:`1 1 92px`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, minWidth:92 }}>
       <div className={`kserif`} style={{ fontSize:9, color:C.muted, letterSpacing:`0.12em`, fontWeight:700 }}>{label}</div>
       <div className={`mono`} style={{ fontSize:14, color:tone, fontWeight:700, marginTop:2 }}>{value}</div>
+    </div>
+  );
+}
+
+function RankSummaryBox({ summary }) {
+  if (!summary?.text) return null;
+  return (
+    <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`10px 10px`, marginBottom:12 }}>
+      <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:7 }}>
+        <div className={`kserif`} style={{ fontSize:10, color:C.muted, letterSpacing:`0.16em`, fontWeight:700 }}>요약문</div>
+        <button
+          onClick={async () => {
+            const ok = await copyToClipboard(summary.text);
+            alert(ok ? `요약이 복사되었어요.` : `복사에 실패했습니다.`);
+          }}
+          style={{ background:C.paper, color:C.muted, border:`1px solid ${C.line}`, padding:`5px 8px`, fontSize:10, cursor:`pointer`, display:`inline-flex`, alignItems:`center`, gap:4 }}>
+          <Copy size={11} /> 복사
+        </button>
+      </div>
+      <textarea
+        readOnly
+        value={summary.text}
+        rows={6}
+        style={{
+          width:`100%`,
+          resize:`vertical`,
+          background:C.paper,
+          border:`1px solid ${C.lineSoft}`,
+          padding:`9px 10px`,
+          outline:`none`,
+          fontSize:11,
+          lineHeight:1.65,
+          color:C.ink,
+          fontFamily:`Noto Serif KR, serif`,
+        }}
+      />
     </div>
   );
 }
@@ -4595,11 +4658,8 @@ function RankScoreOverview({ rankScores = [] }) {
       <SectionTitle>사례형 등수 추적</SectionTitle>
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px`, marginBottom:18 }}>
         {Object.entries(grouped).map(([title, rows], gi) => {
-          const avgTop = rows.length ? roundRankMetric(rows.reduce((sum, row) => sum + (row.topPercent || 0), 0) / rows.length) : null;
-          const avgDiffRows = rows.filter(row => row.scoreMinusAverage != null);
-          const avgDiff = avgDiffRows.length ? roundRankMetric(avgDiffRows.reduce((sum, row) => sum + row.scoreMinusAverage, 0) / avgDiffRows.length) : null;
-          const best = [...rows].filter(row => row.topPercent != null).sort((a, b) => a.topPercent - b.topPercent)[0] || null;
-          const weakest = [...rows].filter(row => row.topPercent != null).sort((a, b) => b.topPercent - a.topPercent)[0] || null;
+          const summary = buildRankSummary(rows);
+          const weakest = summary?.weakestRows?.[0] || null;
 
           return (
             <div key={title} style={{ borderTop: gi > 0 ? `1px dashed ${C.lineSoft}` : `none`, paddingTop: gi > 0 ? 12 : 0, marginTop: gi > 0 ? 12 : 0 }}>
@@ -4608,10 +4668,11 @@ function RankScoreOverview({ rankScores = [] }) {
                 <div className={`mono`} style={{ fontSize:10, color:C.muted }}>{rows.length}회</div>
               </div>
               <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, 1fr)`, gap:6, marginBottom:10 }}>
-                <RankStat label={`평균 상위`} value={`${avgTop ?? `-`}%`} />
-                <RankStat label={`평균대비`} value={fmtSignedNumber(avgDiff)} tone={(avgDiff || 0) >= 0 ? C.good : C.accent} />
+                <RankStat label={`평균 상위`} value={`${summary?.avgTop ?? `-`}%`} />
+                <RankStat label={`평균대비`} value={fmtSignedNumber(summary?.avgDiff)} tone={(summary?.avgDiff || 0) >= 0 ? C.good : C.accent} />
                 <RankStat label={`보강 회차`} value={weakest ? `${weakest.round}회` : `-`} tone={C.accent} />
               </div>
+              <RankSummaryBox summary={summary} />
               <div style={{ height:80, display:`flex`, alignItems:`end`, gap:3, border:`1px solid ${C.lineSoft}`, background:C.bg, padding:`8px 7px`, marginBottom:8 }}>
                 {rows.map(row => {
                   const pct = Math.max(0, Math.min(100, row.topPercent ?? 100));
@@ -4636,9 +4697,9 @@ function RankScoreOverview({ rankScores = [] }) {
                   </tbody>
                 </table>
               </div>
-              {best && weakest && (
+              {summary?.bestRows?.[0] && weakest && (
                 <div style={{ fontSize:10, color:C.muted, marginTop:7 }}>
-                  최고 {best.round}회 {best.rank}등 · 보강 {weakest.round}회 {weakest.rank}등
+                  최고 {summary.bestRows[0].round}회 {summary.bestRows[0].rank}등 · 보강 {weakest.round}회 {weakest.rank}등
                 </div>
               )}
             </div>
