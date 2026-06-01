@@ -2344,26 +2344,29 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans, defaultOpen = true
 
             <div style={{ marginBottom:12 }}>
               <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink, marginBottom:7 }}>요일별 계획</div>
-              <div style={{ display:`grid`, gridTemplateColumns:`repeat(auto-fit, minmax(150px, 1fr))`, gap:6 }}>
-                {dates.map((d, i) => (
-                  <div key={d} style={{ background:C.bg, border:`1px solid ${d === today ? C.ink : C.lineSoft}`, padding:`7px 8px` }}>
-                    <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:6, marginBottom:5 }}>
-                      <span className={`kserif`} style={{ fontSize:11, color:d === today ? C.ink : C.muted, fontWeight:700 }}>{WEEKDAY_LABELS[i]}</span>
-                      <span className={`mono`} style={{ fontSize:9.5, color:C.muted }}>{fmtShortDate(d)}</span>
+              <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`4px 10px` }}>
+                {dates.map((d, i) => {
+                  const active = d === today;
+                  return (
+                  <div key={d} style={{ display:`grid`, gridTemplateColumns:`72px 1fr`, gap:10, alignItems:`start`, padding:`7px 0`, borderTop:i === 0 ? `none` : `1px dashed ${C.lineSoft}` }}>
+                    <div style={{ display:`flex`, gap:6, alignItems:`baseline`, paddingTop:5 }}>
+                      <span className={`kserif`} style={{ fontSize:11, color:active ? C.ink : C.muted, fontWeight:700 }}>{WEEKDAY_LABELS[i]}</span>
+                      <span className={`mono`} style={{ fontSize:10, color:C.muted }}>{fmtShortDate(d)}</span>
                     </div>
                     <textarea
                       value={dayPlans[d] || ``}
                       onChange={e => setDrafts(prev => ({ ...prev, _days: { ...getWeeklyDayPlans(prev), [d]: e.target.value } }))}
                       onBlur={() => commitDay(d, getWeeklyDayPlans(drafts)[d])}
                       placeholder={`계획`}
-                      rows={3}
+                      rows={(dayPlans[d] || ``).includes(`\n`) ? 2 : 1}
                       style={{
-                        width:`100%`, background:C.paper, border:`1px solid ${C.lineSoft}`,
+                        width:`100%`, background:C.paper, border:`1px solid ${active ? C.line : C.lineSoft}`,
                         padding:`6px 7px`, fontSize:11, outline:`none`, resize:`vertical`,
-                        fontFamily:`Noto Serif KR, serif`, lineHeight:1.45,
+                        fontFamily:`Noto Serif KR, serif`, lineHeight:1.45, minHeight:31,
                       }} />
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
