@@ -4248,6 +4248,43 @@ function rankLine(row) {
   return `${row.round}회 ${row.rank}등${row.totalStudents ? `/${row.totalStudents}명` : ``}`;
 }
 
+function emptyRankDraft() {
+  return { round:``, score:``, rank:``, totalStudents:``, averageScore:``, note:`` };
+}
+
+function rankDraftFromRow(row = {}) {
+  return {
+    round: row.round ?? ``,
+    score: row.score ?? ``,
+    rank: row.rank ?? ``,
+    totalStudents: row.totalStudents ?? ``,
+    averageScore: row.averageScore ?? ``,
+    note: row.note ?? ``,
+  };
+}
+
+function parseManualRankDraft(draft = {}) {
+  const round = rankRound(draft.round);
+  const score = rankNumber(draft.score);
+  const rank = rankNumber(draft.rank);
+  const totalStudents = rankNumber(draft.totalStudents);
+  const averageScore = rankNumber(draft.averageScore);
+  const note = cleanRankCell(draft.note || ``);
+
+  if (!round || score == null || rank == null) return null;
+
+  return {
+    round,
+    score,
+    rank,
+    totalStudents: totalStudents || null,
+    averageScore: averageScore == null ? null : averageScore,
+    topPercent: totalStudents ? roundRankMetric((rank / totalStudents) * 100) : null,
+    scoreMinusAverage: averageScore == null ? null : roundRankMetric(score - averageScore),
+    note: note || null,
+  };
+}
+
 function buildRankSummary(rows = []) {
   if (!rows.length) return null;
   const validScores = rows.filter(row => row.score != null);
@@ -4282,9 +4319,13 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
   const [subject, setSubject] = useState(`민사법`);
   const [type, setType] = useState(`사례형`);
   const [text, setText] = useState(``);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualDraft, setManualDraft] = useState(() => emptyRankDraft());
+  const [editingRankId, setEditingRankId] = useState(null);
 
   const parsed = useMemo(() => parseRankPasteText(text), [text]);
   const activeSeries = seriesTitle.trim() || `등수표`;
+  const manualPreview = useMemo(() => parseManualRankDraft(manualDraft), [manualDraft]);
   const savedRows = useMemo(() => (
     [...rankScores]
       .filter(s => (s.seriesTitle || `등수표`) === activeSeries && s.subject === subject && s.type === type)
@@ -4319,6 +4360,46 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
   function del(id) {
     if (!setRankScores) return;
     setRankScores(rankScores.filter(s => s.id !== id));
+  }
+
+  function updateManualDraft(field, value) {
+    setManualDraft(prev => ({ ...prev, [field]: value }));
+  }
+
+  function resetManualDraft() {
+    setManualDraft(emptyRankDraft());
+    setEditingRankId(null);
+  }
+
+  function startEdit(row) {
+    setManualOpen(true);
+    setEditingRankId(row.id);
+    setManualDraft(rankDraftFromRow(row));
+  }
+
+  function saveManualRow() {
+    if (!setRankScores) return;
+    const parsedDraft = parseManualRankDraft(manualDraft);
+    if (!parsedDraft) {
+      alert(`회차, 점수, 등수는 꼭 입력해 주세요.`);
+      return;
+    }
+
+    const old = editingRankId ? rankScores.find(s => s.id === editingRankId) : null;
+    const next = {
+      id: editingRankId || uid(),
+      date: old?.date || date,
+      seriesTitle: activeSeries,
+      subject,
+      type,
+      ...parsedDraft,
+      importedAt: new Date().toISOString(),
+    };
+
+    const baseRows = editingRankId ? rankScores.filter(s => s.id !== editingRankId) : rankScores;
+    setRankScores(upsertRankScores(baseRows, [next]));
+    resetManualDraft();
+    setManualOpen(false);
   }
 
   return (
@@ -4362,6 +4443,54 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
           </div>
         </div>
 
+        <div style={{ border:`1px solid ${C.lineSoft}`, background:C.bg, marginBottom:12 }}>
+          <button onClick={() => setManualOpen(v => !v)}
+            style={{ width:`100%`, background:`transparent`, border:`none`, padding:`9px 10px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, cursor:`pointer`, color:C.ink }}>
+            <span className={`kserif`} style={{ fontSize:11, fontWeight:700, letterSpacing:`0.08em` }}>
+              {editingRankId ? `수동 수정` : `수동 추가`}
+            </span>
+            <ChevronDown size={14} style={{ transform: manualOpen ? `rotate(180deg)` : `none`, transition:`transform .18s ease` }} />
+          </button>
+          {manualOpen && (
+            <div style={{ padding:`0 10px 10px` }}>
+              <div style={{ display:`grid`, gridTemplateColumns:`repeat(auto-fit, minmax(88px, 1fr))`, gap:6, marginBottom:8 }}>
+                {[
+                  [`round`, `회차`, `1회`],
+                  [`score`, `점수`, `18.5`],
+                  [`rank`, `등수`, `56`],
+                  [`totalStudents`, `인원`, `99`],
+                  [`averageScore`, `평균`, `19.6`],
+                ].map(([field, label, placeholder]) => (
+                  <label key={field} style={{ display:`block`, minWidth:0 }}>
+                    <span className={`kserif`} style={{ display:`block`, fontSize:9, color:C.muted, marginBottom:3, fontWeight:700 }}>{label}</span>
+                    <input value={manualDraft[field]} onChange={e => updateManualDraft(field, e.target.value)} placeholder={placeholder}
+                      style={{ width:`100%`, minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }} />
+                  </label>
+                ))}
+              </div>
+              <input value={manualDraft.note} onChange={e => updateManualDraft(`note`, e.target.value)} placeholder={`메모`}
+                style={{ width:`100%`, minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, marginBottom:8 }} />
+              <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, flexWrap:`wrap` }}>
+                <div className={`mono`} style={{ fontSize:10, color:C.muted }}>
+                  {manualPreview
+                    ? `상위 ${manualPreview.topPercent ?? `-`}% · 평균대비 ${fmtSignedNumber(manualPreview.scoreMinusAverage)}`
+                    : `회차·점수·등수를 입력하면 저장됩니다`}
+                </div>
+                <div style={{ display:`flex`, gap:6 }}>
+                  <button onClick={resetManualDraft}
+                    style={{ background:C.paper, color:C.muted, border:`1px solid ${C.line}`, padding:`6px 9px`, fontSize:10.5, cursor:`pointer` }}>
+                    초기화
+                  </button>
+                  <button onClick={saveManualRow}
+                    style={{ background:C.ink, color:`#fff`, border:`none`, padding:`6px 10px`, fontSize:10.5, cursor:`pointer`, fontWeight:700, display:`inline-flex`, alignItems:`center`, gap:5 }}>
+                    <Plus size={12} /> {editingRankId ? `수정 저장` : `추가`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {parsed.length > 0 && (
           <div style={{ border:`1px solid ${C.lineSoft}`, background:`rgba(255,255,255,0.28)`, marginBottom:12, overflowX:`auto` }}>
             <table style={{ width:`100%`, borderCollapse:`collapse`, fontSize:10.5, whiteSpace:`nowrap` }}>
@@ -4402,7 +4531,7 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
             <RankSummaryBox summary={savedSummary} />
             <div style={{ borderTop:`1px dashed ${C.lineSoft}` }}>
               {savedRows.map(row => (
-                <div key={row.id} style={{ display:`grid`, gridTemplateColumns:`44px 1fr auto`, alignItems:`center`, gap:8, padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11 }}>
+                <div key={row.id} style={{ display:`grid`, gridTemplateColumns:`44px 1fr auto auto`, alignItems:`center`, gap:8, padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:11 }}>
                   <div className={`mono`} style={{ color:C.muted }}>{row.round}회</div>
                   <div style={{ minWidth:0 }}>
                     <span className={`mono`} style={{ color:C.ink, fontWeight:700 }}>{row.score}점</span>
@@ -4410,7 +4539,11 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
                     {row.totalStudents && <span className={`mono`} style={{ color:C.muted, marginLeft:4 }}>/ {row.totalStudents}명</span>}
                     <span className={`mono`} style={{ color:C.muted, marginLeft:8 }}>{row.topPercent ?? `-`}%</span>
                     {row.averageScore != null && <span className={`mono`} style={{ color:C.muted, marginLeft:8 }}>평 {row.averageScore}</span>}
+                    {row.note && <span style={{ color:C.muted, marginLeft:8, fontSize:10 }}>{row.note}</span>}
                   </div>
+                  <button onClick={() => startEdit(row)} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, cursor:`pointer`, padding:`4px 7px`, color:C.muted, fontSize:10 }}>
+                    수정
+                  </button>
                   <button onClick={() => del(row.id)} style={{ background:`none`, border:`none`, cursor:`pointer`, padding:2, color:C.muted }}>
                     <X size={12} />
                   </button>
@@ -4471,7 +4604,7 @@ function RankSummaryBox({ summary }) {
 
 /* ============================================================ EXAMS (기출 회차 점수) ============================================================ */
 
-function ExamsView({ examScores, rankScores = [] }) {
+function ExamsView({ examScores, rankScores = [], setRankScores }) {
   const [filterSubject, setFilterSubject] = useState(`전체`);
 
   // matrix: subject x round
@@ -4606,7 +4739,7 @@ function ExamsView({ examScores, rankScores = [] }) {
         </>
       )}
 
-      <RankScoreOverview rankScores={rankScores} />
+      <RankScoreOverview rankScores={rankScores} setRankScores={setRankScores} />
 
       {/* History list */}
       <SectionTitle>전체 기록</SectionTitle>
@@ -4646,7 +4779,17 @@ function ExamsView({ examScores, rankScores = [] }) {
   );
 }
 
-function RankScoreOverview({ rankScores = [] }) {
+function RankScoreOverview({ rankScores = [], setRankScores }) {
+  const [openGroups, setOpenGroups] = useState({});
+  const [editor, setEditor] = useState({
+    open:false,
+    id:null,
+    seriesTitle:``,
+    subject:`민사법`,
+    type:`사례형`,
+    draft: emptyRankDraft(),
+  });
+  const editorPreview = useMemo(() => parseManualRankDraft(editor.draft), [editor.draft]);
   const latestRows = useMemo(() => {
     const map = new Map();
     rankScores.forEach(row => {
@@ -4673,53 +4816,225 @@ function RankScoreOverview({ rankScores = [] }) {
 
   if (latestRows.length === 0) return null;
 
+  const groupedEntries = Object.entries(grouped);
+  const openedCount = groupedEntries.filter(([title]) => openGroups[title]).length;
+
+  function setEditorDraft(field, value) {
+    setEditor(prev => ({ ...prev, draft: { ...prev.draft, [field]: value } }));
+  }
+
+  function openRankEditor(row, mode = `edit`) {
+    setEditor({
+      open:true,
+      id: mode === `edit` ? row.id : null,
+      seriesTitle: row.seriesTitle || `등수표`,
+      subject: row.subject || `민사법`,
+      type: row.type || `사례형`,
+      draft: mode === `edit` ? rankDraftFromRow(row) : emptyRankDraft(),
+    });
+  }
+
+  function closeRankEditor() {
+    setEditor(prev => ({ ...prev, open:false, id:null, draft: emptyRankDraft() }));
+  }
+
+  function saveRankEditor() {
+    if (!setRankScores) return;
+    const parsedDraft = parseManualRankDraft(editor.draft);
+    if (!parsedDraft) {
+      alert(`회차, 점수, 등수는 꼭 입력해 주세요.`);
+      return;
+    }
+
+    const old = editor.id ? rankScores.find(row => row.id === editor.id) : null;
+    const next = {
+      id: editor.id || uid(),
+      date: old?.date || todayISO(),
+      seriesTitle: editor.seriesTitle.trim() || `등수표`,
+      subject: editor.subject,
+      type: editor.type,
+      ...parsedDraft,
+      importedAt: new Date().toISOString(),
+    };
+    const baseRows = editor.id ? rankScores.filter(row => row.id !== editor.id) : rankScores;
+    setRankScores(upsertRankScores(baseRows, [next]));
+    closeRankEditor();
+  }
+
   return (
     <>
       <SectionTitle>사례형 등수 추적</SectionTitle>
-      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px`, marginBottom:18 }}>
-        {Object.entries(grouped).map(([title, rows], gi) => {
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 12px`, marginBottom:18 }}>
+        <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:8 }}>
+          <div style={{ fontSize:11, color:C.muted }}>
+            {groupedEntries.length}묶음 · {latestRows.length}회차
+          </div>
+          <div style={{ display:`flex`, gap:6, flexWrap:`wrap`, justifyContent:`flex-end` }}>
+            {setRankScores && (
+              <button onClick={() => openRankEditor(latestRows[0], `add`)}
+                style={{ background:C.ink, color:`#fff`, border:`none`, padding:`5px 8px`, fontSize:10.5, cursor:`pointer`, display:`inline-flex`, alignItems:`center`, gap:4, fontWeight:700 }}>
+                <Plus size={12} /> 새 기록
+              </button>
+            )}
+            <button onClick={() => {
+              const nextOpen = openedCount < groupedEntries.length;
+              const next = {};
+              groupedEntries.forEach(([title]) => { next[title] = nextOpen; });
+              setOpenGroups(next);
+            }}
+              style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:10.5, cursor:`pointer`, display:`inline-flex`, alignItems:`center`, gap:4 }}>
+              <ChevronDown size={12} style={{ transform: openedCount ? `rotate(180deg)` : `none` }} />
+              {openedCount < groupedEntries.length ? `전체 펼치기` : `전체 접기`}
+            </button>
+          </div>
+        </div>
+
+        {editor.open && (
+          <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`10px`, marginBottom:10 }}>
+            <div style={{ display:`grid`, gridTemplateColumns:`1.5fr 1fr 1fr`, gap:6, marginBottom:8 }}>
+              <input value={editor.seriesTitle} onChange={e => setEditor(prev => ({ ...prev, seriesTitle:e.target.value }))} placeholder={`묶음 이름`}
+                style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }} />
+              <select value={editor.subject} onChange={e => setEditor(prev => ({ ...prev, subject:e.target.value }))}
+                style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }}>
+                {Object.keys(SUBJECTS).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={editor.type} onChange={e => setEditor(prev => ({ ...prev, type:e.target.value }))}
+                style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }}>
+                {RANK_SCORE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div style={{ display:`grid`, gridTemplateColumns:`repeat(auto-fit, minmax(82px, 1fr))`, gap:6, marginBottom:8 }}>
+              {[
+                [`round`, `회차`, `1회`],
+                [`score`, `점수`, `18.5`],
+                [`rank`, `등수`, `56`],
+                [`totalStudents`, `인원`, `99`],
+                [`averageScore`, `평균`, `19.6`],
+              ].map(([field, label, placeholder]) => (
+                <label key={field} style={{ display:`block`, minWidth:0 }}>
+                  <span className={`kserif`} style={{ display:`block`, fontSize:9, color:C.muted, marginBottom:3, fontWeight:700 }}>{label}</span>
+                  <input value={editor.draft[field]} onChange={e => setEditorDraft(field, e.target.value)} placeholder={placeholder}
+                    style={{ width:`100%`, minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }} />
+                </label>
+              ))}
+            </div>
+            <input value={editor.draft.note} onChange={e => setEditorDraft(`note`, e.target.value)} placeholder={`메모`}
+              style={{ width:`100%`, minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, marginBottom:8 }} />
+            <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, flexWrap:`wrap` }}>
+              <div className={`mono`} style={{ fontSize:10, color:C.muted }}>
+                {editorPreview ? `상위 ${editorPreview.topPercent ?? `-`}% · 평균대비 ${fmtSignedNumber(editorPreview.scoreMinusAverage)}` : `회차·점수·등수를 입력하세요`}
+              </div>
+              <div style={{ display:`flex`, gap:6 }}>
+                <button onClick={closeRankEditor}
+                  style={{ background:C.paper, color:C.muted, border:`1px solid ${C.line}`, padding:`6px 9px`, fontSize:10.5, cursor:`pointer` }}>
+                  닫기
+                </button>
+                <button onClick={saveRankEditor}
+                  style={{ background:C.ink, color:`#fff`, border:`none`, padding:`6px 10px`, fontSize:10.5, cursor:`pointer`, fontWeight:700 }}>
+                  {editor.id ? `수정 저장` : `추가`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {groupedEntries.map(([title, rows], gi) => {
           const summary = buildRankSummary(rows);
           const weakest = summary?.weakestRows?.[0] || null;
+          const best = summary?.bestRows?.[0] || null;
+          const isOpen = !!openGroups[title];
+          const chartRows = rows.map(row => ({
+            ...row,
+            roundLabel: `${row.round}회`,
+          }));
+          const hasChart = chartRows.some(row => row.topPercent != null);
 
           return (
-            <div key={title} style={{ borderTop: gi > 0 ? `1px dashed ${C.lineSoft}` : `none`, paddingTop: gi > 0 ? 12 : 0, marginTop: gi > 0 ? 12 : 0 }}>
-              <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`baseline`, gap:8, marginBottom:8 }}>
-                <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>{title}</div>
-                <div className={`mono`} style={{ fontSize:10, color:C.muted }}>{rows.length}회</div>
-              </div>
-              <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, 1fr)`, gap:6, marginBottom:10 }}>
+            <div key={title} style={{ borderTop: gi > 0 ? `1px dashed ${C.lineSoft}` : `none`, paddingTop: gi > 0 ? 10 : 0, marginTop: gi > 0 ? 10 : 0 }}>
+              <button onClick={() => setOpenGroups(prev => ({ ...prev, [title]: !isOpen }))}
+                style={{ width:`100%`, background:`transparent`, border:`none`, padding:`0 0 8px`, cursor:`pointer`, display:`grid`, gridTemplateColumns:`1fr auto`, alignItems:`center`, gap:8, color:C.ink, textAlign:`left` }}>
+                <div style={{ minWidth:0 }}>
+                  <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{title}</div>
+                  <div className={`mono`} style={{ fontSize:10, color:C.muted, marginTop:3 }}>
+                    {rows.length}회 · 평균 상위 {summary?.avgTop ?? `-`}% · 평균대비 {fmtSignedNumber(summary?.avgDiff)}
+                  </div>
+                </div>
+                <ChevronDown size={15} style={{ color:C.muted, transform: isOpen ? `rotate(180deg)` : `none`, transition:`transform .18s ease` }} />
+              </button>
+
+              <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, 1fr)`, gap:6, marginBottom:isOpen ? 10 : 0 }}>
                 <RankStat label={`평균 상위`} value={`${summary?.avgTop ?? `-`}%`} />
-                <RankStat label={`평균대비`} value={fmtSignedNumber(summary?.avgDiff)} tone={(summary?.avgDiff || 0) >= 0 ? C.good : C.accent} />
+                <RankStat label={`최고 회차`} value={best ? `${best.round}회` : `-`} tone={C.good} />
                 <RankStat label={`보강 회차`} value={weakest ? `${weakest.round}회` : `-`} tone={C.accent} />
               </div>
-              <RankSummaryBox summary={summary} />
-              <div style={{ height:80, display:`flex`, alignItems:`end`, gap:3, border:`1px solid ${C.lineSoft}`, background:C.bg, padding:`8px 7px`, marginBottom:8 }}>
-                {rows.map(row => {
-                  const pct = Math.max(0, Math.min(100, row.topPercent ?? 100));
-                  return (
-                    <div key={row.id} title={`${row.round}회 ${row.rank}등`} style={{ flex:1, minWidth:10, height:`${Math.max(8, 100 - pct)}%`, background: pct <= 35 ? C.good : pct >= 70 ? C.accent : C.warn, opacity:0.85 }} />
-                  );
-                })}
-              </div>
-              <div style={{ overflowX:`auto` }}>
-                <table style={{ width:`100%`, borderCollapse:`collapse`, fontSize:10.5, whiteSpace:`nowrap` }}>
-                  <tbody>
-                    {rows.map(row => (
-                      <tr key={row.id}>
-                        <td style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.muted }}>{row.round}회</td>
-                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, fontWeight:700 }}>{row.score}점</td>
-                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.accent }}>{row.rank}등</td>
-                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.muted }}>{row.totalStudents ? `/ ${row.totalStudents}명` : ``}</td>
-                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, textAlign:`right`, color:C.muted }}>상위 {row.topPercent ?? `-`}%</td>
-                        <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, textAlign:`right`, color:(row.scoreMinusAverage || 0) >= 0 ? C.good : C.accent }}>{fmtSignedNumber(row.scoreMinusAverage)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {summary?.bestRows?.[0] && weakest && (
-                <div style={{ fontSize:10, color:C.muted, marginTop:7 }}>
-                  최고 {summary.bestRows[0].round}회 {summary.bestRows[0].rank}등 · 보강 {weakest.round}회 {weakest.rank}등
+
+              {isOpen && (
+                <div>
+                  {setRankScores && (
+                    <div style={{ display:`flex`, justifyContent:`flex-end`, marginBottom:8 }}>
+                      <button onClick={() => openRankEditor(rows[0], `add`)}
+                        style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, padding:`5px 8px`, fontSize:10.5, cursor:`pointer`, display:`inline-flex`, alignItems:`center`, gap:4 }}>
+                        <Plus size={12} /> 이 묶음 추가
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ border:`1px solid ${C.lineSoft}`, background:C.bg, padding:`8px 8px 4px`, marginBottom:8 }}>
+                    {hasChart ? (
+                      <ResponsiveContainer width={`100%`} height={180}>
+                        <LineChart data={chartRows} margin={{ top:8, right:16, bottom:0, left:-8 }}>
+                          <CartesianGrid stroke={C.lineSoft} strokeDasharray={`3 3`} vertical={false} />
+                          <XAxis dataKey={`roundLabel`} tick={{ fontSize:10, fill:C.muted }} interval={0} />
+                          <YAxis domain={[0, 100]} reversed ticks={[0, 20, 40, 60, 80, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize:10, fill:C.muted }} />
+                          <Tooltip
+                            contentStyle={{ background:C.paper, border:`1px solid ${C.line}`, fontSize:11 }}
+                            labelStyle={{ color:C.ink }}
+                            formatter={(value) => [`${value}%`, `상위비율`]}
+                          />
+                          <Line type={`monotone`} dataKey={`topPercent`} name={`상위비율`} stroke={C.accent} strokeWidth={2.5} dot={{ r:4, strokeWidth:2, fill:C.paper }} activeDot={{ r:5 }} connectNulls />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div style={{ height:72, display:`flex`, alignItems:`center`, justifyContent:`center`, fontSize:11, color:C.muted }}>
+                        상위비율 데이터 없음
+                      </div>
+                    )}
+                    <div style={{ display:`flex`, gap:10, justifyContent:`center`, flexWrap:`wrap`, fontSize:10, color:C.muted, margin:`2px 0 4px` }}>
+                      {best && <span>최고 {best.round}회 {best.rank}등</span>}
+                      {weakest && <span>보강 {weakest.round}회 {weakest.rank}등</span>}
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX:`auto`, maxHeight:220, border:`1px solid ${C.lineSoft}` }}>
+                    <table style={{ width:`100%`, borderCollapse:`collapse`, fontSize:10.5, whiteSpace:`nowrap`, background:C.paper }}>
+                      <thead>
+                        <tr>
+                          {[`회차`, `점수`, `등수`, `인원`, `상위`, `평균대비`, ...(setRankScores ? [`관리`] : [])].map(h => (
+                            <th key={h} style={{ position:`sticky`, top:0, background:C.paper, padding:`6px`, borderBottom:`1px solid ${C.lineSoft}`, textAlign:h === `회차` ? `left` : `right`, color:C.muted, fontWeight:600 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(row => (
+                          <tr key={row.id}>
+                            <td style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.muted }}>{row.round}회</td>
+                            <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, fontWeight:700, textAlign:`right` }}>{row.score}점</td>
+                            <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.accent, textAlign:`right` }}>{row.rank}등</td>
+                            <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, color:C.muted, textAlign:`right` }}>{row.totalStudents ? `${row.totalStudents}명` : `-`}</td>
+                            <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, textAlign:`right`, color:C.muted }}>{row.topPercent ?? `-`}%</td>
+                            <td className={`mono`} style={{ padding:`5px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, textAlign:`right`, color:(row.scoreMinusAverage || 0) >= 0 ? C.good : C.accent }}>{fmtSignedNumber(row.scoreMinusAverage)}</td>
+                            {setRankScores && (
+                              <td style={{ padding:`4px 6px`, borderBottom:`1px dashed ${C.lineSoft}`, textAlign:`right` }}>
+                                <button onClick={() => openRankEditor(row, `edit`)}
+                                  style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, padding:`3px 7px`, fontSize:10, cursor:`pointer` }}>
+                                  수정
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
