@@ -4089,7 +4089,7 @@ function rankNumber(value) {
 
 function rankRound(value) {
   const raw = cleanRankCell(value);
-  const match = raw.match(/(\d{1,3})\s*회?|^(\d{1,3})$/);
+  const match = raw.match(/^\s*(\d{1,3})\s*(?:회(?:차)?)?\s*$/) || raw.match(/^\s*(\d{1,3})\s*회(?:차)?(?:\s|$)/);
   return match ? Number(match[1] || match[2]) : null;
 }
 
@@ -4126,8 +4126,15 @@ function splitRankLine(line) {
   if (trimmed.includes(`,`)) {
     return trimmed.split(`,`).map(cleanRankCell).filter(Boolean);
   }
+  const naturalWithAverage = trimmed.match(/^\s*(\d{1,3})\s*회(?:차)?[^\d+-]+([+-]?\d+(?:\.\d+)?)\s*점?[^\d+-]+(\d{1,3})\s*등\s*(?:\/\s*)?(\d{1,4})?\s*명?[\s\S]*?(?:평균|avg|average)\s*[:：]?\s*([+-]?\d+(?:\.\d+)?)/i);
+  if (naturalWithAverage) return naturalWithAverage.slice(1);
+  const naturalWithTotal = trimmed.match(/^\s*(\d{1,3})\s*회(?:차)?[^\d+-]+([+-]?\d+(?:\.\d+)?)\s*점?[^\d+-]+(\d{1,3})\s*등\s*(?:\/\s*)?(\d{1,4})\s*명?/);
+  if (naturalWithTotal) return naturalWithTotal.slice(1);
   const compact = trimmed.match(/(\d{1,3})\s*회[^\d+-]+([+-]?\d+(?:\.\d+)?)\s*점?[^\d+-]+(\d{1,3})\s*등[^\d+-]+(\d{1,3})\s*명?[^\d+-]+([+-]?\d+(?:\.\d+)?)%?[^\d+-]+([+-]?\d+(?:\.\d+)?)[^\d+-]+([+-]?\d+(?:\.\d+)?)/);
   if (compact) return compact.slice(1);
+  const numericRow = trimmed.match(/^\s*\d{1,3}\s*(?:회(?:차)?)?(?:\s|$)/);
+  const numbers = trimmed.match(/[+-]?\d+(?:\.\d+)?/g);
+  if (numericRow && numbers?.length >= 3) return numbers.slice(0, Math.min(numbers.length, 7));
   return trimmed.split(/\s{2,}/).map(cleanRankCell).filter(Boolean);
 }
 
@@ -4140,10 +4147,23 @@ function parseRankCells(cells, headerMap) {
   const score = headerMap ? rankNumber(get(`score`)) : rankNumber(cells[1]);
   const rank = headerMap ? rankNumber(get(`rank`)) : rankNumber(cells[2]);
   const totalStudents = headerMap ? rankNumber(get(`totalStudents`)) : rankNumber(cells[3]);
-  const topRaw = headerMap ? rankNumber(get(`topPercent`)) : rankNumber(cells[4]);
-  const averageScore = headerMap ? rankNumber(get(`averageScore`)) : rankNumber(cells[5]);
-  const diffRaw = headerMap ? rankNumber(get(`scoreMinusAverage`)) : rankNumber(cells[6]);
+  let topRaw = headerMap ? rankNumber(get(`topPercent`)) : null;
+  let averageScore = headerMap ? rankNumber(get(`averageScore`)) : null;
+  let diffRaw = headerMap ? rankNumber(get(`scoreMinusAverage`)) : null;
   const note = headerMap ? cleanRankCell(get(`note`) || ``) : ``;
+
+  if (!headerMap) {
+    if (cells.length >= 7) {
+      topRaw = rankNumber(cells[4]);
+      averageScore = rankNumber(cells[5]);
+      diffRaw = rankNumber(cells[6]);
+    } else if (cells.length === 6) {
+      topRaw = rankNumber(cells[4]);
+      averageScore = rankNumber(cells[5]);
+    } else if (cells.length === 5) {
+      averageScore = rankNumber(cells[4]);
+    }
+  }
 
   if (!round || score == null || rank == null) return null;
   const topPercent = topRaw != null ? roundRankMetric(topRaw) : (
@@ -4319,14 +4339,14 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
         </div>
 
         <textarea value={text} onChange={e => setText(e.target.value)} rows={7}
-          placeholder={`등수표/보고서/CSV를 그대로 붙여넣으세요.\n\n예:\n| 1회 | 12.0 | 79등 | 102명 | 77.5% | 19.2 | -7.2 |\n\n또는:\nround,score,rank,total_students,top_percent,average_score,score_minus_average`}
+          placeholder={`등수표를 그대로 붙여넣으세요. 상위비율과 평균대비는 자동 계산됩니다.\n\n예:\n1회 12점 79등/102명 평균 19.2\n2회 21점 20등/95명 평균 15.9\n\n또는:\n회차,점수,등수,인원,평균`}
           style={{ width:`100%`, resize:`vertical`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`9px 10px`, fontSize:11, outline:`none`, lineHeight:1.55, fontFamily:`JetBrains Mono, monospace`, marginBottom:8 }} />
 
         <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom: parsed.length ? 10 : 0 }}>
           <div style={{ fontSize:10.5, color:C.muted }}>
             {text.trim() ? (
               parsed.length ? `${parsed.length}개 회차 인식됨` : `아직 인식된 행이 없습니다`
-            ) : `CSV, 마크다운 표, 회차별 텍스트를 지원합니다`}
+            ) : `상위비율=등수÷인원, 평균대비=내 점수-평균으로 자동 계산`}
           </div>
           <div style={{ display:`flex`, gap:6 }}>
             {text && (
