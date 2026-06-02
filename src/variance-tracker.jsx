@@ -487,6 +487,7 @@ async function exportXLSX(state, filename) {
   const {
     settings = {}, logs = {}, tracks = {}, todos = {}, examScores = [], rankScores = [],
     materials = [], reviews = [], books = [], schedules = [], moods = {},
+    checklists = [], courses = [], weeklyPlans = {}, routines = [], routineLog = {},
   } = state;
 
   // [1] Summary
@@ -624,7 +625,7 @@ async function exportXLSX(state, filename) {
 
   // [11] Checklists
   const clRows = [[`카테고리`, `과목`, `마지막 회독일`, `★`, `항목`]];
-  (state.checklists || []).forEach(c => {
+  checklists.forEach(c => {
     if (c.items.length === 0) {
       clRows.push([c.name, c.subject, c.lastReviewed || `미회독`, ``, `(빈 카테고리)`]);
     } else {
@@ -634,6 +635,92 @@ async function exportXLSX(state, filename) {
     }
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clRows), `체크리스트`);
+
+  // [12] Course summary
+  const courseSummaryRows = [[`강의명`, `과목`, `완강기준(%)`, `총강`, `완강`, `완강률(%)`, `복습완료`, `복습률(%)`, `총분량(분)`, `완강분량(분)`, `시작일`, `수강목표일`, `복습목표일`, `생성일`, `마지막 갱신`]];
+  courses.forEach(c => {
+    const lectures = c.lectures || [];
+    const total = lectures.length;
+    const completed = lectures.filter(l => l.completed).length;
+    const reviewed = lectures.filter(l => l.reviewed).length;
+    const totalMin = lectures.reduce((sum, l) => sum + (l.durationMin || 0), 0);
+    const completedMin = lectures.filter(l => l.completed).reduce((sum, l) => sum + (l.durationMin || 0), 0);
+    courseSummaryRows.push([
+      c.name || ``,
+      c.subject || ``,
+      c.completeThreshold || ``,
+      total,
+      completed,
+      total ? Math.round((completed / total) * 100) : 0,
+      reviewed,
+      total ? Math.round((reviewed / total) * 100) : 0,
+      totalMin,
+      completedMin,
+      c.startDate || ``,
+      c.targetEndDate || ``,
+      c.targetReviewDate || ``,
+      c.createdAt || ``,
+      c.lastUpdated || ``,
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(courseSummaryRows), `강의요약`);
+
+  // [13] Course lectures
+  const courseLectureRows = [[`강의명`, `과목`, `강`, `제목`, `분량(분)`, `진도(%)`, `완강`, `복습완료`, `마지막복습`, `다음복습`, `복습시간(분)`, `태그`, `메모`]];
+  courses.forEach(c => {
+    [...(c.lectures || [])].sort((a, b) => (a.num || 0) - (b.num || 0)).forEach(l => {
+      courseLectureRows.push([
+        c.name || ``,
+        c.subject || ``,
+        l.num || ``,
+        l.title || ``,
+        l.durationMin || 0,
+        l.progress || 0,
+        l.completed ? `✓` : ``,
+        l.reviewed ? `✓` : ``,
+        l.lastReviewed || ``,
+        l.nextReviewDate || ``,
+        l.reviewDurationMin || ``,
+        getLectureTagLabels(l).join(`, `),
+        l.note || ``,
+      ]);
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(courseLectureRows), `강의목록`);
+
+  // [14] Weekly plans
+  const weeklyRows = [[`주 시작`, `주 종료`, `구분`, `날짜`, `요일/과목`, `계획`]];
+  Object.keys(weeklyPlans).sort().forEach(weekStart => {
+    const plan = weeklyPlans[weekStart] || {};
+    const dayPlans = getWeeklyDayPlans(plan);
+    weekDays(weekStart).forEach((date, idx) => {
+      if ((dayPlans[date] || ``).trim()) {
+        weeklyRows.push([weekStart, addDays(weekStart, 6), `요일`, date, WEEKDAY_LABELS[idx], dayPlans[date]]);
+      }
+    });
+    Object.keys(SUBJECTS).forEach(sub => {
+      if ((plan[sub] || ``).trim()) {
+        weeklyRows.push([weekStart, addDays(weekStart, 6), `과목`, ``, sub, plan[sub]]);
+      }
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(weeklyRows), `주간계획`);
+
+  // [15] Routines
+  const routineRows = [[`날짜`, `루틴`, `아이콘`, `완료`, `순서`]];
+  const sortedRoutines = [...routines].sort((a, b) => (a.order || 0) - (b.order || 0));
+  const routineNameMap = new Map(sortedRoutines.map(r => [r.id, r]));
+  Object.keys(routineLog).sort().forEach(date => {
+    const day = routineLog[date] || {};
+    Object.entries(day).forEach(([routineId, done]) => {
+      const routine = routineNameMap.get(routineId) || {};
+      routineRows.push([date, routine.name || routineId, routine.icon || ``, done ? `✓` : ``, routine.order || ``]);
+    });
+  });
+  if (routineRows.length === 1) {
+    sortedRoutines.forEach(r => routineRows.push([``, r.name, r.icon || ``, ``, r.order || ``]));
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(routineRows), `루틴`);
 
   // Column width auto-adjust
   wb.SheetNames.forEach(name => {
@@ -738,6 +825,71 @@ function parseCourseText(text) {
   }
   
   return lectures.sort((a, b) => a.num - b.num);
+}
+
+function compactLectureNums(nums = []) {
+  const sorted = [...new Set(nums)].sort((a, b) => a - b);
+  const chunks = [];
+  let start = null;
+  let prev = null;
+  sorted.forEach(n => {
+    if (start == null) {
+      start = n;
+      prev = n;
+      return;
+    }
+    if (n === prev + 1) {
+      prev = n;
+      return;
+    }
+    chunks.push(start === prev ? `${start}` : `${start}-${prev}`);
+    start = n;
+    prev = n;
+  });
+  if (start != null) chunks.push(start === prev ? `${start}` : `${start}-${prev}`);
+  return chunks.join(`, `);
+}
+
+function parseLectureRangeText(text, lectures = []) {
+  const allNums = new Set((lectures || []).map(l => l.num));
+  const raw = String(text || ``).trim();
+  if (!raw) return [];
+  if (/^(전체|all)$/i.test(raw)) return [...allNums].sort((a, b) => a - b);
+
+  const nums = new Set();
+  raw.split(/[,\s]+/).forEach(part => {
+    const token = part.trim();
+    if (!token) return;
+    const range = token.match(/^(\d+)\s*(?:-|~|–|—)\s*(\d+)$/);
+    if (range) {
+      const a = Number(range[1]);
+      const b = Number(range[2]);
+      const start = Math.min(a, b);
+      const end = Math.max(a, b);
+      for (let n = start; n <= end; n++) {
+        if (allNums.has(n)) nums.add(n);
+      }
+      return;
+    }
+    const single = Number(token.replace(/[^\d]/g, ``));
+    if (single && allNums.has(single)) nums.add(single);
+  });
+  return [...nums].sort((a, b) => a - b);
+}
+
+function nextLectureTagPatch(lecture, tagKey, today) {
+  const current = lecture?.tags || [];
+  const adding = !current.includes(tagKey);
+  const nextTags = adding ? [...current, tagKey] : current.filter(t => t !== tagKey);
+  const patch = { tags: nextTags };
+  if (tagKey === `hard`) {
+    patch.hardReviewCount = adding ? 0 : 0;
+    patch.nextReviewDate = adding ? addDays(today, 1) : (nextTags.includes(`again`) ? today : null);
+  }
+  if (tagKey === `again`) {
+    patch.nextReviewDate = adding ? today : (nextTags.includes(`hard`) ? (lecture?.nextReviewDate || addDays(today, 1)) : null);
+  }
+  return patch;
 }
 /* ============================================================ 카카오톡 복사용 일간계획 텍스트 빌더 ============================================================ */
 function buildDailyPlanText({ date, log, tracks, todos, mood }) {
@@ -878,6 +1030,19 @@ function parseWeeklyDayText(text, weekStart) {
   });
 
   return days;
+}
+
+function buildWeeklyPlanQueueItems(text = ``, date = todayISO()) {
+  return String(text || ``)
+    .split(/\r?\n/)
+    .flatMap(line => line.split(/\s+\/\s+/))
+    .map(line => line.replace(/^\s*[-*•□✓]\s*/, ``).trim())
+    .filter(Boolean)
+    .map((title, idx) => ({
+      id: `weekly-plan-${date}-${idx}`,
+      title,
+      date,
+    }));
 }
 
 function monthGrid(year, month0) {
@@ -1774,6 +1939,7 @@ VITE_FIREBASE_APP_ID`}</pre>
                 await exportXLSX({
                   settings, logs, tracks, todos, examScores, rankScores,
                   materials, reviews, books, schedules, moods, checklists,
+                  courses, weeklyPlans, routines, routineLog,
                 }, `변시기록_${today.replaceAll( `-`, ``)}.xlsx`);
               } catch (e) {
                 console.error(e);
@@ -2451,13 +2617,13 @@ function HomeAction({ icon: Icon, label, value, sub, onClick, color = C.accent }
   );
 }
 
-function HomeWorkHeader({ dday, todayMinutes, tracksDone, courseQueueSummary, dueReviews, todosOpen, overdueTotal, onGoTo }) {
-  const totalWork = courseQueueSummary.watch + courseQueueSummary.review + dueReviews.length + todosOpen;
+function HomeWorkHeader({ dday, todayMinutes, tracksDone, courseQueueSummary, dueReviews, todosOpen, planCount = 0, overdueTotal, onGoTo }) {
+  const totalWork = courseQueueSummary.watch + courseQueueSummary.review + dueReviews.length + todosOpen + planCount;
   const tiles = [
     { label:`수강`, value:courseQueueSummary.watch, sub:`강의`, color:C.book, view:`courses` },
     { label:`복습`, value:courseQueueSummary.review, sub:`강의`, color:C.accent, view:`courses` },
     { label:`회독`, value:dueReviews.length, sub:`주제`, color:C.good, view:`review` },
-    { label:`기록`, value:fmtMin(todayMinutes), sub:`트랙 ${tracksDone}/5`, color:C.ink, view:`log` },
+    { label:`기록`, value:fmtMin(todayMinutes), sub:`계획 ${planCount} · 트랙 ${tracksDone}/5`, color:C.ink, view:`log` },
     { label:`밀림`, value:overdueTotal, sub:`우선`, color:overdueTotal > 0 ? C.accent : C.muted, view: overdueTotal > 0 ? `review` : `calendar` },
   ];
 
@@ -2587,7 +2753,7 @@ function HomeCoursePaceStrip({ summary, onGoTo }) {
   );
 }
 
-function HomeMinimumMode({ courseItems, reviews, todosOpen, staleChecklists, onGoTo, onCourseDone, onReviewDone }) {
+function HomeMinimumMode({ courseItems, reviews, planItems = [], todosOpen, staleChecklists, onGoTo, onCourseDone, onReviewDone }) {
   const picks = [];
   const pushPick = (pick) => {
     if (picks.length < 3 && pick) picks.push(pick);
@@ -2612,6 +2778,15 @@ function HomeMinimumMode({ courseItems, reviews, todosOpen, staleChecklists, onG
     tone:SUBJECTS[reviews[0].subject]?.color || C.good,
     actionLabel:`완료`,
     onAction:() => onReviewDone(reviews[0].id),
+  });
+  pushPick(planItems[0] && {
+    key:`plan-${planItems[0].id}`,
+    label:`계획`,
+    title:planItems[0].title,
+    meta:`주간계획에서 가져옴`,
+    tone:C.ink,
+    actionLabel:`기록`,
+    onAction:() => onGoTo(`log`),
   });
   pushPick(courseWatch && {
     key:`course-watch-${courseWatch.course.id}-${courseWatch.lecture.num}`,
@@ -2768,12 +2943,14 @@ function HomeChecklistShelf({ staleChecklists = [], today, onGoTo }) {
   );
 }
 
-function HomeTodayPanel({ today, courseItems, reviews, todosOpen, onGoTo, onCourseDone, onReviewDone }) {
+function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen, onGoTo, onCourseDone, onReviewDone }) {
   const visibleCourses = courseItems.slice(0, 4);
   const visibleReviews = reviews.slice(0, 3);
-  const empty = visibleCourses.length === 0 && visibleReviews.length === 0 && todosOpen === 0;
+  const visiblePlans = planItems.slice(0, 4);
+  const empty = visibleCourses.length === 0 && visibleReviews.length === 0 && visiblePlans.length === 0 && todosOpen === 0;
   const hiddenCourseCount = Math.max(0, courseItems.length - visibleCourses.length);
-  const hiddenCount = hiddenCourseCount + Math.max(0, reviews.length - visibleReviews.length);
+  const hiddenPlanCount = Math.max(0, planItems.length - visiblePlans.length);
+  const hiddenCount = hiddenCourseCount + hiddenPlanCount + Math.max(0, reviews.length - visibleReviews.length);
 
   return (
     <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`13px 14px`, marginBottom:18 }}>
@@ -2781,10 +2958,13 @@ function HomeTodayPanel({ today, courseItems, reviews, todosOpen, onGoTo, onCour
         <div>
           <div className={`kserif`} style={{ fontSize:12, fontWeight:600, color:C.ink }}>오늘 처리</div>
           <div className={`mono`} style={{ fontSize:9, color:C.muted, marginTop:3 }}>
-            강의 {courseItems.length} · 회독 {reviews.length} · 일정 {todosOpen}
+            계획 {planItems.length} · 강의 {courseItems.length} · 회독 {reviews.length} · 일정 {todosOpen}
           </div>
         </div>
         <div style={{ display:`flex`, gap:5, flexShrink:0 }}>
+          <button onClick={() => onGoTo(`log`)} className={`tap`} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, fontSize:10, cursor:`pointer`, padding:`5px 7px` }}>
+            계획
+          </button>
           <button onClick={() => onGoTo(`courses`)} className={`tap`} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, fontSize:10, cursor:`pointer`, padding:`5px 7px` }}>
             강의
           </button>
@@ -2798,6 +2978,20 @@ function HomeTodayPanel({ today, courseItems, reviews, todosOpen, onGoTo, onCour
         <div style={{ fontSize:11, color:C.muted, padding:`8px 0` }}>오늘 바로 처리할 항목이 없습니다.</div>
       ) : (
         <div style={{ display:`flex`, flexDirection:`column`, gap:7 }}>
+          {visiblePlans.map(item => (
+            <div key={item.id} style={{ display:`flex`, alignItems:`center`, gap:7, borderBottom:`1px dashed ${C.lineSoft}`, paddingBottom:7, minHeight:42 }}>
+              <span className={`kserif`} style={{ color:C.ink, fontSize:10, fontWeight:700, minWidth:28 }}>계획</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ color:C.ink, fontSize:11, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.title}</div>
+                <div style={{ color:C.muted, fontSize:9 }}>주간계획 · {fmtShortDate(today)}</div>
+              </div>
+              <button onClick={() => onGoTo(`log`)} className={`tap`}
+                style={{ background:C.bg, color:C.ink, border:`1px solid ${C.line}`, padding:`5px 8px`, minWidth:42, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
+                기록
+              </button>
+            </div>
+          ))}
+
           {visibleCourses.map(item => {
             const subColor = SUBJECTS[item.course.subject]?.color || C.muted;
             const tags = getLectureTagLabels(item.lecture);
@@ -2834,7 +3028,7 @@ function HomeTodayPanel({ today, courseItems, reviews, todosOpen, onGoTo, onCour
           ))}
 
           {hiddenCount > 0 && (
-            <button onClick={() => onGoTo(hiddenCourseCount > 0 ? `courses` : `review`)} className={`tap`}
+            <button onClick={() => onGoTo(hiddenPlanCount > 0 ? `log` : hiddenCourseCount > 0 ? `courses` : `review`)} className={`tap`}
               style={{ background:C.ink, border:`none`, color:`#fff`, padding:`7px 8px`, fontSize:10, cursor:`pointer`, textAlign:`center` }}>
               남은 항목 {hiddenCount}개 더 보기
             </button>
@@ -2869,6 +3063,11 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   const upcomingMock = useMemo(() => nextMockExam(today, settings), [today, settings]);
 
   const weekStart = weekStartOf(today);
+  const todayWeeklyPlanItems = useMemo(() => {
+    const plan = weeklyPlans[weekStart] || {};
+    const dayText = getWeeklyDayPlans(plan)[today] || ``;
+    return buildWeeklyPlanQueueItems(dayText, today);
+  }, [weeklyPlans, weekStart, today]);
   const weekSubjectMin = useMemo(() => {
     const out = {};
     Object.keys(SUBJECTS).forEach(sub => { out[sub] = 0; });
@@ -2977,6 +3176,7 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         courseQueueSummary={courseQueueSummary}
         dueReviews={dueReviews}
         todosOpen={todayTodosOpen}
+        planCount={todayWeeklyPlanItems.length}
         overdueTotal={overdueTotal}
         onGoTo={onGoTo}
       />
@@ -2984,6 +3184,7 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
       <HomeMinimumMode
         courseItems={courseQueueItems}
         reviews={dueReviews}
+        planItems={todayWeeklyPlanItems}
         todosOpen={todayTodosOpen}
         staleChecklists={staleChecklists}
         onGoTo={onGoTo}
@@ -2995,6 +3196,7 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         today={today}
         courseItems={courseQueueItems}
         reviews={dueReviews}
+        planItems={todayWeeklyPlanItems}
         todosOpen={todayTodosOpen}
         onGoTo={onGoTo}
         onCourseDone={completeHomeCourseItem}
@@ -6249,6 +6451,16 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
       setReviews(prev => prev.map(r => r.sourceKey === sourceKey ? advanceReviewCycle(r, today) : r));
     }
   }
+
+  function advanceCourseReviewTopics(id, lecNums = []) {
+    if (!setReviews || lecNums.length === 0) return;
+    const numSet = new Set(lecNums);
+    setReviews(prev => prev.map(r => (
+      r.sourceType === `courseLecture` && r.courseId === id && numSet.has(r.lectureNum)
+        ? advanceReviewCycle(r, today)
+        : r
+    )));
+  }
   
   // 개별 강의 복습 토글 기능
   function toggleReview(id, lecNum) {
@@ -6307,7 +6519,7 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
         <div style={{ textAlign:`center`, padding:30, color:C.muted, fontSize:12, background:C.paper, border:`1px dashed ${C.line}` }}>{courses.length === 0 ? `강의를 추가해 보세요` : `이 과목에 등록된 강의가 없습니다.`}</div>
       ) : (
         <div style={{ display:`flex`, flexDirection:`column`, gap:10 }}>
-          {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs) => updateCourse(c.id, lecs)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onLectureMetaChange={(lecture) => syncLectureReviewTopic(c, lecture)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} />))}
+          {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs) => updateCourse(c.id, lecs)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onLectureMetaChange={(lecture) => syncLectureReviewTopic(c, lecture)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} onBulkReviewAdvance={(lecNums) => advanceCourseReviewTopics(c.id, lecNums)} />))}
         </div>
       )}
     </div>
@@ -6522,13 +6734,15 @@ function AddCourseForm({ onAdd, onCancel }) {
   );
 }
 
-function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete, onLogReviewTime, onLectureMetaChange, onToggleReview }) {
+function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete, onLogReviewTime, onLectureMetaChange, onToggleReview, onBulkReviewAdvance }) {
   const [open, setOpen] = useState(false); 
   const [updateMode, setUpdateMode] = useState(false); 
   const [manageOpen, setManageOpen] = useState(false);
   const [text, setText] = useState(``);
   const [memoOpenNum, setMemoOpenNum] = useState(null);
   const [updateExcludedNums, setUpdateExcludedNums] = useState([]);
+  const [bulkRange, setBulkRange] = useState(``);
+  const [bulkTag, setBulkTag] = useState(COURSE_TAGS[0]?.key || `hard`);
   
   // --- 👇 추가 및 개선된 타이머 로직 ---
   const [activeTimerLec, setActiveTimerLec] = useState(null);
@@ -6612,6 +6826,9 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
     .filter(l => l.completed && !existingByNum.get(l.num)?.completed)
     .reduce((s, l) => s + l.durationMin, 0);
   const canUpdateList = parsedUpdate.length > 0;
+  const bulkNums = useMemo(() => parseLectureRangeText(bulkRange, course.lectures), [bulkRange, course.lectures]);
+  const bulkNumSet = useMemo(() => new Set(bulkNums), [bulkNums]);
+  const bulkSummary = bulkNums.length ? `${bulkNums.length}강 선택` : `범위를 입력하세요`;
 
   function cancelUpdateList() {
     setUpdateMode(false);
@@ -6641,6 +6858,64 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
     if (onLectureMetaChange) onLectureMetaChange({ ...lecture, tags: [], note: `` });
   }
 
+  function setBulkPreset(kind) {
+    let nums = [];
+    if (kind === `all`) nums = course.lectures.map(l => l.num);
+    if (kind === `watch`) nums = course.lectures.filter(l => !l.completed).map(l => l.num);
+    if (kind === `review`) nums = course.lectures.filter(l => l.completed && !l.reviewed).map(l => l.num);
+    if (kind === `tagged`) nums = course.lectures.filter(l => (l.tags || []).length > 0 || (l.note || ``).trim()).map(l => l.num);
+    setBulkRange(compactLectureNums(nums));
+  }
+
+  function applyBulk(action) {
+    if (bulkNums.length === 0) {
+      alert(`처리할 강의 범위를 입력해 주세요. 예: 1-5, 8, 10-12`);
+      return;
+    }
+    if (action === `delete` && !confirm(`${compactLectureNums(bulkNums)}강을 삭제할까요? 이미 합산된 학습시간은 그대로 유지됩니다.`)) return;
+
+    const changedLectures = [];
+    let nextLectures = course.lectures.map(l => {
+      if (!bulkNumSet.has(l.num)) return l;
+      let next = l;
+      if (action === `complete`) next = { ...l, progress: 100, completed: true };
+      if (action === `review`) next = completeCourseLectureReview(l, today);
+      if (action === `unreview`) next = { ...l, reviewed: false, nextReviewDate: null };
+      if (action === `tagAdd`) {
+        if ((l.tags || []).includes(bulkTag)) return l;
+        const patch = nextLectureTagPatch(l, bulkTag, today);
+        next = { ...l, ...patch };
+        changedLectures.push(next);
+      }
+      if (action === `tagRemove`) {
+        const current = l.tags || [];
+        const nextTags = current.filter(t => t !== bulkTag);
+        let nextReviewDate = l.nextReviewDate;
+        if (bulkTag === `hard`) nextReviewDate = nextTags.includes(`again`) ? today : null;
+        if (bulkTag === `again`) nextReviewDate = nextTags.includes(`hard`) ? (l.nextReviewDate || addDays(today, 1)) : null;
+        next = {
+          ...l,
+          tags: nextTags,
+          nextReviewDate,
+          hardReviewCount: bulkTag === `hard` ? 0 : l.hardReviewCount,
+        };
+        if (current.includes(bulkTag)) changedLectures.push(next);
+      }
+      return next;
+    });
+
+    if (action === `delete`) {
+      const deletedLectures = course.lectures.filter(l => bulkNumSet.has(l.num));
+      nextLectures = course.lectures.filter(l => !bulkNumSet.has(l.num));
+      deletedLectures.forEach(l => onLectureMetaChange && onLectureMetaChange({ ...l, tags: [], note: `` }));
+    }
+
+    onUpdate(nextLectures);
+    if (action === `review`) onBulkReviewAdvance && onBulkReviewAdvance(bulkNums);
+    changedLectures.forEach(l => onLectureMetaChange && onLectureMetaChange(l));
+    setBulkRange(``);
+  }
+
   function updateLectureMeta(lecNum, patch) {
     let updatedLecture = null;
     const nextLectures = course.lectures.map(l => {
@@ -6654,18 +6929,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
 
   function toggleLectureTag(lecNum, tagKey) {
     const lec = course.lectures.find(l => l.num === lecNum);
-    const current = lec?.tags || [];
-    const adding = !current.includes(tagKey);
-    const nextTags = adding ? [...current, tagKey] : current.filter(t => t !== tagKey);
-    const patch = { tags: nextTags };
-    if (tagKey === `hard`) {
-      patch.hardReviewCount = adding ? 0 : 0;
-      patch.nextReviewDate = adding ? addDays(today, 1) : (nextTags.includes(`again`) ? today : null);
-    }
-    if (tagKey === `again`) {
-      patch.nextReviewDate = adding ? today : (nextTags.includes(`hard`) ? (lec?.nextReviewDate || addDays(today, 1)) : null);
-    }
-    updateLectureMeta(lecNum, patch);
+    updateLectureMeta(lecNum, nextLectureTagPatch(lec, tagKey, today));
   }
 
   return (
@@ -6747,6 +7011,53 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                         padding:`4px 7px`, fontSize:10, cursor:`pointer`,
                       }}>{t}%</button>
                   ))}
+                </div>
+              </div>
+
+              <div style={{ background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`9px 10px`, marginBottom:(updateMode || remainingLectures > 0 || remainingReviews > 0) ? 10 : 0 }}>
+                <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:7 }}>
+                  <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink }}>범위 일괄 처리</div>
+                  <div className={`mono`} style={{ fontSize:10, color:bulkNums.length ? subColor : C.muted, fontWeight:bulkNums.length ? 700 : 400 }}>{bulkSummary}</div>
+                </div>
+                <div style={{ display:`grid`, gridTemplateColumns:`minmax(0, 1fr) auto`, gap:6, marginBottom:7 }}>
+                  <input value={bulkRange} onChange={e => setBulkRange(e.target.value)} placeholder={`예: 1-5, 8, 10-12`}
+                    style={{ minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
+                  <select value={bulkTag} onChange={e => setBulkTag(e.target.value)}
+                    style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }}>
+                    {COURSE_TAGS.map(tag => <option key={tag.key} value={tag.key}>{tag.label}</option>)}
+                  </select>
+                </div>
+                <div style={{ display:`flex`, gap:5, flexWrap:`wrap`, marginBottom:7 }}>
+                  <button onClick={() => setBulkPreset(`watch`)} style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, padding:`4px 7px`, fontSize:9.5, cursor:`pointer` }}>미수강</button>
+                  <button onClick={() => setBulkPreset(`review`)} style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, padding:`4px 7px`, fontSize:9.5, cursor:`pointer` }}>미복습</button>
+                  <button onClick={() => setBulkPreset(`tagged`)} style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, padding:`4px 7px`, fontSize:9.5, cursor:`pointer` }}>태그/메모</button>
+                  <button onClick={() => setBulkPreset(`all`)} style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, padding:`4px 7px`, fontSize:9.5, cursor:`pointer` }}>전체</button>
+                </div>
+                <div style={{ display:`grid`, gridTemplateColumns:`repeat(auto-fit, minmax(86px, 1fr))`, gap:5 }}>
+                  <button onClick={() => applyBulk(`complete`)} disabled={bulkNums.length === 0}
+                    style={{ background:bulkNums.length ? subColor : C.lineSoft, color:bulkNums.length ? `#fff` : C.muted, border:`none`, padding:`6px 7px`, fontSize:10, cursor:bulkNums.length ? `pointer` : `default`, fontWeight:700 }}>
+                    완강
+                  </button>
+                  <button onClick={() => applyBulk(`review`)} disabled={bulkNums.length === 0}
+                    style={{ background:bulkNums.length ? C.good : C.lineSoft, color:bulkNums.length ? `#fff` : C.muted, border:`none`, padding:`6px 7px`, fontSize:10, cursor:bulkNums.length ? `pointer` : `default`, fontWeight:700 }}>
+                    복습완료
+                  </button>
+                  <button onClick={() => applyBulk(`unreview`)} disabled={bulkNums.length === 0}
+                    style={{ background:C.bg, color:bulkNums.length ? C.muted : C.lineSoft, border:`1px solid ${C.lineSoft}`, padding:`6px 7px`, fontSize:10, cursor:bulkNums.length ? `pointer` : `default` }}>
+                    복습해제
+                  </button>
+                  <button onClick={() => applyBulk(`tagAdd`)} disabled={bulkNums.length === 0}
+                    style={{ background:C.bg, color:bulkNums.length ? C.ink : C.lineSoft, border:`1px solid ${C.lineSoft}`, padding:`6px 7px`, fontSize:10, cursor:bulkNums.length ? `pointer` : `default` }}>
+                    태그+
+                  </button>
+                  <button onClick={() => applyBulk(`tagRemove`)} disabled={bulkNums.length === 0}
+                    style={{ background:C.bg, color:bulkNums.length ? C.muted : C.lineSoft, border:`1px solid ${C.lineSoft}`, padding:`6px 7px`, fontSize:10, cursor:bulkNums.length ? `pointer` : `default` }}>
+                    태그-
+                  </button>
+                  <button onClick={() => applyBulk(`delete`)} disabled={bulkNums.length === 0}
+                    style={{ background:C.paper, color:bulkNums.length ? C.accent : C.lineSoft, border:`1px solid ${bulkNums.length ? C.accent : C.lineSoft}`, padding:`6px 7px`, fontSize:10, cursor:bulkNums.length ? `pointer` : `default` }}>
+                    삭제
+                  </button>
                 </div>
               </div>
 
@@ -7917,7 +8228,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
           <Sheet size={14} /> 엑셀(.xlsx)로 내보내기
         </button>
         <div style={{ fontSize:10, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
-          요약 / 학습시간 / 5트랙 / 회차점수 / 사례등수 / 자료회독 / 주제회독 / 문제집 / 일정 / 할일 / 체크리스트 — 11개 시트로 정리됩니다.
+          요약 / 학습시간 / 5트랙 / 회차점수 / 사례등수 / 강의요약 / 강의목록 / 주간계획 / 루틴 등 — 15개 시트로 정리됩니다.
         </div>
         <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr`, gap:8 }}>
           <button onClick={onExport} style={{ background:C.bg, border:`1px solid ${C.line}`, padding:`10px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5 }}>
