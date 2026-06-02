@@ -3069,7 +3069,7 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
   );
 }
 
-function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, tracks, examScores, moods, setMoods, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, user, onGoTo }) {
+function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, tracks, setTracks, examScores, moods, setMoods, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, user, onGoTo }) {
   const todayLog = logs[today] || {};
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
