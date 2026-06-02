@@ -2943,7 +2943,7 @@ function HomeChecklistShelf({ staleChecklists = [], today, onGoTo }) {
   );
 }
 
-function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen, onGoTo, onCourseDone, onReviewDone }) {
+function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen, tracks = {}, setTracks, onGoTo, onCourseDone, onReviewDone }) {
   const visibleCourses = courseItems.slice(0, 4);
   const visibleReviews = reviews.slice(0, 3);
   const visiblePlans = planItems.slice(0, 4);
@@ -2951,6 +2951,25 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
   const hiddenCourseCount = Math.max(0, courseItems.length - visibleCourses.length);
   const hiddenPlanCount = Math.max(0, planItems.length - visiblePlans.length);
   const hiddenCount = hiddenCourseCount + hiddenPlanCount + Math.max(0, reviews.length - visibleReviews.length);
+
+  function sendPlanToTrack(item, trackKey) {
+    if (!setTracks || !item?.title) return;
+    setTracks(prev => {
+      const dayTracks = prev[today] || {};
+      const cur = dayTracks[trackKey] || {};
+      const existing = (cur.text || ``).trim();
+      const lines = existing.split(/\n/).map(line => line.trim()).filter(Boolean);
+      if (lines.includes(item.title)) return prev;
+      const nextText = existing ? `${existing}\n${item.title}` : item.title;
+      return {
+        ...prev,
+        [today]: {
+          ...dayTracks,
+          [trackKey]: { ...cur, text: nextText },
+        },
+      };
+    });
+  }
 
   return (
     <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`13px 14px`, marginBottom:18 }}>
@@ -2985,10 +3004,14 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
                 <div style={{ color:C.ink, fontSize:11, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.title}</div>
                 <div style={{ color:C.muted, fontSize:9 }}>주간계획 · {fmtShortDate(today)}</div>
               </div>
-              <button onClick={() => onGoTo(`log`)} className={`tap`}
-                style={{ background:C.bg, color:C.ink, border:`1px solid ${C.line}`, padding:`5px 8px`, minWidth:42, fontSize:9, cursor:`pointer`, flexShrink:0 }}>
-                기록
-              </button>
+              <div style={{ display:`flex`, gap:3, flexShrink:0 }}>
+                {TRACK_TYPES.map(track => (
+                  <button key={track.key} title={`${track.label}에 추가`} onClick={() => sendPlanToTrack(item, track.key)} className={`tap`}
+                    style={{ background:C.bg, color:track.color, border:`1px solid ${C.lineSoft}`, width:26, height:26, display:`grid`, placeItems:`center`, fontSize:10, fontWeight:700, cursor:`pointer`, fontFamily:`Noto Serif KR, serif` }}>
+                    {track.short}
+                  </button>
+                ))}
+              </div>
             </div>
           ))}
 
@@ -3198,6 +3221,8 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         reviews={dueReviews}
         planItems={todayWeeklyPlanItems}
         todosOpen={todayTodosOpen}
+        tracks={tracks}
+        setTracks={setTracks}
         onGoTo={onGoTo}
         onCourseDone={completeHomeCourseItem}
         onReviewDone={completeHomeReview}
