@@ -724,13 +724,15 @@ async function exportXLSX(state, filename) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(todoRows), `할일`);
 
   // [10-1] Parking lot
-  const parkingRows = [[`구분`, `제목`, `메모`, `생성일`, `수정일`]];
+  const parkingRows = [[`구분`, `제목`, `메모`, `연결종류`, `연결원본`, `생성일`, `수정일`]];
   parkingItems.forEach(item => {
     const bucket = PARKING_BUCKETS.find(b => b.key === item.bucket);
     parkingRows.push([
       bucket?.label || item.bucket || ``,
       item.title || ``,
       item.note || ``,
+      item.sourceLabel || item.sourceType || ``,
+      item.sourceMeta || item.sourceTitle || item.sourceId || ``,
       item.createdAt || ``,
       item.updatedAt || ``,
     ]);
@@ -2026,7 +2028,7 @@ VITE_FIREBASE_APP_ID`}</pre>
         {view === `courses` && <CoursesReview {...sharedProps} />}
         {view === `review` && <ReviewView {...sharedProps} />}
         {view === `more` && <MoreView onGoTo={setView} />}
-        {view === `parking` && <ParkingLotView {...sharedProps} />}
+        {view === `parking` && <ParkingLotView {...sharedProps} onGoTo={setView} />}
         {view === `exams` && <ExamsView {...sharedProps} />}
         {view === `check` && <ChecklistView {...sharedProps} />}
         {view === `report` && <ReportView {...sharedProps} />}
@@ -2411,10 +2413,145 @@ function MoreView({ onGoTo }) {
   );
 }
 
-function ParkingLotView({ parkingItems = [], setParkingItems, today }) {
+function buildParkingLinkCandidates({ today = todayISO(), todos = {}, courses = [], reviews = [], materials = [], books = [] }) {
+  const candidates = [];
+  const push = (item) => {
+    if (!item?.sourceId || !item?.title) return;
+    candidates.push(item);
+  };
+
+  Object.entries(todos || {}).sort(([a], [b]) => a.localeCompare(b)).forEach(([date, list]) => {
+    (list || []).filter(t => !t.hidden && !t.done).forEach(t => {
+      push({
+        groupKey:`todo`,
+        groupLabel:`할 일`,
+        sourceType:`todo`,
+        sourceId:`todo:${date}:${t.id}`,
+        sourceView:`calendar`,
+        sourceLabel:`할 일`,
+        sourceTitle:t.title,
+        sourceMeta:`${fmtShortDate(date)} · 미완료`,
+        title:t.title,
+      });
+    });
+  });
+
+  courses.forEach(course => {
+    const lectures = course.lectures || [];
+    const total = lectures.length;
+    const completed = lectures.filter(l => l.completed).length;
+    const reviewed = lectures.filter(l => l.reviewed).length;
+    if (total > 0 && (completed < total || reviewed < total)) {
+      push({
+        groupKey:`course`,
+        groupLabel:`강의`,
+        sourceType:`course`,
+        sourceId:`course:${course.id}`,
+        sourceView:`courses`,
+        sourceLabel:`강의`,
+        sourceTitle:course.name,
+        sourceMeta:`${course.subject} · 수강 ${completed}/${total} · 복습 ${reviewed}/${total}`,
+        title:`[강의] ${course.name}`,
+      });
+    }
+
+    lectures
+      .filter(l => !l.completed || !l.reviewed || (l.tags || []).length > 0 || (l.note || ``).trim())
+      .sort((a, b) => a.num - b.num)
+      .slice(0, 8)
+      .forEach(l => {
+        const tags = getLectureTagLabels(l);
+        push({
+          groupKey:`lecture`,
+          groupLabel:`강의 회차`,
+          sourceType:`courseLecture`,
+          sourceId:`course:${course.id}:lecture:${l.num}`,
+          sourceView:`courses`,
+          sourceLabel:`강의 회차`,
+          sourceTitle:`${course.name} ${l.num}강`,
+          sourceMeta:`${course.subject}${tags.length ? ` · ${tags.join(` · `)}` : ``}`,
+          title:`[강의] ${course.name} ${l.num}강 · ${l.title}`,
+        });
+      });
+  });
+
+  reviews.forEach(r => {
+    const due = getReviewDueInfo(r, today);
+    push({
+      groupKey:`review`,
+      groupLabel:`주제회독`,
+      sourceType:`review`,
+      sourceId:`review:${r.id}`,
+      sourceView:`review`,
+      sourceLabel:`주제회독`,
+      sourceTitle:r.title,
+      sourceMeta:`${r.subject} · ${due.roundNum}회차 · ${due.dueDate.slice(5)} 예정`,
+      title:`[회독] ${r.title}`,
+    });
+  });
+
+  materials.filter(m => (m.rounds || 0) < (m.target || 0)).forEach(m => {
+    push({
+      groupKey:`material`,
+      groupLabel:`자료`,
+      sourceType:`material`,
+      sourceId:`material:${m.id}`,
+      sourceView:`review`,
+      sourceLabel:`자료`,
+      sourceTitle:m.name,
+      sourceMeta:`${m.subject} · ${m.rounds || 0}/${m.target || 0}회`,
+      title:`[자료] ${m.name}`,
+    });
+  });
+
+  books.filter(b => (b.current || 0) < (b.target || 0)).forEach(b => {
+    push({
+      groupKey:`book`,
+      groupLabel:`문제집`,
+      sourceType:`book`,
+      sourceId:`book:${b.id}`,
+      sourceView:`review`,
+      sourceLabel:`문제집`,
+      sourceTitle:b.title,
+      sourceMeta:`${b.subject} · ${b.current || 0}/${b.target || 0}회`,
+      title:`[문제집] ${b.title}`,
+    });
+  });
+
+  return candidates;
+}
+
+function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {}, courses = [], reviews = [], materials = [], books = [], onGoTo }) {
   const [title, setTitle] = useState(``);
   const [bucket, setBucket] = useState(`drop`);
   const [note, setNote] = useState(``);
+  const [sourceGroup, setSourceGroup] = useState(`todo`);
+  const [sourceId, setSourceId] = useState(``);
+  const [linkedBucket, setLinkedBucket] = useState(`later`);
+  const candidates = useMemo(() => buildParkingLinkCandidates({ today, todos, courses, reviews, materials, books }), [today, todos, courses, reviews, materials, books]);
+  const sourceGroups = useMemo(() => {
+    const seen = new Set();
+    return candidates.filter(c => {
+      if (seen.has(c.groupKey)) return false;
+      seen.add(c.groupKey);
+      return true;
+    }).map(c => ({ key:c.groupKey, label:c.groupLabel }));
+  }, [candidates]);
+  const filteredCandidates = candidates.filter(c => c.groupKey === sourceGroup);
+  const selectedCandidate = candidates.find(c => c.sourceId === sourceId) || filteredCandidates[0] || null;
+  const linkedSourceIds = useMemo(() => new Set((parkingItems || []).map(item => item.sourceId).filter(Boolean)), [parkingItems]);
+  const selectedAlreadyLinked = !!selectedCandidate && linkedSourceIds.has(selectedCandidate.sourceId);
+
+  useEffect(() => {
+    const groupExists = sourceGroups.some(g => g.key === sourceGroup);
+    if (!groupExists && sourceGroups[0]) {
+      setSourceGroup(sourceGroups[0].key);
+      return;
+    }
+    if (!filteredCandidates.some(c => c.sourceId === sourceId)) {
+      setSourceId(filteredCandidates[0]?.sourceId || ``);
+    }
+  }, [sourceGroup, sourceId, sourceGroups, filteredCandidates]);
 
   function addItem() {
     const text = title.trim();
@@ -2432,6 +2569,27 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today }) {
     ]);
     setTitle(``);
     setNote(``);
+  }
+
+  function addLinkedItem() {
+    if (!selectedCandidate || !setParkingItems || selectedAlreadyLinked) return;
+    setParkingItems([
+      {
+        id: uid(),
+        title: selectedCandidate.title,
+        bucket: linkedBucket,
+        note: selectedCandidate.sourceMeta || ``,
+        sourceType: selectedCandidate.sourceType,
+        sourceId: selectedCandidate.sourceId,
+        sourceView: selectedCandidate.sourceView,
+        sourceLabel: selectedCandidate.sourceLabel,
+        sourceTitle: selectedCandidate.sourceTitle,
+        sourceMeta: selectedCandidate.sourceMeta,
+        createdAt: today || todayISO(),
+        updatedAt: today || todayISO(),
+      },
+      ...(parkingItems || []),
+    ]);
   }
 
   function updateItem(id, patch) {
@@ -2455,11 +2613,56 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today }) {
       <div style={{ marginBottom:16 }}>
         <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>버릴 목록</h1>
         <div style={{ fontSize:11, color:C.muted, marginTop:3, lineHeight:1.5 }}>
-          지금 안 할 것을 밖으로 빼두면 오늘 계획이 훨씬 조용해집니다.
+          기존 항목을 연결해 밖으로 빼두면 오늘 계획이 훨씬 조용해집니다.
         </div>
       </div>
 
+      {candidates.length > 0 && (
+        <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
+          <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8, marginBottom:8 }}>
+            <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>기존 항목 연결</div>
+            <div className={`mono`} style={{ fontSize:9, color:C.muted }}>{candidates.length}개 후보</div>
+          </div>
+          <div style={{ display:`flex`, gap:5, overflowX:`auto`, paddingBottom:4, marginBottom:8 }} className={`hide-scroll`}>
+            {sourceGroups.map(g => (
+              <button key={g.key} onClick={() => setSourceGroup(g.key)} className={`tap`}
+                style={{ background:sourceGroup === g.key ? C.ink : C.bg, color:sourceGroup === g.key ? `#fff` : C.muted, border:`1px solid ${sourceGroup === g.key ? C.ink : C.lineSoft}`, padding:`5px 8px`, fontSize:10, cursor:`pointer`, whiteSpace:`nowrap` }}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+          <select value={sourceId || selectedCandidate?.sourceId || ``} onChange={e => setSourceId(e.target.value)}
+            style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 9px`, fontSize:11, outline:`none`, marginBottom:7 }}>
+            {filteredCandidates.map(c => (
+              <option key={c.sourceId} value={c.sourceId}>
+                {linkedSourceIds.has(c.sourceId) ? `✓ ` : ``}{c.title} · {c.sourceMeta}
+              </option>
+            ))}
+          </select>
+          {selectedCandidate && (
+            <div style={{ background:C.bg, border:`1px dashed ${C.lineSoft}`, padding:`7px 8px`, fontSize:10, color:C.muted, lineHeight:1.5, marginBottom:8 }}>
+              <span style={{ color:C.ink, fontWeight:600 }}>{selectedCandidate.sourceLabel}</span>
+              <span> · {selectedCandidate.sourceMeta}</span>
+              {selectedAlreadyLinked && <span style={{ color:C.good, fontWeight:700 }}> · 이미 수납됨</span>}
+            </div>
+          )}
+          <div style={{ display:`flex`, gap:6 }}>
+            {PARKING_BUCKETS.map(b => (
+              <button key={b.key} onClick={() => setLinkedBucket(b.key)} className={`tap`}
+                style={{ flex:1, background:linkedBucket === b.key ? b.color : C.bg, color:linkedBucket === b.key ? `#fff` : C.muted, border:`1px solid ${linkedBucket === b.key ? b.color : C.lineSoft}`, padding:`7px 4px`, fontSize:10, cursor:`pointer` }}>
+                {b.label}
+              </button>
+            ))}
+            <button onClick={addLinkedItem} disabled={!selectedCandidate || selectedAlreadyLinked} className={`tap`}
+              style={{ background:selectedCandidate && !selectedAlreadyLinked ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px 10px`, fontSize:11, fontWeight:700, cursor:selectedCandidate && !selectedAlreadyLinked ? `pointer` : `default`, flexShrink:0 }}>
+              연결
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
+        <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink, marginBottom:8 }}>수기 추가</div>
         <input value={title} onChange={e => setTitle(e.target.value)}
           placeholder={`버릴 것, 미룰 것, 시험 후로 보낼 것`}
           style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
@@ -2511,6 +2714,12 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today }) {
                   {items.map((item, idx) => (
                     <div key={item.id} style={{ display:`grid`, gridTemplateColumns:`1fr 92px auto`, gap:6, alignItems:`center`, padding:`9px 0`, borderBottom:idx < items.length - 1 ? `1px dashed ${C.lineSoft}` : `none` }}>
                       <div style={{ minWidth:0 }}>
+                        {item.sourceLabel && (
+                          <div style={{ display:`flex`, alignItems:`center`, gap:5, marginBottom:4, minWidth:0 }}>
+                            <span className={`kserif`} style={{ color:b.color, fontSize:9, fontWeight:700, flexShrink:0 }}>{item.sourceLabel}</span>
+                            <span style={{ color:C.muted, fontSize:9, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.sourceMeta || item.sourceTitle}</span>
+                          </div>
+                        )}
                         <input value={item.title || ``} onChange={e => updateItem(item.id, { title:e.target.value })}
                           style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, outline:`none`, fontSize:11, color:C.ink }} />
                         <input value={item.note || ``} onChange={e => updateItem(item.id, { note:e.target.value })}
@@ -2521,10 +2730,18 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today }) {
                         style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 4px`, fontSize:10, outline:`none`, color:b.color }}>
                         {PARKING_BUCKETS.map(next => <option key={next.key} value={next.key}>{next.label}</option>)}
                       </select>
-                      <button onClick={() => deleteItem(item.id)} className={`tap`} title={`삭제`}
-                        style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, width:32, height:32, display:`grid`, placeItems:`center`, cursor:`pointer` }}>
-                        <Trash2 size={13} />
-                      </button>
+                      <div style={{ display:`flex`, flexDirection:`column`, gap:4 }}>
+                        {item.sourceView && onGoTo && (
+                          <button onClick={() => onGoTo(item.sourceView)} className={`tap`} title={`원본 보기`}
+                            style={{ background:C.bg, color:b.color, border:`1px solid ${C.lineSoft}`, width:32, height:27, display:`grid`, placeItems:`center`, cursor:`pointer` }}>
+                            <ChevronRight size={13} />
+                          </button>
+                        )}
+                        <button onClick={() => deleteItem(item.id)} className={`tap`} title={`삭제`}
+                          style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, width:32, height:27, display:`grid`, placeItems:`center`, cursor:`pointer` }}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
