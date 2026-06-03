@@ -88,6 +88,17 @@ const COURSE_TAGS = [
   { key: `again`, label: `재복습` },
 ];
 
+const PARKING_BUCKETS = [
+  { key: `drop`, label: `안 할 것`, color: C.accent },
+  { key: `later`, label: `후순위`, color: C.warn },
+  { key: `after`, label: `시험 후`, color: C.muted },
+];
+
+const CONDITION_KEYWORDS = {
+  good: [`좋`, `괜찮`, `상쾌`, `개운`, `맑`, `집중`, `회복`, `잘함`, `잘 됨`, `안정`],
+  bad: [`피곤`, `불안`, `아프`, `졸`, `힘들`, `무기력`, `나쁨`, `우울`, `망`, `저조`, `두통`],
+};
+
 function getStudyTypes(subject) {
   const seen = new Set();
   return [...(SUBJECTS[subject]?.types || []), ...COURSE_LOG_TYPES].filter(t => {
@@ -560,7 +571,7 @@ async function exportXLSX(state, filename) {
   const {
     settings = {}, logs = {}, tracks = {}, todos = {}, examScores = [], rankScores = [],
     materials = [], reviews = [], books = [], schedules = [], moods = {}, trackInbox = [],
-    checklists = [], courses = [], weeklyPlans = {}, routines = [], routineLog = {},
+    checklists = [], courses = [], weeklyPlans = {}, routines = [], routineLog = {}, parkingItems = [],
   } = state;
 
   // [1] Summary
@@ -711,6 +722,20 @@ async function exportXLSX(state, filename) {
     });
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(todoRows), `할일`);
+
+  // [10-1] Parking lot
+  const parkingRows = [[`구분`, `제목`, `메모`, `생성일`, `수정일`]];
+  parkingItems.forEach(item => {
+    const bucket = PARKING_BUCKETS.find(b => b.key === item.bucket);
+    parkingRows.push([
+      bucket?.label || item.bucket || ``,
+      item.title || ``,
+      item.note || ``,
+      item.createdAt || ``,
+      item.updatedAt || ``,
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(parkingRows), `버릴목록`);
 
   // [11] Checklists
   const clRows = [[`카테고리`, `과목`, `마지막 회독일`, `★`, `항목`]];
@@ -1275,6 +1300,7 @@ const DEFAULT_STATE = {
   rankScores: [],
   moods: {},
   trackInbox: [],
+  parkingItems: [],
   schedules: [], // [{ id, title, color, start, end, note }]
   checklists: DEFAULT_CHECKLISTS, // [{ id, name, subject, color, items: [{ id, text, stars }], lastReviewed }]
   mcqProgress: {}, //
@@ -1305,7 +1331,7 @@ function normalizeSettings(value = {}) {
 
 const PERSISTED_STATE_KEYS = [
   `settings`, `logs`, `reviews`, `books`, `todos`, `tracks`,
-  `materials`, `materialLog`, `examScores`, `rankScores`, `moods`, `trackInbox`, `schedules`, `checklists`,
+  `materials`, `materialLog`, `examScores`, `rankScores`, `moods`, `trackInbox`, `parkingItems`, `schedules`, `checklists`,
   `mcqProgress`, `routines`, `routineLog`, `weeklyPlans`, `courses`,
 ];
 const LOCAL_DRAFT_PREFIX = `bar-exam-journal-local-draft`;
@@ -1394,7 +1420,7 @@ function blankUserState() {
     settings: normalizeSettings(),
     logs: {}, reviews: [], books: [], todos: {}, tracks: {},
     materials: DEFAULT_MATERIALS, materialLog: {},
-    examScores: [], rankScores: [], moods: {}, trackInbox: [], schedules: [],
+    examScores: [], rankScores: [], moods: {}, trackInbox: [], parkingItems: [], schedules: [],
     checklists: DEFAULT_CHECKLISTS, mcqProgress: {},
     routines: DEFAULT_ROUTINES, routineLog: {}, weeklyPlans: {}, courses: [],
   };
@@ -1415,6 +1441,7 @@ function normalizeStoredState(data = {}) {
     rankScores: asArray(d.rankScores),
     moods: asPlainObject(d.moods),
     trackInbox: asArray(d.trackInbox),
+    parkingItems: asArray(d.parkingItems),
     schedules: asArray(d.schedules),
     checklists: asArray(d.checklists, DEFAULT_CHECKLISTS),
     mcqProgress: asPlainObject(d.mcqProgress),
@@ -1466,6 +1493,7 @@ export default function App() {
   const [rankScores, setRankScores] = useState([]);
   const [moods, setMoods] = useState({});
   const [trackInbox, setTrackInbox] = useState([]);
+  const [parkingItems, setParkingItems] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [checklists, setChecklists] = useState(DEFAULT_CHECKLISTS);
   const [mcqProgress, setMcqProgress] = useState({});
@@ -1592,7 +1620,7 @@ const globalStyles = (
 
   const currentState = {
     settings, logs, reviews, books, todos, tracks,
-    materials, materialLog, examScores, rankScores, moods, trackInbox, schedules, checklists,
+    materials, materialLog, examScores, rankScores, moods, trackInbox, parkingItems, schedules, checklists,
     mcqProgress, routines, routineLog, weeklyPlans, courses,
   };
   localStateRef.current = currentState;
@@ -1613,7 +1641,7 @@ const globalStyles = (
     setTodos(nextState.todos); setTracks(nextState.tracks);
     setMaterials(nextState.materials); setMaterialLog(nextState.materialLog);
     setExamScores(nextState.examScores); setRankScores(nextState.rankScores);
-    setMoods(nextState.moods); setTrackInbox(nextState.trackInbox);
+    setMoods(nextState.moods); setTrackInbox(nextState.trackInbox); setParkingItems(nextState.parkingItems);
     setSchedules(nextState.schedules); setChecklists(nextState.checklists);
     setMcqProgress(nextState.mcqProgress); setRoutines(nextState.routines);
     setRoutineLog(nextState.routineLog); setWeeklyPlans(nextState.weeklyPlans);
@@ -1778,12 +1806,12 @@ const globalStyles = (
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [user, loaded, syncRetryTick, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+  }, [user, loaded, syncRetryTick, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, parkingItems, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
 
   useEffect(() => {
     if (!loaded || !user) return;
     writeLocalDraft(user.uid, localStateRef.current);
-  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, parkingItems, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
@@ -1881,6 +1909,7 @@ const globalStyles = (
     setRankScores(asArray(data.rankScores));
     setMoods(asPlainObject(data.moods));
     setTrackInbox(asArray(data.trackInbox));
+    setParkingItems(asArray(data.parkingItems));
     setSchedules(asArray(data.schedules));
     setChecklists(asArray(data.checklists, DEFAULT_CHECKLISTS));
     setMcqProgress(asPlainObject(data.mcqProgress));
@@ -1958,7 +1987,7 @@ VITE_FIREBASE_APP_ID`}</pre>
     todos, setTodos, tracks, setTracks,
     materials, setMaterials, materialLog, setMaterialLog,
     examScores, setExamScores, rankScores, setRankScores, moods, setMoods,
-    trackInbox, setTrackInbox,
+    trackInbox, setTrackInbox, parkingItems, setParkingItems,
     schedules, setSchedules,
     checklists, setChecklists,
     mcqProgress, setMcqProgress,
@@ -1997,6 +2026,7 @@ VITE_FIREBASE_APP_ID`}</pre>
         {view === `courses` && <CoursesReview {...sharedProps} />}
         {view === `review` && <ReviewView {...sharedProps} />}
         {view === `more` && <MoreView onGoTo={setView} />}
+        {view === `parking` && <ParkingLotView {...sharedProps} />}
         {view === `exams` && <ExamsView {...sharedProps} />}
         {view === `check` && <ChecklistView {...sharedProps} />}
         {view === `report` && <ReportView {...sharedProps} />}
@@ -2008,7 +2038,7 @@ VITE_FIREBASE_APP_ID`}</pre>
               if (confirm(`모든 데이터를 지울까요? (설정 포함) — 클라우드의 본인 데이터도 함께 초기화됩니다.`)) {
                 setLogs({}); setReviews([]); setBooks([]); setTodos({});
                 setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
-                setExamScores([]); setRankScores([]); setMoods({}); setTrackInbox([]); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
+                setExamScores([]); setRankScores([]); setMoods({}); setTrackInbox([]); setParkingItems([]); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
                 setMcqProgress({}); setRoutines(DEFAULT_ROUTINES); setRoutineLog({});
                 setWeeklyPlans({}); setCourses([]);
               }
@@ -2018,7 +2048,7 @@ VITE_FIREBASE_APP_ID`}</pre>
                 schemaVersion: APP_SCHEMA_VERSION,
                 exportedAt: new Date().toISOString(),
                 settings, logs, reviews, books, todos,
-                tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, schedules, checklists,
+                tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, parkingItems, schedules, checklists,
                 mcqProgress, routines, routineLog, weeklyPlans, courses,
               }, null, 2);
               const blob = new Blob([data], { type: `application/json` });
@@ -2032,7 +2062,7 @@ VITE_FIREBASE_APP_ID`}</pre>
               try {
                 await exportXLSX({
                   settings, logs, tracks, todos, examScores, rankScores,
-                  materials, reviews, books, schedules, moods, trackInbox, checklists,
+                  materials, reviews, books, schedules, moods, trackInbox, parkingItems, checklists,
                   courses, weeklyPlans, routines, routineLog,
                 }, `변시기록_${today.replaceAll( `-`, ``)}.xlsx`);
               } catch (e) {
@@ -2298,7 +2328,7 @@ function TopBar({ dday, examLabel, examDate, user, syncStatus, lastSavedAt, onRe
 }
 
 function BottomNav({ view, setView }) {
-  const moreViews = [`exams`, `check`, `report`, `settings`];
+  const moreViews = [`exams`, `check`, `report`, `parking`, `settings`];
   const items = [
     { key:`home`, icon:Home, label:`홈` },
     { key:`log`, icon:BookOpen, label:`기록` },
@@ -2342,6 +2372,7 @@ function MoreView({ onGoTo }) {
     { key:`exams`, icon:TrendingUp, label:`기출`, desc:`선택형·사례형 점수` },
     { key:`check`, icon:CheckSquare, label:`체크`, desc:`시험 전 확인 목록` },
     { key:`report`, icon:BarChart3, label:`리포트`, desc:`시간·진도 통계` },
+    { key:`parking`, icon:Layers, label:`버릴 목록`, desc:`안 할 것·후순위 수납` },
     { key:`settings`, icon:SettingsIcon, label:`설정`, desc:`동기화·백업·시험일` },
   ];
 
@@ -2376,6 +2407,132 @@ function MoreView({ onGoTo }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ParkingLotView({ parkingItems = [], setParkingItems, today }) {
+  const [title, setTitle] = useState(``);
+  const [bucket, setBucket] = useState(`drop`);
+  const [note, setNote] = useState(``);
+
+  function addItem() {
+    const text = title.trim();
+    if (!text || !setParkingItems) return;
+    setParkingItems([
+      {
+        id: uid(),
+        title: text,
+        bucket,
+        note: note.trim(),
+        createdAt: today || todayISO(),
+        updatedAt: today || todayISO(),
+      },
+      ...(parkingItems || []),
+    ]);
+    setTitle(``);
+    setNote(``);
+  }
+
+  function updateItem(id, patch) {
+    if (!setParkingItems) return;
+    setParkingItems((parkingItems || []).map(item => item.id === id ? {
+      ...item,
+      ...patch,
+      updatedAt: today || todayISO(),
+    } : item));
+  }
+
+  function deleteItem(id) {
+    if (!setParkingItems) return;
+    setParkingItems((parkingItems || []).filter(item => item.id !== id));
+  }
+
+  const total = (parkingItems || []).length;
+
+  return (
+    <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
+      <div style={{ marginBottom:16 }}>
+        <h1 className={`serif`} style={{ margin:0, fontSize:22, fontWeight:600 }}>버릴 목록</h1>
+        <div style={{ fontSize:11, color:C.muted, marginTop:3, lineHeight:1.5 }}>
+          지금 안 할 것을 밖으로 빼두면 오늘 계획이 훨씬 조용해집니다.
+        </div>
+      </div>
+
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:14 }}>
+        <input value={title} onChange={e => setTitle(e.target.value)}
+          placeholder={`버릴 것, 미룰 것, 시험 후로 보낼 것`}
+          style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:12, marginBottom:8, outline:`none` }} />
+        <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+          placeholder={`이유나 다시 볼 조건`}
+          style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:8, outline:`none`, resize:`vertical`, fontFamily:`Noto Serif KR, serif` }} />
+        <div style={{ display:`flex`, gap:6 }}>
+          {PARKING_BUCKETS.map(b => (
+            <button key={b.key} onClick={() => setBucket(b.key)} className={`tap`}
+              style={{
+                flex:1,
+                background:bucket === b.key ? b.color : C.bg,
+                color:bucket === b.key ? `#fff` : C.muted,
+                border:`1px solid ${bucket === b.key ? b.color : C.lineSoft}`,
+                padding:`7px 4px`,
+                fontSize:10,
+                cursor:`pointer`,
+              }}>
+              {b.label}
+            </button>
+          ))}
+          <button onClick={addItem} disabled={!title.trim()} className={`tap`}
+            style={{ background:title.trim() ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px 10px`, fontSize:11, fontWeight:700, cursor:title.trim() ? `pointer` : `default`, flexShrink:0 }}>
+            추가
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:6, marginBottom:12 }}>
+        {PARKING_BUCKETS.map(b => {
+          const count = (parkingItems || []).filter(item => (item.bucket || `drop`) === b.key).length;
+          return <CourseMiniStat key={b.key} label={b.label} value={count} tone={count > 0 ? b.color : C.muted} />;
+        })}
+      </div>
+
+      {total === 0 ? (
+        <div style={{ textAlign:`center`, padding:28, color:C.muted, fontSize:12, background:C.paper, border:`1px dashed ${C.line}` }}>
+          아직 수납한 항목이 없습니다.
+        </div>
+      ) : (
+        <div style={{ display:`flex`, flexDirection:`column`, gap:12 }}>
+          {PARKING_BUCKETS.map(b => {
+            const items = (parkingItems || []).filter(item => (item.bucket || `drop`) === b.key);
+            if (items.length === 0) return null;
+            return (
+              <section key={b.key}>
+                <SectionTitle>{b.label}</SectionTitle>
+                <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`4px 12px` }}>
+                  {items.map((item, idx) => (
+                    <div key={item.id} style={{ display:`grid`, gridTemplateColumns:`1fr 92px auto`, gap:6, alignItems:`center`, padding:`9px 0`, borderBottom:idx < items.length - 1 ? `1px dashed ${C.lineSoft}` : `none` }}>
+                      <div style={{ minWidth:0 }}>
+                        <input value={item.title || ``} onChange={e => updateItem(item.id, { title:e.target.value })}
+                          style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`6px 8px`, outline:`none`, fontSize:11, color:C.ink }} />
+                        <input value={item.note || ``} onChange={e => updateItem(item.id, { note:e.target.value })}
+                          placeholder={`메모`}
+                          style={{ width:`100%`, background:`transparent`, border:`none`, borderBottom:`1px solid ${C.lineSoft}`, padding:`5px 2px 3px`, outline:`none`, fontSize:10, color:C.muted, marginTop:3 }} />
+                      </div>
+                      <select value={item.bucket || `drop`} onChange={e => updateItem(item.id, { bucket:e.target.value })}
+                        style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 4px`, fontSize:10, outline:`none`, color:b.color }}>
+                        {PARKING_BUCKETS.map(next => <option key={next.key} value={next.key}>{next.label}</option>)}
+                      </select>
+                      <button onClick={() => deleteItem(item.id)} className={`tap`} title={`삭제`}
+                        style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, width:32, height:32, display:`grid`, placeItems:`center`, cursor:`pointer` }}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -8059,7 +8216,274 @@ function ChecklistItemRow({ item, idx, total, isEditing, onStartEdit, onCancelEd
 
 /* ============================================================ REPORT (리포트) ============================================================ */
 
-function ReportView({ today, settings, logs, examScores, materials }) {
+function classifyConditionText(text = ``) {
+  const body = String(text || ``).toLowerCase();
+  if (!body.trim()) return { key:`none`, label:`기록 없음`, color:C.muted };
+  if (CONDITION_KEYWORDS.bad.some(k => body.includes(k))) return { key:`bad`, label:`저컨디션`, color:C.accent };
+  if (CONDITION_KEYWORDS.good.some(k => body.includes(k))) return { key:`good`, label:`좋음`, color:C.good };
+  return { key:`neutral`, label:`보통`, color:C.book };
+}
+
+function avgNumber(list) {
+  const nums = list.filter(v => Number.isFinite(v));
+  if (nums.length === 0) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+function buildConditionPerformance({ today, logs = {}, moods = {}, examScores = [], rankScores = [] }) {
+  const rows = Object.keys(moods)
+    .filter(date => date <= today && (moods[date] || ``).trim())
+    .sort()
+    .slice(-45)
+    .map(date => {
+      const condition = classifyConditionText(moods[date]);
+      const minutes = Object.values(logs[date] || {}).reduce((s, v) => s + (v || 0), 0);
+      const mcq = examScores.filter(s => s.date === date);
+      const rank = rankScores.filter(s => s.date === date);
+      const wrongRates = mcq.map(s => s.total ? (s.wrong / s.total) * 100 : null).filter(v => v != null);
+      const rankPercents = rank.map(s => Number(s.topPercent)).filter(v => Number.isFinite(v));
+      return {
+        date,
+        mood:moods[date],
+        condition,
+        minutes,
+        mcqCount:mcq.length,
+        rankCount:rank.length,
+        avgWrongRate:avgNumber(wrongRates),
+        avgRankPercent:avgNumber(rankPercents),
+      };
+    });
+
+  const groups = [`good`, `neutral`, `bad`].map(key => {
+    const items = rows.filter(row => row.condition.key === key);
+    const meta = key === `good`
+      ? { label:`좋음`, color:C.good }
+      : key === `bad`
+      ? { label:`저컨디션`, color:C.accent }
+      : { label:`보통`, color:C.book };
+    return {
+      ...meta,
+      key,
+      count:items.length,
+      avgMin:avgNumber(items.map(row => row.minutes)) || 0,
+      avgWrongRate:avgNumber(items.map(row => row.avgWrongRate)),
+      avgRankPercent:avgNumber(items.map(row => row.avgRankPercent)),
+    };
+  });
+
+  const good = groups.find(g => g.key === `good`);
+  const bad = groups.find(g => g.key === `bad`);
+  const insight = good?.count && bad?.count
+    ? `좋은 컨디션 평균 ${fmtHour(good.avgMin)}, 저컨디션 평균 ${fmtHour(bad.avgMin)}입니다.`
+    : rows.length > 0
+    ? `컨디션 메모 ${rows.length}일치가 쌓였습니다. 좋은/나쁜 날 키워드를 조금 더 적으면 비교가 선명해집니다.`
+    : `하루 메모에 피곤, 불안, 좋음, 집중 같은 단어를 남기면 자동으로 묶입니다.`;
+
+  return { rows, groups, insight, recent:rows.slice(-6).reverse() };
+}
+
+function DeadlineBackcastSection({ today, settings, courses = [], materials = [], reviews = [], schedules = [] }) {
+  const examDate = settings.examDate || today;
+  const examLeft = Math.max(1, daysDiff(today, examDate));
+  const items = [];
+
+  if (settings.examDate) {
+    items.push({
+      kind:`본시험`,
+      title:settings.examLabel || `변호사시험`,
+      dueDate:settings.examDate,
+      daysLeft:daysDiff(today, settings.examDate),
+      workload:`최종 압축`,
+      action:`새 자료보다 기존 자료 회독으로 고정`,
+      tone:C.accent,
+      rank:0,
+    });
+  }
+
+  (settings.mockExams || [])
+    .filter(m => m.start >= today)
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .slice(0, 2)
+    .forEach(m => {
+      const left = daysDiff(today, m.start);
+      items.push({
+        kind:`모의고사`,
+        title:m.label,
+        dueDate:m.start,
+        daysLeft:left,
+        workload:`${daysDiff(m.start, m.end) + 1}일`,
+        action:left <= 0 ? `오늘 시작` : `${left}일 남음 · 복기 계획까지 미리 확보`,
+        tone:left <= 7 ? C.accent : C.warn,
+        rank:1,
+      });
+    });
+
+  courses.forEach(course => {
+    const lectures = course.lectures || [];
+    const remainingWatch = lectures.filter(l => !l.completed).length;
+    const targetEnd = course.targetEndDate || settings.examDate || addDays(today, 30);
+    const watchLeft = daysDiff(today, targetEnd);
+    if (remainingWatch > 0) {
+      const tomorrowDays = Math.max(1, watchLeft - 1);
+      const tomorrowNeed = Math.ceil(remainingWatch / tomorrowDays);
+      const todayNeed = Math.ceil(remainingWatch / Math.max(1, watchLeft));
+      const tone = watchLeft <= 0 || tomorrowNeed >= 5 ? C.accent : tomorrowNeed >= 3 ? C.warn : C.book;
+      items.push({
+        kind:`강의수강`,
+        title:course.name,
+        dueDate:targetEnd,
+        daysLeft:watchLeft,
+        workload:`${remainingWatch}강`,
+        action:`오늘 안 하면 내일부터 ${tomorrowNeed}강/일${todayNeed !== tomorrowNeed ? ` (현재 ${todayNeed}강/일)` : ``}`,
+        tone,
+        rank:tone === C.accent ? 2 : tone === C.warn ? 3 : 5,
+      });
+    }
+
+    const remainingReview = lectures.filter(l => l.completed && !l.reviewed).length;
+    const targetReview = course.targetReviewDate || targetEnd;
+    const reviewLeft = daysDiff(today, targetReview);
+    if (remainingReview > 0) {
+      const tomorrowNeed = Math.ceil(remainingReview / Math.max(1, reviewLeft - 1));
+      const tone = reviewLeft <= 0 || tomorrowNeed >= 6 ? C.accent : tomorrowNeed >= 3 ? C.warn : C.good;
+      items.push({
+        kind:`강의복습`,
+        title:course.name,
+        dueDate:targetReview,
+        daysLeft:reviewLeft,
+        workload:`${remainingReview}강`,
+        action:`오늘 안 하면 내일부터 ${tomorrowNeed}강/일 복습`,
+        tone,
+        rank:tone === C.accent ? 2 : tone === C.warn ? 3 : 5,
+      });
+    }
+  });
+
+  materials.forEach(mat => {
+    const remaining = Math.max(0, (mat.target || 0) - (mat.rounds || 0));
+    if (remaining === 0) return;
+    const perWeek = Math.ceil((remaining / examLeft) * 7);
+    items.push({
+      kind:`자료회독`,
+      title:mat.name,
+      dueDate:examDate,
+      daysLeft:daysDiff(today, examDate),
+      workload:`${remaining}회`,
+      action:`시험일까지 주 ${Math.max(1, perWeek)}회 페이스`,
+      tone:perWeek >= 3 ? C.warn : C.book,
+      rank:6,
+    });
+  });
+
+  reviews
+    .map(r => ({ ...r, ...getReviewDueInfo(r, today) }))
+    .filter(r => r.daysUntilDue <= 7)
+    .sort((a, b) => a.daysUntilDue - b.daysUntilDue)
+    .slice(0, 4)
+    .forEach(r => {
+      items.push({
+        kind:`주제회독`,
+        title:r.title,
+        dueDate:r.dueDate,
+        daysLeft:r.daysUntilDue,
+        workload:`${r.roundNum}회차`,
+        action:r.daysUntilDue < 0 ? `${Math.abs(r.daysUntilDue)}일 밀림` : r.daysUntilDue === 0 ? `오늘 회독` : `${r.daysUntilDue}일 안에 회독`,
+        tone:r.daysUntilDue < 0 ? C.accent : r.daysUntilDue <= 1 ? C.warn : C.good,
+        rank:r.daysUntilDue < 0 ? 2 : 4,
+      });
+    });
+
+  schedules
+    .filter(s => s.start >= today)
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .slice(0, 3)
+    .forEach(s => {
+      const left = daysDiff(today, s.start);
+      items.push({
+        kind:`일정`,
+        title:s.title,
+        dueDate:s.start,
+        daysLeft:left,
+        workload:`${daysDiff(s.start, s.end) + 1}일`,
+        action:left === 0 ? `오늘 시작` : `${left}일 후 시작`,
+        tone:s.color || C.muted,
+        rank:7,
+      });
+    });
+
+  const sorted = items.sort((a, b) => a.rank - b.rank || a.daysLeft - b.daysLeft).slice(0, 10);
+  if (sorted.length === 0) return null;
+
+  return (
+    <>
+      <SectionTitle>마감 역산</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`6px 13px`, marginBottom:18 }}>
+        {sorted.map((item, idx) => (
+          <div key={`${item.kind}-${item.title}-${item.dueDate}-${idx}`} style={{ display:`grid`, gridTemplateColumns:`72px 1fr auto`, gap:8, alignItems:`center`, padding:`10px 0`, borderBottom:idx < sorted.length - 1 ? `1px dashed ${C.lineSoft}` : `none` }}>
+            <div>
+              <div className={`kserif`} style={{ fontSize:10, color:item.tone, fontWeight:700 }}>{item.kind}</div>
+              <div className={`mono`} style={{ fontSize:9, color:C.muted, marginTop:3 }}>{item.dueDate?.slice(5) || ``}</div>
+            </div>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontSize:11, color:C.ink, fontWeight:600, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.title}</div>
+              <div style={{ fontSize:10, color:C.muted, marginTop:3, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.action}</div>
+            </div>
+            <div style={{ textAlign:`right`, flexShrink:0 }}>
+              <div className={`mono`} style={{ color:item.tone, fontSize:13, fontWeight:700 }}>{item.daysLeft < 0 ? `+${Math.abs(item.daysLeft)}` : `D-${item.daysLeft}`}</div>
+              <div style={{ fontSize:9, color:C.muted, marginTop:3 }}>{item.workload}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ConditionPerformanceSection({ summary }) {
+  if (!summary || summary.rows.length === 0) return (
+    <>
+      <SectionTitle>컨디션-성과</SectionTitle>
+      <div style={{ background:C.paper, border:`1px dashed ${C.line}`, padding:18, marginBottom:18, textAlign:`center`, color:C.muted, fontSize:12 }}>
+        하루 메모에 컨디션을 남기면 공부량과 함께 자동 비교됩니다.
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <SectionTitle>컨디션-성과</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:14, marginBottom:18 }}>
+        <div style={{ fontSize:11, color:C.muted, lineHeight:1.6, marginBottom:10 }}>{summary.insight}</div>
+        <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:6, marginBottom:12 }}>
+          {summary.groups.map(g => (
+            <div key={g.key} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`9px 7px`, textAlign:`center` }}>
+              <div className={`mono`} style={{ color:g.color, fontSize:15, fontWeight:700 }}>{fmtHour(g.avgMin)}</div>
+              <div className={`kserif`} style={{ color:C.muted, fontSize:9, marginTop:4 }}>{g.label} · {g.count}일</div>
+              {(g.avgWrongRate != null || g.avgRankPercent != null) && (
+                <div className={`mono`} style={{ color:C.muted, fontSize:8.5, marginTop:4 }}>
+                  {g.avgWrongRate != null ? `객 ${Math.round(g.avgWrongRate)}% 오답` : ``}{g.avgWrongRate != null && g.avgRankPercent != null ? ` · ` : ``}{g.avgRankPercent != null ? `상위 ${Math.round(g.avgRankPercent)}%` : ``}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div style={{ display:`flex`, flexDirection:`column`, gap:6 }}>
+          {summary.recent.map(row => (
+            <div key={row.date} style={{ display:`grid`, gridTemplateColumns:`54px 56px 1fr`, gap:8, alignItems:`center`, fontSize:10, borderTop:`1px dashed ${C.lineSoft}`, paddingTop:6 }}>
+              <span className={`mono`} style={{ color:C.muted }}>{row.date.slice(5)}</span>
+              <span className={`kserif`} style={{ color:row.condition.color, fontWeight:700 }}>{row.condition.label}</span>
+              <span style={{ color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                {fmtMin(row.minutes)} · {row.mood}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ReportView({ today, settings, logs, examScores, rankScores = [], materials = [], moods = {}, courses = [], reviews = [], schedules = [] }) {
   const weekStart = weekStartOf(today);
   const wDates = weekDays(weekStart);
 
@@ -8110,6 +8534,7 @@ function ReportView({ today, settings, logs, examScores, materials }) {
   const allMin = Object.values(logs).reduce((s, dl) => s + Object.values(dl).reduce((a,b) => a+b, 0), 0);
   const studyDays = Object.keys(logs).length;
   const avgPerDay = studyDays > 0 ? allMin / studyDays : 0;
+  const conditionSummary = useMemo(() => buildConditionPerformance({ today, logs, moods, examScores, rankScores }), [today, logs, moods, examScores, rankScores]);
 
   // mock score average per subject
   const mockAvg = useMemo(() => {
@@ -8131,6 +8556,17 @@ function ReportView({ today, settings, logs, examScores, materials }) {
           총 학습일 {studyDays}일 · 누적 {fmtHour(allMin)} · 일평균 {fmtHour(avgPerDay)}
         </div>
       </div>
+
+      <DeadlineBackcastSection
+        today={today}
+        settings={settings}
+        courses={courses}
+        materials={materials}
+        reviews={reviews}
+        schedules={schedules}
+      />
+
+      <ConditionPerformanceSection summary={conditionSummary} />
 
       {/* Weekly progress */}
       <SectionTitle>주간 목표 (이번 주)</SectionTitle>
@@ -8690,7 +9126,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
           <Sheet size={14} /> 엑셀(.xlsx)로 내보내기
         </button>
         <div style={{ fontSize:10, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
-          요약 / 학습시간 / 5트랙 / 인박스 / 회차점수 / 사례등수 / 강의요약 / 강의목록 / 주간계획 / 루틴 등 — 16개 시트로 정리됩니다.
+          요약 / 학습시간 / 5트랙 / 인박스 / 버릴목록 / 회차점수 / 사례등수 / 강의요약 / 강의목록 / 주간계획 / 루틴 등 — 17개 시트로 정리됩니다.
         </div>
         <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr`, gap:8 }}>
           <button onClick={onExport} style={{ background:C.bg, border:`1px solid ${C.line}`, padding:`10px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5 }}>
