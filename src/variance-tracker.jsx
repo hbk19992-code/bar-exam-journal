@@ -507,6 +507,11 @@ function courseTagToTrackKey(tagKey) {
   return `memo`;
 }
 
+function parseParkingTodoSourceId(sourceId) {
+  const match = String(sourceId || ``).match(/^todo:(\d{4}-\d{2}-\d{2}):(.+)$/);
+  return match ? { date: match[1], id: match[2] } : null;
+}
+
 function buildCourseTrackInboxItem(course, lecture, tagKey, date = todayISO()) {
   const tagLabel = COURSE_TAGS.find(t => t.key === tagKey)?.label || tagKey;
   return buildTrackInboxItem({
@@ -1814,6 +1819,45 @@ const globalStyles = (
     if (!loaded || !user) return;
     writeLocalDraft(user.uid, localStateRef.current);
   }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, parkingItems, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const droppedTodoKeys = new Set(
+      (parkingItems || [])
+        .filter(item => item.bucket === `drop`)
+        .map(item => parseParkingTodoSourceId(item.sourceId))
+        .filter(Boolean)
+        .map(parsed => `${parsed.date}:${parsed.id}`)
+    );
+
+    setTodos(prev => {
+      let changed = false;
+      const next = {};
+      Object.entries(prev || {}).forEach(([date, list]) => {
+        const nextList = (list || []).map(todo => {
+          const key = `${date}:${todo.id}`;
+          const shouldHide = droppedTodoKeys.has(key);
+
+          if (shouldHide && (!todo.hidden || !todo.hiddenByParking)) {
+            changed = true;
+            return { ...todo, hidden: true, hiddenByParking: true };
+          }
+
+          if (!shouldHide && todo.hiddenByParking) {
+            changed = true;
+            const restored = { ...todo };
+            delete restored.hiddenByParking;
+            delete restored.hidden;
+            return restored;
+          }
+
+          return todo;
+        });
+        next[date] = nextList;
+      });
+      return changed ? next : prev;
+    });
+  }, [loaded, parkingItems]);
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
@@ -2767,7 +2811,9 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
                         {item.sourceLabel && (
                           <div style={{ display:`flex`, alignItems:`center`, gap:5, marginBottom:4, minWidth:0 }}>
                             <span className={`kserif`} style={{ color:b.color, fontSize:9, fontWeight:700, flexShrink:0 }}>{item.sourceLabel}</span>
-                            <span style={{ color:C.muted, fontSize:9, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.sourceMeta || item.sourceTitle}</span>
+                            <span style={{ color:C.muted, fontSize:9, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                              {item.sourceMeta || item.sourceTitle}{item.sourceType === `todo` && (item.bucket || `drop`) === `drop` ? ` · 원본 숨김` : ``}
+                            </span>
                           </div>
                         )}
                         <input value={item.title || ``} onChange={e => updateItem(item.id, { title:e.target.value })}
