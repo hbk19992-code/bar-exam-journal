@@ -435,6 +435,79 @@ function fmtSavedAt(iso) {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
+function getTrackMeta(trackKey) {
+  return TRACK_TYPES.find(t => t.key === trackKey) || TRACK_TYPES[0];
+}
+
+function normalizeTrackInboxText(text) {
+  return String(text || ``).replace(/\s+/g, ` `).trim();
+}
+
+function appendTrackText(prev, date, trackKey, text) {
+  const nextLine = normalizeTrackInboxText(text);
+  if (!nextLine) return prev;
+  const dayTracks = prev[date] || {};
+  const cur = dayTracks[trackKey] || {};
+  const existing = (cur.text || ``).trim();
+  const lines = existing.split(/\n/).map(line => line.trim()).filter(Boolean);
+  if (lines.includes(nextLine)) return prev;
+  const nextText = existing ? `${existing}\n${nextLine}` : nextLine;
+  return {
+    ...prev,
+    [date]: {
+      ...dayTracks,
+      [trackKey]: { ...cur, text: nextText },
+    },
+  };
+}
+
+function buildTrackInboxItem({ date = todayISO(), trackKey = `memo`, text, source = `직접`, sourceId = ``, subject = `` }) {
+  const meta = getTrackMeta(trackKey);
+  const body = normalizeTrackInboxText(text);
+  if (!body) return null;
+  return {
+    id: uid(),
+    date,
+    trackKey: meta.key,
+    text: body,
+    source,
+    sourceId: sourceId || `${source}:${date}:${meta.key}:${body}`,
+    subject,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function enqueueTrackInbox(prev, item) {
+  if (!item?.text) return prev;
+  const body = normalizeTrackInboxText(item.text);
+  const duplicate = (prev || []).some(x => {
+    if (!x || x.status === `accepted` || x.status === `dismissed`) return false;
+    if (item.sourceId && x.sourceId === item.sourceId) return true;
+    return x.date === item.date && x.trackKey === item.trackKey && normalizeTrackInboxText(x.text) === body;
+  });
+  if (duplicate) return prev;
+  return [{ ...item, text: body }, ...(prev || [])].slice(0, 200);
+}
+
+function courseTagToTrackKey(tagKey) {
+  if (tagKey === `case`) return `case`;
+  if (tagKey === `memory` || tagKey === `hard`) return `memo`;
+  if (tagKey === `again`) return `aux`;
+  return `memo`;
+}
+
+function buildCourseTrackInboxItem(course, lecture, tagKey, date = todayISO()) {
+  const tagLabel = COURSE_TAGS.find(t => t.key === tagKey)?.label || tagKey;
+  return buildTrackInboxItem({
+    date,
+    trackKey: courseTagToTrackKey(tagKey),
+    text: `[${course.subject}] ${course.name} ${lecture.num}강 · ${lecture.title} · ${tagLabel}`,
+    source: `강의 태그`,
+    sourceId: `course-track:${course.id}:${lecture.num}:${tagKey}`,
+    subject: course.subject,
+  });
+}
+
 /* ICS (Apple/Google Calendar) export */
 function buildICS({ examDate, examLabel, mockExams = [], schedules = [] }) {
   const BS = String.fromCharCode(92);
@@ -486,7 +559,7 @@ async function exportXLSX(state, filename) {
   const wb = XLSX.utils.book_new();
   const {
     settings = {}, logs = {}, tracks = {}, todos = {}, examScores = [], rankScores = [],
-    materials = [], reviews = [], books = [], schedules = [], moods = {},
+    materials = [], reviews = [], books = [], schedules = [], moods = {}, trackInbox = [],
     checklists = [], courses = [], weeklyPlans = {}, routines = [], routineLog = {},
   } = state;
 
@@ -550,6 +623,22 @@ async function exportXLSX(state, filename) {
     trackRows.push(row);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trackRows), `5트랙`);
+
+  // [3-1] 5-track inbox
+  const inboxRows = [[`날짜`, `트랙`, `내용`, `출처`, `과목`, `생성시각`, `상태`]];
+  trackInbox.forEach(item => {
+    const meta = getTrackMeta(item.trackKey);
+    inboxRows.push([
+      item.date || ``,
+      meta ? `${meta.short} ${meta.label}` : item.trackKey || ``,
+      item.text || ``,
+      item.source || ``,
+      item.subject || ``,
+      item.createdAt || ``,
+      item.status || `대기`,
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(inboxRows), `5트랙인박스`);
 
   // [4] MCQ round scores
   const scoreRows = [[`날짜`, `회차`, `과목`, `유형`, `틀림`, `총문항`, `메모`]];
@@ -1185,6 +1274,7 @@ const DEFAULT_STATE = {
   examScores: [],
   rankScores: [],
   moods: {},
+  trackInbox: [],
   schedules: [], // [{ id, title, color, start, end, note }]
   checklists: DEFAULT_CHECKLISTS, // [{ id, name, subject, color, items: [{ id, text, stars }], lastReviewed }]
   mcqProgress: {}, //
@@ -1215,7 +1305,7 @@ function normalizeSettings(value = {}) {
 
 const PERSISTED_STATE_KEYS = [
   `settings`, `logs`, `reviews`, `books`, `todos`, `tracks`,
-  `materials`, `materialLog`, `examScores`, `rankScores`, `moods`, `schedules`, `checklists`,
+  `materials`, `materialLog`, `examScores`, `rankScores`, `moods`, `trackInbox`, `schedules`, `checklists`,
   `mcqProgress`, `routines`, `routineLog`, `weeklyPlans`, `courses`,
 ];
 const LOCAL_DRAFT_PREFIX = `bar-exam-journal-local-draft`;
@@ -1304,7 +1394,7 @@ function blankUserState() {
     settings: normalizeSettings(),
     logs: {}, reviews: [], books: [], todos: {}, tracks: {},
     materials: DEFAULT_MATERIALS, materialLog: {},
-    examScores: [], rankScores: [], moods: {}, schedules: [],
+    examScores: [], rankScores: [], moods: {}, trackInbox: [], schedules: [],
     checklists: DEFAULT_CHECKLISTS, mcqProgress: {},
     routines: DEFAULT_ROUTINES, routineLog: {}, weeklyPlans: {}, courses: [],
   };
@@ -1324,6 +1414,7 @@ function normalizeStoredState(data = {}) {
     examScores: asArray(d.examScores),
     rankScores: asArray(d.rankScores),
     moods: asPlainObject(d.moods),
+    trackInbox: asArray(d.trackInbox),
     schedules: asArray(d.schedules),
     checklists: asArray(d.checklists, DEFAULT_CHECKLISTS),
     mcqProgress: asPlainObject(d.mcqProgress),
@@ -1374,6 +1465,7 @@ export default function App() {
   const [examScores, setExamScores] = useState([]);
   const [rankScores, setRankScores] = useState([]);
   const [moods, setMoods] = useState({});
+  const [trackInbox, setTrackInbox] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [checklists, setChecklists] = useState(DEFAULT_CHECKLISTS);
   const [mcqProgress, setMcqProgress] = useState({});
@@ -1500,7 +1592,7 @@ const globalStyles = (
 
   const currentState = {
     settings, logs, reviews, books, todos, tracks,
-    materials, materialLog, examScores, rankScores, moods, schedules, checklists,
+    materials, materialLog, examScores, rankScores, moods, trackInbox, schedules, checklists,
     mcqProgress, routines, routineLog, weeklyPlans, courses,
   };
   localStateRef.current = currentState;
@@ -1521,7 +1613,7 @@ const globalStyles = (
     setTodos(nextState.todos); setTracks(nextState.tracks);
     setMaterials(nextState.materials); setMaterialLog(nextState.materialLog);
     setExamScores(nextState.examScores); setRankScores(nextState.rankScores);
-    setMoods(nextState.moods);
+    setMoods(nextState.moods); setTrackInbox(nextState.trackInbox);
     setSchedules(nextState.schedules); setChecklists(nextState.checklists);
     setMcqProgress(nextState.mcqProgress); setRoutines(nextState.routines);
     setRoutineLog(nextState.routineLog); setWeeklyPlans(nextState.weeklyPlans);
@@ -1686,12 +1778,12 @@ const globalStyles = (
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [user, loaded, syncRetryTick, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+  }, [user, loaded, syncRetryTick, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
 
   useEffect(() => {
     if (!loaded || !user) return;
     writeLocalDraft(user.uid, localStateRef.current);
-  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
+  }, [user, loaded, settings, logs, reviews, books, todos, tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, schedules, checklists, mcqProgress, routines, routineLog, weeklyPlans, courses]);
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
@@ -1788,6 +1880,7 @@ const globalStyles = (
     setExamScores(asArray(data.examScores));
     setRankScores(asArray(data.rankScores));
     setMoods(asPlainObject(data.moods));
+    setTrackInbox(asArray(data.trackInbox));
     setSchedules(asArray(data.schedules));
     setChecklists(asArray(data.checklists, DEFAULT_CHECKLISTS));
     setMcqProgress(asPlainObject(data.mcqProgress));
@@ -1865,6 +1958,7 @@ VITE_FIREBASE_APP_ID`}</pre>
     todos, setTodos, tracks, setTracks,
     materials, setMaterials, materialLog, setMaterialLog,
     examScores, setExamScores, rankScores, setRankScores, moods, setMoods,
+    trackInbox, setTrackInbox,
     schedules, setSchedules,
     checklists, setChecklists,
     mcqProgress, setMcqProgress,
@@ -1914,7 +2008,7 @@ VITE_FIREBASE_APP_ID`}</pre>
               if (confirm(`모든 데이터를 지울까요? (설정 포함) — 클라우드의 본인 데이터도 함께 초기화됩니다.`)) {
                 setLogs({}); setReviews([]); setBooks([]); setTodos({});
                 setTracks({}); setMaterials(DEFAULT_MATERIALS); setMaterialLog({});
-                setExamScores([]); setRankScores([]); setMoods({}); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
+                setExamScores([]); setRankScores([]); setMoods({}); setTrackInbox([]); setSchedules([]); setChecklists(DEFAULT_CHECKLISTS); setSettings(DEFAULT_SETTINGS);
                 setMcqProgress({}); setRoutines(DEFAULT_ROUTINES); setRoutineLog({});
                 setWeeklyPlans({}); setCourses([]);
               }
@@ -1924,7 +2018,7 @@ VITE_FIREBASE_APP_ID`}</pre>
                 schemaVersion: APP_SCHEMA_VERSION,
                 exportedAt: new Date().toISOString(),
                 settings, logs, reviews, books, todos,
-                tracks, materials, materialLog, examScores, rankScores, moods, schedules, checklists,
+                tracks, materials, materialLog, examScores, rankScores, moods, trackInbox, schedules, checklists,
                 mcqProgress, routines, routineLog, weeklyPlans, courses,
               }, null, 2);
               const blob = new Blob([data], { type: `application/json` });
@@ -1938,7 +2032,7 @@ VITE_FIREBASE_APP_ID`}</pre>
               try {
                 await exportXLSX({
                   settings, logs, tracks, todos, examScores, rankScores,
-                  materials, reviews, books, schedules, moods, checklists,
+                  materials, reviews, books, schedules, moods, trackInbox, checklists,
                   courses, weeklyPlans, routines, routineLog,
                 }, `변시기록_${today.replaceAll( `-`, ``)}.xlsx`);
               } catch (e) {
@@ -1965,6 +2059,7 @@ function FeatureIntroModal({ onClose, onSnooze }) {
   const features = [
     { title:`오늘 처리 홈`, body:`수강, 강의 복습, 회독, 기록, 밀린 일을 첫 화면에서 바로 확인합니다.` },
     { title:`강의 중심 기록`, body:`강의 목록과 진도, 어려움·판례·암기 태그를 핵심 흐름으로 관리합니다.` },
+    { title:`청사객암보 인박스`, body:`강의 태그, 주간계획, 메모를 5트랙 후보로 모아 기록 탭에서 정리합니다.` },
     { title:`복습 큐`, body:`강의 복습과 주제 회독을 오늘 할 일로 모아 놓고 바로 완료 처리합니다.` },
     { title:`저장 상태`, body:`상단에서 저장 중, 저장됨, 저장 실패를 확인하고 필요할 때 재시도합니다.` },
   ];
@@ -2617,13 +2712,13 @@ function HomeAction({ icon: Icon, label, value, sub, onClick, color = C.accent }
   );
 }
 
-function HomeWorkHeader({ dday, todayMinutes, tracksDone, courseQueueSummary, dueReviews, todosOpen, planCount = 0, overdueTotal, onGoTo }) {
+function HomeWorkHeader({ dday, todayMinutes, tracksDone, inboxCount = 0, courseQueueSummary, dueReviews, todosOpen, planCount = 0, overdueTotal, onGoTo }) {
   const totalWork = courseQueueSummary.watch + courseQueueSummary.review + dueReviews.length + todosOpen + planCount;
   const tiles = [
     { label:`수강`, value:courseQueueSummary.watch, sub:`강의`, color:C.book, view:`courses` },
     { label:`복습`, value:courseQueueSummary.review, sub:`강의`, color:C.accent, view:`courses` },
     { label:`회독`, value:dueReviews.length, sub:`주제`, color:C.good, view:`review` },
-    { label:`기록`, value:fmtMin(todayMinutes), sub:`계획 ${planCount} · 트랙 ${tracksDone}/5`, color:C.ink, view:`log` },
+    { label:`기록`, value:fmtMin(todayMinutes), sub:`계획 ${planCount} · 후보 ${inboxCount} · 트랙 ${tracksDone}/5`, color:C.ink, view:`log` },
     { label:`밀림`, value:overdueTotal, sub:`우선`, color:overdueTotal > 0 ? C.accent : C.muted, view: overdueTotal > 0 ? `review` : `calendar` },
   ];
 
@@ -2749,6 +2844,93 @@ function HomeCoursePaceStrip({ summary, onGoTo }) {
           </button>
         </div>
       )}
+    </section>
+  );
+}
+
+function buildReviewDebtSummary({ courseQueueItems = [], dueReviews = [], today = todayISO() }) {
+  const courseReviews = courseQueueItems.filter(item => item.type === `review`);
+  const courseOverdue = courseReviews.filter(item => item.lecture.nextReviewDate && item.lecture.nextReviewDate < today).length;
+  const topicOverdue = dueReviews.filter(r => r.dueDate && r.dueDate < today).length;
+  const hardDue = courseReviews.filter(item => lectureHasTag(item.lecture, `hard`)).length;
+  const repeatDue = courseReviews.filter(item => lectureHasTag(item.lecture, `again`)).length;
+  const totalDue = courseReviews.length + dueReviews.length;
+  const totalOverdue = courseOverdue + topicOverdue;
+  const score = totalDue + totalOverdue * 1.7 + hardDue * 0.8 + repeatDue * 0.4;
+  const pct = Math.min(100, Math.round(score * 6));
+  const level = totalOverdue >= 8 || score >= 18 ? `danger` : totalOverdue >= 3 || score >= 10 ? `warning` : totalDue > 0 ? `active` : `clear`;
+  const tone = level === `danger` ? C.accent : level === `warning` ? C.warn : level === `active` ? C.book : C.good;
+  const label = level === `danger` ? `위험` : level === `warning` ? `주의` : level === `active` ? `처리` : `정리`;
+  const headline = totalDue === 0
+    ? `복습 부채 없음`
+    : totalOverdue > 0
+    ? `밀린 복습 ${totalOverdue}개`
+    : `오늘 복습 ${totalDue}개`;
+  const recommendation = totalDue === 0
+    ? `오늘은 신규 수강이나 기록 정리에 힘을 실어도 됩니다.`
+    : courseReviews.length >= dueReviews.length
+    ? `강의복습 ${courseReviews.length}개를 먼저 줄이면 부채가 빨리 내려갑니다.`
+    : `주제회독 ${dueReviews.length}개를 먼저 닫으면 흐름이 안정됩니다.`;
+
+  return {
+    courseDue: courseReviews.length,
+    topicDue: dueReviews.length,
+    courseOverdue,
+    topicOverdue,
+    hardDue,
+    repeatDue,
+    totalDue,
+    totalOverdue,
+    pct,
+    level,
+    tone,
+    label,
+    headline,
+    recommendation,
+  };
+}
+
+function HomeReviewDebtPanel({ summary, onGoTo }) {
+  if (!summary || summary.totalDue === 0) return null;
+  const stats = [
+    { label:`강의`, value:summary.courseDue, color:C.accent, view:`courses` },
+    { label:`주제`, value:summary.topicDue, color:C.good, view:`review` },
+    { label:`밀림`, value:summary.totalOverdue, color:summary.totalOverdue > 0 ? C.accent : C.muted, view:summary.totalOverdue > 0 ? `review` : `courses` },
+    { label:`어려움`, value:summary.hardDue, color:summary.hardDue > 0 ? C.warn : C.muted, view:`courses` },
+  ];
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:10, padding:`12px 13px` }}>
+      <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:12, marginBottom:9 }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{ display:`flex`, alignItems:`center`, gap:6, marginBottom:3 }}>
+            <span className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>복습 부채</span>
+            <span className={`mono`} style={{ color:summary.tone, border:`1px solid ${summary.tone}`, padding:`1px 5px`, fontSize:9, fontWeight:700 }}>{summary.label}</span>
+          </div>
+          <div style={{ fontSize:10, color:C.muted, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{summary.recommendation}</div>
+        </div>
+        <button onClick={() => onGoTo(summary.courseDue >= summary.topicDue ? `courses` : `review`)} className={`tap`}
+          style={{ background:summary.tone, color:`#fff`, border:`none`, padding:`7px 9px`, fontSize:10, cursor:`pointer`, flexShrink:0 }}>
+          처리
+        </button>
+      </div>
+
+      <div style={{ display:`flex`, alignItems:`center`, gap:10, marginBottom:9 }}>
+        <div className={`serif`} style={{ fontSize:26, lineHeight:1, color:C.ink, fontWeight:600, minWidth:74 }}>{summary.headline}</div>
+        <div style={{ flex:1, height:6, background:C.lineSoft, position:`relative`, overflow:`hidden` }}>
+          <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${summary.pct}%`, background:summary.tone }} />
+        </div>
+      </div>
+
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, minmax(0, 1fr))`, gap:5 }}>
+        {stats.map(stat => (
+          <button key={stat.label} onClick={() => onGoTo(stat.view)} className={`tap`}
+            style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 4px`, textAlign:`center`, cursor:`pointer`, minHeight:48 }}>
+            <div className={`mono`} style={{ color:stat.color, fontSize:15, fontWeight:700, lineHeight:1 }}>{stat.value}</div>
+            <div className={`kserif`} style={{ color:C.muted, fontSize:9, marginTop:4 }}>{stat.label}</div>
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
@@ -2943,7 +3125,7 @@ function HomeChecklistShelf({ staleChecklists = [], today, onGoTo }) {
   );
 }
 
-function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen, tracks = {}, setTracks, onGoTo, onCourseDone, onReviewDone }) {
+function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen, setTrackInbox, onGoTo, onCourseDone, onReviewDone }) {
   const visibleCourses = courseItems.slice(0, 4);
   const visibleReviews = reviews.slice(0, 3);
   const visiblePlans = planItems.slice(0, 4);
@@ -2952,23 +3134,16 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
   const hiddenPlanCount = Math.max(0, planItems.length - visiblePlans.length);
   const hiddenCount = hiddenCourseCount + hiddenPlanCount + Math.max(0, reviews.length - visibleReviews.length);
 
-  function sendPlanToTrack(item, trackKey) {
-    if (!setTracks || !item?.title) return;
-    setTracks(prev => {
-      const dayTracks = prev[today] || {};
-      const cur = dayTracks[trackKey] || {};
-      const existing = (cur.text || ``).trim();
-      const lines = existing.split(/\n/).map(line => line.trim()).filter(Boolean);
-      if (lines.includes(item.title)) return prev;
-      const nextText = existing ? `${existing}\n${item.title}` : item.title;
-      return {
-        ...prev,
-        [today]: {
-          ...dayTracks,
-          [trackKey]: { ...cur, text: nextText },
-        },
-      };
+  function sendPlanToTrackInbox(item, trackKey) {
+    if (!setTrackInbox || !item?.title) return;
+    const inboxItem = buildTrackInboxItem({
+      date: today,
+      trackKey,
+      text: item.title,
+      source: `주간계획`,
+      sourceId: `weekly-plan:${today}:${trackKey}:${item.id}`,
     });
+    setTrackInbox(prev => enqueueTrackInbox(prev, inboxItem));
   }
 
   return (
@@ -3006,7 +3181,7 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
               </div>
               <div style={{ display:`flex`, gap:3, flexShrink:0 }}>
                 {TRACK_TYPES.map(track => (
-                  <button key={track.key} title={`${track.label}에 추가`} onClick={() => sendPlanToTrack(item, track.key)} className={`tap`}
+                  <button key={track.key} title={`${track.label} 인박스에 담기`} onClick={() => sendPlanToTrackInbox(item, track.key)} className={`tap`}
                     style={{ background:C.bg, color:track.color, border:`1px solid ${C.lineSoft}`, width:26, height:26, display:`grid`, placeItems:`center`, fontSize:10, fontWeight:700, cursor:`pointer`, fontFamily:`Noto Serif KR, serif` }}>
                     {track.short}
                   </button>
@@ -3069,7 +3244,7 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
   );
 }
 
-function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, tracks, setTracks, examScores, moods, setMoods, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, user, onGoTo }) {
+function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, tracks, setTracks, examScores, moods, setMoods, trackInbox = [], setTrackInbox, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, user, onGoTo }) {
   const todayLog = logs[today] || {};
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
@@ -3080,6 +3255,7 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   }, 0);
   const todayTracks = tracks[today] || {};
   const tracksDone = TRACK_TYPES.filter(tt => todayTracks[tt.key]?.done).length;
+  const todayInboxCount = useMemo(() => (trackInbox || []).filter(item => item && (!item.status || item.status === `pending`) && item.date === today).length, [trackInbox, today]);
   const cycleInfo = useMemo(() => getCycleInfo(today, settings), [today, settings]);
   const tomorrowInfo = useMemo(() => getCycleInfo(addDays(today, 1), settings), [today, settings]);
   const todayMock = useMemo(() => getMockExam(today, settings), [today, settings]);
@@ -3124,9 +3300,12 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   }, [courses, today, settings]);
 
   const courseQueueItems = useMemo(() => buildCourseQueueItems(courses, today, settings), [courses, today, settings]);
+  const courseReviewSourceKeys = useMemo(() => new Set(courseQueueItems.filter(item => item.type === `review`).map(item => courseLectureReviewKey(item.course.id, item.lecture.num))), [courseQueueItems]);
+  const homeDueReviews = useMemo(() => dueReviews.filter(r => !(r.sourceType === `courseLecture` && courseReviewSourceKeys.has(r.sourceKey))), [dueReviews, courseReviewSourceKeys]);
   const coursePaceSummary = useMemo(() => buildCoursePaceSummary(courses, today, settings), [courses, today, settings]);
+  const reviewDebtSummary = useMemo(() => buildReviewDebtSummary({ courseQueueItems, dueReviews: homeDueReviews, today }), [courseQueueItems, homeDueReviews, today]);
   const overdueCourseReviews = courseQueueItems.filter(item => item.type === `review` && item.lecture.nextReviewDate && item.lecture.nextReviewDate < today).length;
-  const overdueTopicReviews = dueReviews.filter(r => r.dueDate < today).length;
+  const overdueTopicReviews = homeDueReviews.filter(r => r.dueDate < today).length;
   const overdueTotal = overdueTodosOpen + overdueCourseReviews + overdueTopicReviews;
 
   const daysStudied = Object.keys(logs).filter(d => Object.values(logs[d] || {}).some(v => (v || 0) > 0)).length;
@@ -3196,17 +3375,23 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         dday={dday}
         todayMinutes={todayMinutes}
         tracksDone={tracksDone}
+        inboxCount={todayInboxCount}
         courseQueueSummary={courseQueueSummary}
-        dueReviews={dueReviews}
+        dueReviews={homeDueReviews}
         todosOpen={todayTodosOpen}
         planCount={todayWeeklyPlanItems.length}
         overdueTotal={overdueTotal}
         onGoTo={onGoTo}
       />
 
+      <HomeReviewDebtPanel
+        summary={reviewDebtSummary}
+        onGoTo={onGoTo}
+      />
+
       <HomeMinimumMode
         courseItems={courseQueueItems}
-        reviews={dueReviews}
+        reviews={homeDueReviews}
         planItems={todayWeeklyPlanItems}
         todosOpen={todayTodosOpen}
         staleChecklists={staleChecklists}
@@ -3218,11 +3403,10 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
       <HomeTodayPanel
         today={today}
         courseItems={courseQueueItems}
-        reviews={dueReviews}
+        reviews={homeDueReviews}
         planItems={todayWeeklyPlanItems}
         todosOpen={todayTodosOpen}
-        tracks={tracks}
-        setTracks={setTracks}
+        setTrackInbox={setTrackInbox}
         onGoTo={onGoTo}
         onCourseDone={completeHomeCourseItem}
         onReviewDone={completeHomeReview}
@@ -3950,7 +4134,7 @@ function TodoRow({ todo, onToggle, onRemove }) {
 
 /* ============================================================ LOG (기록) ============================================================ */
 
-function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores, setExamScores, rankScores = [], setRankScores, weeklyPlans = {}, setWeeklyPlans, todos = {}, moods = {}, setMoods, initialDate }) {
+function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores, setExamScores, rankScores = [], setRankScores, weeklyPlans = {}, setWeeklyPlans, todos = {}, moods = {}, setMoods, trackInbox = [], setTrackInbox, initialDate }) {
   const [date, setDate] = useState(initialDate || today);
 
   function setDailyMood(value) {
@@ -3962,6 +4146,19 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
       else delete next[date];
       return next;
     });
+  }
+
+  function sendMoodToInbox(trackKey) {
+    const text = moods[date] || ``;
+    if (!text.trim() || !setTrackInbox) return;
+    const inboxItem = buildTrackInboxItem({
+      date,
+      trackKey,
+      text,
+      source: `하루 메모`,
+      sourceId: `daily-memo:${date}:${trackKey}:${normalizeTrackInboxText(text)}`,
+    });
+    setTrackInbox(prev => enqueueTrackInbox(prev, inboxItem));
   }
 
   return (
@@ -3985,6 +4182,14 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
 
       <TimerSection today={today} logs={logs} setLogs={setLogs} />
 
+      <TrackInboxSection
+        date={date}
+        trackInbox={trackInbox}
+        setTrackInbox={setTrackInbox}
+        tracks={tracks}
+        setTracks={setTracks}
+      />
+
       <TracksSection date={date} tracks={tracks} setTracks={setTracks} />
 
       <TimeSection date={date} logs={logs} setLogs={setLogs} settings={settings} />
@@ -3996,6 +4201,7 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
         todos={todos[date] || []}
         mood={moods[date] || ``}
         onMoodChange={setDailyMood}
+        onSendToInbox={sendMoodToInbox}
       />
 
       <ScoresSection date={date} examScores={examScores} setExamScores={setExamScores} />
@@ -4005,7 +4211,7 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
   );
 }
 
-function DailyMemoSection({ date, log, tracks, todos, mood, onMoodChange }) {
+function DailyMemoSection({ date, log, tracks, todos, mood, onMoodChange, onSendToInbox }) {
   return (
     <div style={{ marginBottom:24 }}>
       <SectionTitle>하루 메모</SectionTitle>
@@ -4026,6 +4232,17 @@ function DailyMemoSection({ date, log, tracks, todos, mood, onMoodChange }) {
             marginBottom:8,
           }}
         />
+        {(mood || ``).trim() && onSendToInbox && (
+          <div style={{ display:`flex`, alignItems:`center`, gap:5, marginBottom:8, flexWrap:`wrap` }}>
+            <span className={`kserif`} style={{ fontSize:10, color:C.muted, marginRight:2 }}>인박스</span>
+            {TRACK_TYPES.map(track => (
+              <button key={track.key} title={`${track.label} 인박스에 담기`} onClick={() => onSendToInbox(track.key)} className={`tap`}
+                style={{ background:C.bg, color:track.color, border:`1px solid ${C.lineSoft}`, width:25, height:25, display:`grid`, placeItems:`center`, fontSize:10, fontWeight:700, cursor:`pointer`, fontFamily:`Noto Serif KR, serif` }}>
+                {track.short}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           onClick={async () => {
             const text = buildDailyPlanText({ date, log, tracks, todos, mood });
@@ -4049,6 +4266,95 @@ function DailyMemoSection({ date, log, tracks, todos, mood, onMoodChange }) {
           }}>
           <MessageCircle size={13} /> 카톡용 계획 복사
         </button>
+      </div>
+    </div>
+  );
+}
+
+function TrackInboxSection({ date, trackInbox = [], setTrackInbox, tracks, setTracks }) {
+  const isPending = item => item && (!item.status || item.status === `pending`);
+  const pendingItems = (trackInbox || []).filter(item => isPending(item) && item.date === date);
+  const otherPendingCount = (trackInbox || []).filter(item => isPending(item) && item.date !== date).length;
+
+  function updateItem(id, patch) {
+    if (!setTrackInbox) return;
+    setTrackInbox(prev => (prev || []).map(item => item.id === id ? { ...item, ...patch } : item));
+  }
+
+  function markItem(id, status) {
+    if (!setTrackInbox) return;
+    const stampKey = status === `accepted` ? `acceptedAt` : `dismissedAt`;
+    setTrackInbox(prev => (prev || []).map(item => item.id === id ? { ...item, status, [stampKey]: new Date().toISOString() } : item));
+  }
+
+  function acceptItem(item) {
+    if (!setTracks || !item?.text?.trim()) return;
+    setTracks(prev => appendTrackText(prev, date, item.trackKey, item.text));
+    markItem(item.id, `accepted`);
+  }
+
+  function acceptAll() {
+    if (!setTracks || pendingItems.length === 0) return;
+    setTracks(prev => pendingItems.reduce((acc, item) => appendTrackText(acc, date, item.trackKey, item.text), prev));
+    const ids = new Set(pendingItems.map(item => item.id));
+    setTrackInbox(prev => (prev || []).map(item => ids.has(item.id) ? { ...item, status:`accepted`, acceptedAt:new Date().toISOString() } : item));
+  }
+
+  if (pendingItems.length === 0 && otherPendingCount === 0) return null;
+
+  return (
+    <div style={{ marginBottom:24 }}>
+      <SectionTitle>청사객암보 인박스</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px` }}>
+        <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:pendingItems.length ? 10 : 0 }}>
+          <div>
+            <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>정리 후보 {pendingItems.length}</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:3 }}>
+              강의 태그, 주간계획, 메모에서 들어온 항목을 5트랙에 받아 씁니다.
+            </div>
+          </div>
+          {pendingItems.length > 1 && (
+            <button onClick={acceptAll} className={`tap`} style={{ background:C.ink, color:`#fff`, border:`none`, padding:`7px 9px`, fontSize:10, cursor:`pointer`, flexShrink:0 }}>
+              모두 받기
+            </button>
+          )}
+        </div>
+
+        {pendingItems.length === 0 ? (
+          <div style={{ color:C.muted, fontSize:11, paddingTop:8 }}>
+            이 날짜 후보는 없습니다{otherPendingCount > 0 ? ` · 다른 날짜 ${otherPendingCount}개 대기` : ``}.
+          </div>
+        ) : (
+          <div style={{ display:`flex`, flexDirection:`column`, gap:7 }}>
+            {pendingItems.map(item => {
+              const meta = getTrackMeta(item.trackKey);
+              return (
+                <div key={item.id} style={{ display:`grid`, gridTemplateColumns:`64px 1fr auto auto`, gap:6, alignItems:`center`, borderTop:`1px dashed ${C.lineSoft}`, paddingTop:7 }}>
+                  <select value={item.trackKey} onChange={e => updateItem(item.id, { trackKey:e.target.value })}
+                    style={{ background:C.bg, color:meta.color, border:`1px solid ${C.lineSoft}`, padding:`6px 4px`, fontSize:10, outline:`none`, fontWeight:700 }}>
+                    {TRACK_TYPES.map(track => <option key={track.key} value={track.key}>{track.short} {track.label}</option>)}
+                  </select>
+                  <div style={{ minWidth:0 }}>
+                    <input value={item.text || ``} onChange={e => updateItem(item.id, { text:e.target.value })}
+                      style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, outline:`none`, fontSize:11, color:C.ink }}
+                    />
+                    <div style={{ fontSize:9, color:C.muted, marginTop:3, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                      {item.source || `후보`}{item.subject ? ` · ${item.subject}` : ``}
+                    </div>
+                  </div>
+                  <button onClick={() => acceptItem(item)} title={`5트랙에 받기`} className={`tap`}
+                    style={{ background:meta.color, color:`#fff`, border:`none`, width:32, height:32, cursor:`pointer`, display:`grid`, placeItems:`center` }}>
+                    <Check size={14} />
+                  </button>
+                  <button onClick={() => markItem(item.id, `dismissed`)} title={`버리기`} className={`tap`}
+                    style={{ background:C.bg, color:C.muted, border:`1px solid ${C.lineSoft}`, width:32, height:32, cursor:`pointer`, display:`grid`, placeItems:`center` }}>
+                    <X size={13} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6374,7 +6680,93 @@ function buildLectureReviewPayload(course, lecture) {
   };
 }
 
-function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, reviews = [], setReviews }) {
+function CourseHubPanel({ courses, today, settings, onCompleteLecture, onReviewLecture }) {
+  if (!courses.length) return null;
+  const queueItems = buildCourseQueueItems(courses, today, settings);
+  const watchItems = queueItems.filter(item => item.type === `watch`);
+  const reviewItems = queueItems.filter(item => item.type === `review`);
+  const pace = buildCoursePaceSummary(courses, today, settings);
+  const taggedLectures = courses.reduce((sum, course) => sum + (course.lectures || []).filter(l => (l.tags || []).length > 0 || (l.note || ``).trim()).length, 0);
+  const hardLectures = courses.reduce((sum, course) => sum + (course.lectures || []).filter(l => lectureHasTag(l, `hard`) || lectureHasTag(l, `again`)).length, 0);
+  const riskCourse = pace.active.find(item => item.status === `delayed` || item.status === `caution`);
+  const topItem = reviewItems[0] || watchItems[0] || null;
+  const tone = pace.delayed > 0 ? C.accent : pace.caution > 0 ? C.warn : reviewItems.length > 0 ? C.accent : C.good;
+  const statusLabel = pace.delayed > 0 ? `지연 ${pace.delayed}` : pace.caution > 0 ? `주의 ${pace.caution}` : `정상`;
+
+  return (
+    <section style={{ background:C.ink, color:`#fff`, border:`1px solid ${C.ink}`, padding:`14px`, marginBottom:12 }}>
+      <div style={{ display:`flex`, alignItems:`flex-start`, justifyContent:`space-between`, gap:10, marginBottom:10 }}>
+        <div style={{ minWidth:0 }}>
+          <div className={`kserif`} style={{ fontSize:12, letterSpacing:`0.14em`, color:`rgba(255,255,255,0.72)`, fontWeight:700 }}>강의 허브</div>
+          <div className={`serif`} style={{ fontSize:24, fontWeight:600, lineHeight:1.1, marginTop:4 }}>
+            수강 {watchItems.length} · 복습 {reviewItems.length}
+          </div>
+        </div>
+        <span className={`mono`} style={{ color:`#fff`, border:`1px solid rgba(255,255,255,0.25)`, padding:`3px 7px`, fontSize:10, flexShrink:0 }}>
+          {statusLabel}
+        </span>
+      </div>
+
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, minmax(0, 1fr))`, gap:5, marginBottom:10 }}>
+        {[
+          { label:`오늘 수강`, value:watchItems.length },
+          { label:`오늘 복습`, value:reviewItems.length },
+          { label:`위험`, value:pace.delayed + pace.caution },
+          { label:`태그`, value:taggedLectures },
+        ].map(stat => (
+          <div key={stat.label} style={{ background:`rgba(255,255,255,0.08)`, border:`1px solid rgba(255,255,255,0.12)`, padding:`7px 5px`, minHeight:48, textAlign:`center` }}>
+            <div className={`mono`} style={{ fontSize:16, fontWeight:700, lineHeight:1 }}>{stat.value}</div>
+            <div className={`kserif`} style={{ fontSize:9, color:`rgba(255,255,255,0.62)`, marginTop:4 }}>{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {(topItem || riskCourse || hardLectures > 0) && (
+        <div style={{ display:`flex`, flexDirection:`column`, gap:6 }}>
+          {topItem && (
+            <div style={{ background:`rgba(255,255,255,0.08)`, border:`1px solid rgba(255,255,255,0.12)`, padding:`9px 10px`, display:`flex`, alignItems:`center`, gap:8 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div className={`kserif`} style={{ color:`rgba(255,255,255,0.7)`, fontSize:10, fontWeight:700 }}>{topItem.type === `review` ? `오늘 우선 복습` : `오늘 우선 수강`}</div>
+                <div style={{ fontSize:11, color:`#fff`, marginTop:3, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                  {topItem.course.name} · {topItem.lecture.num}강 {topItem.lecture.title}
+                </div>
+              </div>
+              <button onClick={() => topItem.type === `review` ? onReviewLecture(topItem.course.id, topItem.lecture.num) : onCompleteLecture(topItem.course.id, topItem.lecture.num)} className={`tap`}
+                style={{ background:`#fff`, color:C.ink, border:`none`, padding:`7px 9px`, fontSize:10, fontWeight:700, cursor:`pointer`, flexShrink:0 }}>
+                {topItem.type === `review` ? `복습완료` : `완강`}
+              </button>
+            </div>
+          )}
+
+          {riskCourse && (
+            <div style={{ background:`rgba(255,255,255,0.06)`, border:`1px solid rgba(255,255,255,0.12)`, padding:`9px 10px`, borderLeft:`3px solid ${tone}` }}>
+              <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8 }}>
+                <div style={{ minWidth:0 }}>
+                  <div className={`kserif`} style={{ color:`rgba(255,255,255,0.72)`, fontSize:10, fontWeight:700 }}>페이스 경고</div>
+                  <div style={{ fontSize:11, color:`#fff`, marginTop:3, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{riskCourse.course.name}</div>
+                </div>
+                <div className={`mono`} style={{ fontSize:10, color:`#fff`, flexShrink:0 }}>
+                  {riskCourse.plannedBehind > 0 ? `${riskCourse.plannedBehind}강 밀림` : riskCourse.projectedEndDate ? `${fmtShortDate(riskCourse.projectedEndDate)} 예상` : `시작 필요`}
+                </div>
+              </div>
+              <div style={{ height:3, background:`rgba(255,255,255,0.18)`, marginTop:7, position:`relative` }}>
+                <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${riskCourse.total ? Math.round((riskCourse.completed / riskCourse.total) * 100) : 0}%`, background:tone }} />
+              </div>
+            </div>
+          )}
+
+          {hardLectures > 0 && (
+            <div style={{ color:`rgba(255,255,255,0.7)`, fontSize:10, lineHeight:1.5 }}>
+              어려움·재복습 태그 {hardLectures}개가 복습 큐와 인박스 후보로 이어집니다.
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, reviews = [], setReviews, setTrackInbox }) {
   const [showAdd, setShowAdd] = useState(false); const [filter, setFilter] = useState(`전체`);
   function autoLogTime(subject, studyType, minutes) {
     if (minutes <= 0) return; const key = `${subject}::${studyType}`;
@@ -6459,6 +6851,10 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
       }];
     });
   }
+  function addTrackInboxItem(item) {
+    if (!setTrackInbox || !item) return;
+    setTrackInbox(prev => enqueueTrackInbox(prev, item));
+  }
   function logReviewTime(id, minutes) {
     const course = courses.find(c => c.id === id); if (!course) return;
     autoLogTime(course.subject, COURSE_REVIEW_TYPE, minutes);
@@ -6538,13 +6934,21 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
         {[`전체`, ...Object.keys(SUBJECTS)].map(s => (<button key={s} onClick={() => setFilter(s)} style={{ background: filter === s ? C.ink : C.paper, color: filter === s ? `#fff` : C.muted, border: `1px solid ${filter === s ? C.ink : C.line}`, padding:`5px 10px`, fontSize:11, cursor:`pointer`, whiteSpace:`nowrap` }}>{s}</button>))}
       </div>
 
+      <CourseHubPanel
+        courses={filtered}
+        today={today}
+        settings={settings}
+        onCompleteLecture={completeQueuedLecture}
+        onReviewLecture={reviewQueuedLecture}
+      />
+
       <CourseQueuePanel courses={filtered} today={today} settings={settings} onCompleteLecture={completeQueuedLecture} onReviewLecture={reviewQueuedLecture} />
       {showAdd && <AddCourseForm onAdd={addCourse} onCancel={() => setShowAdd(false)} />}
       {filtered.length === 0 ? (
         <div style={{ textAlign:`center`, padding:30, color:C.muted, fontSize:12, background:C.paper, border:`1px dashed ${C.line}` }}>{courses.length === 0 ? `강의를 추가해 보세요` : `이 과목에 등록된 강의가 없습니다.`}</div>
       ) : (
         <div style={{ display:`flex`, flexDirection:`column`, gap:10 }}>
-          {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs) => updateCourse(c.id, lecs)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onLectureMetaChange={(lecture) => syncLectureReviewTopic(c, lecture)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} onBulkReviewAdvance={(lecNums) => advanceCourseReviewTopics(c.id, lecNums)} />))}
+          {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs) => updateCourse(c.id, lecs)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onLectureMetaChange={(lecture) => syncLectureReviewTopic(c, lecture)} onAddTrackInbox={(item) => addTrackInboxItem(item)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} onBulkReviewAdvance={(lecNums) => advanceCourseReviewTopics(c.id, lecNums)} />))}
         </div>
       )}
     </div>
@@ -6759,7 +7163,7 @@ function AddCourseForm({ onAdd, onCancel }) {
   );
 }
 
-function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete, onLogReviewTime, onLectureMetaChange, onToggleReview, onBulkReviewAdvance }) {
+function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete, onLogReviewTime, onLectureMetaChange, onAddTrackInbox, onToggleReview, onBulkReviewAdvance }) {
   const [open, setOpen] = useState(false); 
   const [updateMode, setUpdateMode] = useState(false); 
   const [manageOpen, setManageOpen] = useState(false);
@@ -6938,6 +7342,9 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
     onUpdate(nextLectures);
     if (action === `review`) onBulkReviewAdvance && onBulkReviewAdvance(bulkNums);
     changedLectures.forEach(l => onLectureMetaChange && onLectureMetaChange(l));
+    if (action === `tagAdd`) {
+      changedLectures.forEach(l => onAddTrackInbox && onAddTrackInbox(buildCourseTrackInboxItem(course, l, bulkTag, today)));
+    }
     setBulkRange(``);
   }
 
@@ -6954,7 +7361,28 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
 
   function toggleLectureTag(lecNum, tagKey) {
     const lec = course.lectures.find(l => l.num === lecNum);
-    updateLectureMeta(lecNum, nextLectureTagPatch(lec, tagKey, today));
+    const adding = !(lec?.tags || []).includes(tagKey);
+    const patch = nextLectureTagPatch(lec, tagKey, today);
+    updateLectureMeta(lecNum, patch);
+    if (adding && lec) {
+      onAddTrackInbox && onAddTrackInbox(buildCourseTrackInboxItem(course, { ...lec, ...patch }, tagKey, today));
+    }
+  }
+
+  function sendLectureMemoToInbox(lecture, trackKey) {
+    if (!lecture || !onAddTrackInbox) return;
+    const memo = (lecture.note || ``).trim();
+    const text = memo
+      ? `[${course.subject}] ${course.name} ${lecture.num}강 · ${memo}`
+      : `[${course.subject}] ${course.name} ${lecture.num}강 · ${lecture.title}`;
+    onAddTrackInbox(buildTrackInboxItem({
+      date: today,
+      trackKey,
+      text,
+      source: `강의 메모`,
+      sourceId: `course-memo:${course.id}:${lecture.num}:${trackKey}:${normalizeTrackInboxText(text)}`,
+      subject: course.subject,
+    }));
   }
 
   return (
@@ -7271,6 +7699,15 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                       <input value={l.note || ``} onChange={e => updateLectureMeta(l.num, { note: e.target.value })}
                         placeholder={`이 강의에서 다시 볼 포인트`}
                         style={{ width:`100%`, background:C.paper, border:`1px solid ${C.line}`, padding:`7px 8px`, outline:`none`, fontSize:11, color:C.ink }} />
+                      <div style={{ display:`flex`, alignItems:`center`, gap:4, flexWrap:`wrap`, marginTop:6 }}>
+                        <span className={`kserif`} style={{ fontSize:9, color:C.muted, marginRight:2 }}>인박스</span>
+                        {TRACK_TYPES.map(track => (
+                          <button key={track.key} title={`${track.label} 인박스에 담기`} onClick={() => sendLectureMemoToInbox(l, track.key)} className={`tap`}
+                            style={{ background:C.paper, color:track.color, border:`1px solid ${C.lineSoft}`, width:23, height:23, display:`grid`, placeItems:`center`, fontSize:9, fontWeight:700, cursor:`pointer`, fontFamily:`Noto Serif KR, serif` }}>
+                            {track.short}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -8253,7 +8690,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
           <Sheet size={14} /> 엑셀(.xlsx)로 내보내기
         </button>
         <div style={{ fontSize:10, color:C.muted, marginBottom:12, lineHeight:1.5 }}>
-          요약 / 학습시간 / 5트랙 / 회차점수 / 사례등수 / 강의요약 / 강의목록 / 주간계획 / 루틴 등 — 15개 시트로 정리됩니다.
+          요약 / 학습시간 / 5트랙 / 인박스 / 회차점수 / 사례등수 / 강의요약 / 강의목록 / 주간계획 / 루틴 등 — 16개 시트로 정리됩니다.
         </div>
         <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr`, gap:8 }}>
           <button onClick={onExport} style={{ background:C.bg, border:`1px solid ${C.line}`, padding:`10px`, cursor:`pointer`, fontSize:11, display:`flex`, alignItems:`center`, justifyContent:`center`, gap:5 }}>
