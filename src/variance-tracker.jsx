@@ -2526,7 +2526,7 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
   const [bucket, setBucket] = useState(`drop`);
   const [note, setNote] = useState(``);
   const [sourceGroup, setSourceGroup] = useState(`todo`);
-  const [sourceId, setSourceId] = useState(``);
+  const [selectedSourceIds, setSelectedSourceIds] = useState([]);
   const [linkedBucket, setLinkedBucket] = useState(`later`);
   const candidates = useMemo(() => buildParkingLinkCandidates({ today, todos, courses, reviews, materials, books }), [today, todos, courses, reviews, materials, books]);
   const sourceGroups = useMemo(() => {
@@ -2538,9 +2538,12 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
     }).map(c => ({ key:c.groupKey, label:c.groupLabel }));
   }, [candidates]);
   const filteredCandidates = candidates.filter(c => c.groupKey === sourceGroup);
-  const selectedCandidate = candidates.find(c => c.sourceId === sourceId) || filteredCandidates[0] || null;
   const linkedSourceIds = useMemo(() => new Set((parkingItems || []).map(item => item.sourceId).filter(Boolean)), [parkingItems]);
-  const selectedAlreadyLinked = !!selectedCandidate && linkedSourceIds.has(selectedCandidate.sourceId);
+  const selectableCandidates = filteredCandidates.filter(c => !linkedSourceIds.has(c.sourceId));
+  const selectedCandidates = selectedSourceIds
+    .map(id => candidates.find(c => c.sourceId === id))
+    .filter(Boolean)
+    .filter(c => !linkedSourceIds.has(c.sourceId));
 
   useEffect(() => {
     const groupExists = sourceGroups.some(g => g.key === sourceGroup);
@@ -2548,10 +2551,8 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
       setSourceGroup(sourceGroups[0].key);
       return;
     }
-    if (!filteredCandidates.some(c => c.sourceId === sourceId)) {
-      setSourceId(filteredCandidates[0]?.sourceId || ``);
-    }
-  }, [sourceGroup, sourceId, sourceGroups, filteredCandidates]);
+    setSelectedSourceIds(prev => prev.filter(id => filteredCandidates.some(c => c.sourceId === id) && !linkedSourceIds.has(id)));
+  }, [sourceGroup, sourceGroups, filteredCandidates, linkedSourceIds]);
 
   function addItem() {
     const text = title.trim();
@@ -2571,25 +2572,42 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
     setNote(``);
   }
 
-  function addLinkedItem() {
-    if (!selectedCandidate || !setParkingItems || selectedAlreadyLinked) return;
-    setParkingItems([
-      {
+  function toggleSourceSelection(id) {
+    setSelectedSourceIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  function selectAllVisible() {
+    setSelectedSourceIds(selectableCandidates.map(c => c.sourceId));
+  }
+
+  function clearSelectedSources() {
+    setSelectedSourceIds([]);
+  }
+
+  function toParkingItem(candidate) {
+    return {
         id: uid(),
-        title: selectedCandidate.title,
+        title: candidate.title,
         bucket: linkedBucket,
-        note: selectedCandidate.sourceMeta || ``,
-        sourceType: selectedCandidate.sourceType,
-        sourceId: selectedCandidate.sourceId,
-        sourceView: selectedCandidate.sourceView,
-        sourceLabel: selectedCandidate.sourceLabel,
-        sourceTitle: selectedCandidate.sourceTitle,
-        sourceMeta: selectedCandidate.sourceMeta,
+        note: candidate.sourceMeta || ``,
+        sourceType: candidate.sourceType,
+        sourceId: candidate.sourceId,
+        sourceView: candidate.sourceView,
+        sourceLabel: candidate.sourceLabel,
+        sourceTitle: candidate.sourceTitle,
+        sourceMeta: candidate.sourceMeta,
         createdAt: today || todayISO(),
         updatedAt: today || todayISO(),
-      },
+    };
+  }
+
+  function addLinkedItems() {
+    if (!setParkingItems || selectedCandidates.length === 0) return;
+    setParkingItems([
+      ...selectedCandidates.map(toParkingItem),
       ...(parkingItems || []),
     ]);
+    setSelectedSourceIds([]);
   }
 
   function updateItem(id, patch) {
@@ -2631,21 +2649,53 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
               </button>
             ))}
           </div>
-          <select value={sourceId || selectedCandidate?.sourceId || ``} onChange={e => setSourceId(e.target.value)}
-            style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 9px`, fontSize:11, outline:`none`, marginBottom:7 }}>
-            {filteredCandidates.map(c => (
-              <option key={c.sourceId} value={c.sourceId}>
-                {linkedSourceIds.has(c.sourceId) ? `✓ ` : ``}{c.title} · {c.sourceMeta}
-              </option>
-            ))}
-          </select>
-          {selectedCandidate && (
-            <div style={{ background:C.bg, border:`1px dashed ${C.lineSoft}`, padding:`7px 8px`, fontSize:10, color:C.muted, lineHeight:1.5, marginBottom:8 }}>
-              <span style={{ color:C.ink, fontWeight:600 }}>{selectedCandidate.sourceLabel}</span>
-              <span> · {selectedCandidate.sourceMeta}</span>
-              {selectedAlreadyLinked && <span style={{ color:C.good, fontWeight:700 }}> · 이미 수납됨</span>}
+          <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:6, marginBottom:7 }}>
+            <div className={`mono`} style={{ fontSize:10, color:selectedCandidates.length > 0 ? C.ink : C.muted, fontWeight:selectedCandidates.length > 0 ? 700 : 400 }}>
+              {selectedCandidates.length > 0 ? `${selectedCandidates.length}개 선택` : `선택 대기`}
             </div>
-          )}
+            <div style={{ display:`flex`, gap:5, flexShrink:0 }}>
+              <button onClick={selectAllVisible} disabled={selectableCandidates.length === 0} className={`tap`}
+                style={{ background:C.bg, color:selectableCandidates.length ? C.ink : C.line, border:`1px solid ${C.lineSoft}`, padding:`4px 7px`, fontSize:9.5, cursor:selectableCandidates.length ? `pointer` : `default` }}>
+                전체
+              </button>
+              <button onClick={clearSelectedSources} disabled={selectedSourceIds.length === 0} className={`tap`}
+                style={{ background:C.bg, color:selectedSourceIds.length ? C.muted : C.line, border:`1px solid ${C.lineSoft}`, padding:`4px 7px`, fontSize:9.5, cursor:selectedSourceIds.length ? `pointer` : `default` }}>
+                해제
+              </button>
+            </div>
+          </div>
+          <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, maxHeight:172, overflowY:`auto`, marginBottom:8 }}>
+            {filteredCandidates.length === 0 ? (
+              <div style={{ padding:12, color:C.muted, fontSize:11 }}>이 범주에는 연결할 후보가 없습니다.</div>
+            ) : filteredCandidates.map(c => {
+              const linked = linkedSourceIds.has(c.sourceId);
+              const checked = selectedSourceIds.includes(c.sourceId);
+              return (
+                <button key={c.sourceId} onClick={() => !linked && toggleSourceSelection(c.sourceId)} disabled={linked} className={`tap`}
+                  style={{
+                    width:`100%`,
+                    background:checked ? `#F0E8D2` : `transparent`,
+                    border:`none`,
+                    borderBottom:`1px dashed ${C.lineSoft}`,
+                    padding:`8px 9px`,
+                    cursor:linked ? `default` : `pointer`,
+                    textAlign:`left`,
+                    display:`flex`,
+                    alignItems:`center`,
+                    gap:7,
+                    opacity:linked ? 0.48 : 1,
+                  }}>
+                  {checked ? <CheckSquare size={15} color={C.ink} /> : <Square size={15} color={linked ? C.line : C.muted} />}
+                  <div style={{ minWidth:0, flex:1 }}>
+                    <div style={{ fontSize:11, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{c.title}</div>
+                    <div style={{ fontSize:9, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                      {c.sourceMeta}{linked ? ` · 이미 수납됨` : ``}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
           <div style={{ display:`flex`, gap:6 }}>
             {PARKING_BUCKETS.map(b => (
               <button key={b.key} onClick={() => setLinkedBucket(b.key)} className={`tap`}
@@ -2653,9 +2703,9 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
                 {b.label}
               </button>
             ))}
-            <button onClick={addLinkedItem} disabled={!selectedCandidate || selectedAlreadyLinked} className={`tap`}
-              style={{ background:selectedCandidate && !selectedAlreadyLinked ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px 10px`, fontSize:11, fontWeight:700, cursor:selectedCandidate && !selectedAlreadyLinked ? `pointer` : `default`, flexShrink:0 }}>
-              연결
+            <button onClick={addLinkedItems} disabled={selectedCandidates.length === 0} className={`tap`}
+              style={{ background:selectedCandidates.length ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px 10px`, fontSize:11, fontWeight:700, cursor:selectedCandidates.length ? `pointer` : `default`, flexShrink:0 }}>
+              {selectedCandidates.length > 1 ? `${selectedCandidates.length}개 연결` : `연결`}
             </button>
           </div>
         </div>
