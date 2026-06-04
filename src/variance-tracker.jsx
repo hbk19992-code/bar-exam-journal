@@ -2812,7 +2812,7 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
                           <div style={{ display:`flex`, alignItems:`center`, gap:5, marginBottom:4, minWidth:0 }}>
                             <span className={`kserif`} style={{ color:b.color, fontSize:9, fontWeight:700, flexShrink:0 }}>{item.sourceLabel}</span>
                             <span style={{ color:C.muted, fontSize:9, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
-                              {item.sourceMeta || item.sourceTitle}{item.sourceType === `todo` && (item.bucket || `drop`) === `drop` ? ` · 원본 숨김` : ``}
+                              {item.sourceMeta || item.sourceTitle}{(item.bucket || `drop`) === `drop` ? (item.sourceType === `todo` ? ` · 원본 숨김` : ` · 홈 숨김`) : ``}
                             </span>
                           </div>
                         )}
@@ -3714,10 +3714,26 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
   );
 }
 
-function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, tracks, setTracks, examScores, moods, setMoods, trackInbox = [], setTrackInbox, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, user, onGoTo }) {
+function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, tracks, setTracks, examScores, moods, setMoods, trackInbox = [], setTrackInbox, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, parkingItems = [], user, onGoTo }) {
   const todayLog = logs[today] || {};
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
+  const droppedParkingSourceIds = useMemo(() => new Set(
+    (parkingItems || [])
+      .filter(item => (item.bucket || `drop`) === `drop`)
+      .map(item => item.sourceId)
+      .filter(Boolean)
+  ), [parkingItems]);
+  const homeCourses = useMemo(() => {
+    if (!droppedParkingSourceIds.size) return courses || [];
+    return (courses || [])
+      .filter(course => !droppedParkingSourceIds.has(`course:${course.id}`))
+      .map(course => {
+        const lectures = course.lectures || [];
+        const visibleLectures = lectures.filter(lecture => !droppedParkingSourceIds.has(courseLectureReviewKey(course.id, lecture.num)));
+        return visibleLectures.length === lectures.length ? course : { ...course, lectures: visibleLectures };
+      });
+  }, [courses, droppedParkingSourceIds]);
   const todayTodosOpen = todayTodos.filter(t => !t.done && !t.hidden).length;
   const overdueTodosOpen = Object.entries(todos || {}).reduce((sum, [date, list]) => {
     if (date >= today) return sum;
@@ -3754,25 +3770,31 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   const dueReviews = useMemo(() => {
     const list = [];
     reviews.forEach(r => {
+      if (droppedParkingSourceIds.has(`review:${r.id}`)) return;
+      if (r.sourceType === `courseLecture`) {
+        const sourceKey = r.sourceKey || (r.courseId && r.lectureNum ? courseLectureReviewKey(r.courseId, r.lectureNum) : ``);
+        if (r.courseId && droppedParkingSourceIds.has(`course:${r.courseId}`)) return;
+        if (sourceKey && droppedParkingSourceIds.has(sourceKey)) return;
+      }
       const interval = r.intervals[Math.min(r.cycleIndex, r.intervals.length - 1)];
       const dueDate = addDays(r.lastReviewed, interval);
       if (dueDate <= today) list.push({ ...r, dueDate, roundNum: r.cycleIndex + 1 });
     });
     return list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  }, [reviews, today]);
+  }, [reviews, today, droppedParkingSourceIds]);
 
   const courseQueueSummary = useMemo(() => {
-    return buildCourseQueueItems(courses, today, settings).reduce((acc, item) => {
+    return buildCourseQueueItems(homeCourses, today, settings).reduce((acc, item) => {
       if (item.type === `watch`) acc.watch += 1;
       if (item.type === `review`) acc.review += 1;
       return acc;
     }, { watch: 0, review: 0 });
-  }, [courses, today, settings]);
+  }, [homeCourses, today, settings]);
 
-  const courseQueueItems = useMemo(() => buildCourseQueueItems(courses, today, settings), [courses, today, settings]);
+  const courseQueueItems = useMemo(() => buildCourseQueueItems(homeCourses, today, settings), [homeCourses, today, settings]);
   const courseReviewSourceKeys = useMemo(() => new Set(courseQueueItems.filter(item => item.type === `review`).map(item => courseLectureReviewKey(item.course.id, item.lecture.num))), [courseQueueItems]);
   const homeDueReviews = useMemo(() => dueReviews.filter(r => !(r.sourceType === `courseLecture` && courseReviewSourceKeys.has(r.sourceKey))), [dueReviews, courseReviewSourceKeys]);
-  const coursePaceSummary = useMemo(() => buildCoursePaceSummary(courses, today, settings), [courses, today, settings]);
+  const coursePaceSummary = useMemo(() => buildCoursePaceSummary(homeCourses, today, settings), [homeCourses, today, settings]);
   const reviewDebtSummary = useMemo(() => buildReviewDebtSummary({ courseQueueItems, dueReviews: homeDueReviews, today }), [courseQueueItems, homeDueReviews, today]);
   const overdueCourseReviews = courseQueueItems.filter(item => item.type === `review` && item.lecture.nextReviewDate && item.lecture.nextReviewDate < today).length;
   const overdueTopicReviews = homeDueReviews.filter(r => r.dueDate < today).length;
