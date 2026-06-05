@@ -1110,6 +1110,10 @@ function getWeeklyDayPlans(plan = {}) {
   return plan?._days && typeof plan._days === `object` && !Array.isArray(plan._days) ? plan._days : {};
 }
 
+function getWeeklySettlementMarks(plan = {}) {
+  return plan?._settlement && typeof plan._settlement === `object` && !Array.isArray(plan._settlement) ? plan._settlement : {};
+}
+
 function cleanWeeklyPlan(plan = {}) {
   const next = {};
   Object.keys(SUBJECTS).forEach(sub => {
@@ -1122,6 +1126,17 @@ function cleanWeeklyPlan(plan = {}) {
     if (v) days[date] = v;
   });
   if (Object.keys(days).length > 0) next._days = days;
+  const marks = {};
+  Object.entries(getWeeklySettlementMarks(plan)).forEach(([sourceId, value]) => {
+    if (!sourceId || !value || typeof value !== `object`) return;
+    marks[sourceId] = stripUndefined({
+      action: value.action || `week`,
+      date: value.date || ``,
+      title: value.title || ``,
+      updatedAt: value.updatedAt || ``,
+    });
+  });
+  if (Object.keys(marks).length > 0) next._settlement = marks;
   return next;
 }
 
@@ -3360,6 +3375,357 @@ function buildReviewDebtSummary({ courseQueueItems = [], dueReviews = [], today 
   };
 }
 
+function settlementItemScore({ base = 0, overdueDays = 0, hard = false, again = false, repeated = false, inWeek = false }) {
+  return Math.round(
+    base
+    + Math.min(42, Math.max(0, overdueDays) * 3)
+    + (hard ? 18 : 0)
+    + (again ? 13 : 0)
+    + (repeated ? 18 : 0)
+    + (inWeek ? 4 : 0)
+  );
+}
+
+function buildSettlementParkingItem(item, bucket, today) {
+  return {
+    id: uid(),
+    title: item.title,
+    bucket,
+    note: [`주간정산`, ...(item.reasons || [])].join(` · `),
+    sourceType: item.sourceType,
+    sourceId: item.sourceId,
+    sourceView: item.view,
+    sourceLabel: item.kind,
+    sourceTitle: item.title,
+    sourceMeta: item.meta,
+    createdAt: today || todayISO(),
+    updatedAt: today || todayISO(),
+  };
+}
+
+function buildWeeklySettlement({ today, courses = [], courseQueueItems = [], dueReviews = [], todos = {}, parkingItems = [], weeklyPlan = {} }) {
+  const weekStart = weekStartOf(today);
+  const weekEnd = addDays(weekStart, 6);
+  const settlementMarks = getWeeklySettlementMarks(weeklyPlan);
+  const classifiedSourceIds = new Set([
+    ...Object.keys(settlementMarks),
+    ...(parkingItems || []).map(item => item.sourceId).filter(Boolean),
+  ]);
+  const candidates = [];
+  const seen = new Set();
+  const isInWeek = date => !!date && date >= weekStart && date <= weekEnd;
+  const addCandidate = item => {
+    if (!item?.sourceId || seen.has(item.sourceId) || classifiedSourceIds.has(item.sourceId)) return;
+    seen.add(item.sourceId);
+    candidates.push(item);
+  };
+
+  courseQueueItems.forEach(item => {
+    const sourceId = courseLectureReviewKey(item.course.id, item.lecture.num);
+    const tagKeys = item.lecture.tags || [];
+    const tagLabels = getLectureTagLabels(item.lecture);
+    const dueDate = item.type === `review` ? (item.lecture.nextReviewDate || today) : today;
+    const overdueDays = item.type === `review` && item.lecture.nextReviewDate ? Math.max(0, daysDiff(item.lecture.nextReviewDate, today)) : 0;
+    const repeated = overdueDays >= 14 || (item.lecture.hardReviewCount || 0) >= 2;
+    const score = settlementItemScore({
+      base: item.type === `review` ? 34 : 20,
+      overdueDays,
+      hard: tagKeys.includes(`hard`),
+      again: tagKeys.includes(`again`),
+      repeated,
+      inWeek: isInWeek(dueDate),
+    });
+    addCandidate({
+      key:`${item.type}-${sourceId}`,
+      sourceId,
+      sourceType:`courseLecture`,
+      courseId:item.course.id,
+      lectureNum:item.lecture.num,
+      kind:item.type === `review` ? `강의복습` : `수강`,
+      title:`${item.course.name} ${item.lecture.num}강 · ${item.lecture.title}`,
+      meta:`${item.course.subject}${item.type === `review` ? ` · ${dueDate === today ? `오늘 복습` : `${fmtShortDate(dueDate)} 복습`}` : ` · 수강 대기`}`,
+      subject:item.course.subject,
+      view:`courses`,
+      score,
+      tone:item.type === `review` ? C.accent : (SUBJECTS[item.course.subject]?.color || C.book),
+      dueDate,
+      overdueDays,
+      repeated,
+      tags:tagLabels,
+      reasons:[
+        item.type === `review` ? `복습` : `수강`,
+        overdueDays > 0 ? `${overdueDays}일 밀림` : `이번 주`,
+        ...tagLabels.slice(0, 2),
+        repeated ? `반복 미룸` : ``,
+      ].filter(Boolean),
+    });
+  });
+
+  dueReviews.forEach(review => {
+    const sourceId = `review:${review.id}`;
+    const overdueDays = Math.max(0, daysDiff(review.dueDate, today));
+    const tagLabels = getReviewLectureTags(review);
+    const repeated = overdueDays >= 14 || (review.cycleIndex || 0) >= 2;
+    const score = settlementItemScore({
+      base: 32,
+      overdueDays,
+      hard: tagLabels.includes(`어려움`),
+      again: tagLabels.includes(`재복습`),
+      repeated,
+      inWeek: isInWeek(review.dueDate),
+    });
+    addCandidate({
+      key:`topic-${review.id}`,
+      sourceId,
+      sourceType:`review`,
+      reviewId:review.id,
+      kind:`주제회독`,
+      title:review.title,
+      meta:`${review.subject} · ${review.roundNum || (review.cycleIndex || 0) + 1}회차 · ${fmtShortDate(review.dueDate)}`,
+      subject:review.subject,
+      view:`review`,
+      score,
+      tone:SUBJECTS[review.subject]?.color || C.good,
+      dueDate:review.dueDate,
+      overdueDays,
+      repeated,
+      tags:tagLabels,
+      reasons:[
+        `회독`,
+        overdueDays > 0 ? `${overdueDays}일 밀림` : `이번 주`,
+        ...tagLabels.slice(0, 2),
+        repeated ? `반복 미룸` : ``,
+      ].filter(Boolean),
+    });
+  });
+
+  Object.entries(todos || {}).forEach(([date, list]) => {
+    if (date > today) return;
+    (list || []).filter(todo => !todo.done && !todo.hidden).forEach(todo => {
+      const sourceId = `todo:${date}:${todo.id}`;
+      const overdueDays = Math.max(0, daysDiff(date, today));
+      const repeated = overdueDays >= 14;
+      const score = settlementItemScore({
+        base: 24,
+        overdueDays,
+        repeated,
+        inWeek: isInWeek(date),
+      });
+      addCandidate({
+        key:`todo-${date}-${todo.id}`,
+        sourceId,
+        sourceType:`todo`,
+        todoDate:date,
+        todoId:todo.id,
+        kind:`할 일`,
+        title:todo.title,
+        meta:`${fmtShortDate(date)} · 미완료`,
+        subject:`일정`,
+        view:`calendar`,
+        score,
+        tone:overdueDays > 0 ? C.accent : C.ink,
+        dueDate:date,
+        overdueDays,
+        repeated,
+        tags:[],
+        reasons:[
+          overdueDays > 0 ? `${overdueDays}일 밀림` : `오늘`,
+          repeated ? `반복 미룸` : ``,
+        ].filter(Boolean),
+      });
+    });
+  });
+
+  courses.forEach(course => {
+    (course.lectures || []).forEach(lecture => {
+      const tagKeys = lecture.tags || [];
+      const hasWeakTag = tagKeys.some(key => [`hard`, `again`, `memory`, `case`].includes(key));
+      if (!hasWeakTag) return;
+      const sourceId = courseLectureReviewKey(course.id, lecture.num);
+      const tagLabels = getLectureTagLabels(lecture);
+      const overdueDays = lecture.nextReviewDate ? Math.max(0, daysDiff(lecture.nextReviewDate, today)) : 0;
+      const repeated = overdueDays >= 14 || (lecture.hardReviewCount || 0) >= 2;
+      const score = settlementItemScore({
+        base: 27,
+        overdueDays,
+        hard: tagKeys.includes(`hard`),
+        again: tagKeys.includes(`again`),
+        repeated,
+        inWeek: isInWeek(lecture.nextReviewDate || today),
+      });
+      addCandidate({
+        key:`weak-${sourceId}`,
+        sourceId,
+        sourceType:`courseLecture`,
+        courseId:course.id,
+        lectureNum:lecture.num,
+        kind:`약점`,
+        title:`${course.name} ${lecture.num}강 · ${lecture.title}`,
+        meta:`${course.subject} · ${tagLabels.join(` · `)}`,
+        subject:course.subject,
+        view:`courses`,
+        score,
+        tone:tagKeys.includes(`hard`) ? C.warn : C.accent,
+        dueDate:lecture.nextReviewDate || today,
+        overdueDays,
+        repeated,
+        tags:tagLabels,
+        reasons:[
+          ...tagLabels.slice(0, 3),
+          overdueDays > 0 ? `${overdueDays}일 밀림` : ``,
+          repeated ? `반복 미룸` : ``,
+        ].filter(Boolean),
+      });
+    });
+  });
+
+  const sorted = candidates.sort((a, b) => b.score - a.score || (b.overdueDays || 0) - (a.overdueDays || 0) || a.title.localeCompare(b.title));
+  const groupsMap = new Map();
+  sorted.forEach(item => {
+    const labels = item.tags && item.tags.length ? item.tags : [item.kind];
+    labels.slice(0, 2).forEach(label => {
+      const key = `${item.subject}:${label}`;
+      const prev = groupsMap.get(key) || { key, subject:item.subject, label, count:0, score:0, tone:item.tone, items:[] };
+      prev.count += 1;
+      prev.score += item.score;
+      if (prev.items.length < 3) prev.items.push(item.title);
+      groupsMap.set(key, prev);
+    });
+  });
+  const groups = [...groupsMap.values()].sort((a, b) => b.score - a.score || b.count - a.count).slice(0, 5);
+  const totalScore = sorted.reduce((sum, item) => sum + item.score, 0);
+  const status = totalScore >= 240 ? `danger` : totalScore >= 120 ? `warning` : sorted.length > 0 ? `active` : `clear`;
+  const tone = status === `danger` ? C.accent : status === `warning` ? C.warn : status === `active` ? C.book : C.good;
+  const parkedThisWeek = (parkingItems || []).filter(item => isInWeek(item.updatedAt || item.createdAt)).length;
+
+  return {
+    weekStart,
+    weekEnd,
+    candidates: sorted,
+    top: sorted.slice(0, 5),
+    groups,
+    totalScore,
+    tone,
+    status,
+    stats: {
+      total: sorted.length,
+      newThisWeek: sorted.filter(item => isInWeek(item.dueDate)).length,
+      overdue: sorted.filter(item => (item.overdueDays || 0) > 0).length,
+      hard: sorted.filter(item => (item.tags || []).includes(`어려움`) || (item.tags || []).includes(`재복습`)).length,
+      repeated: sorted.filter(item => item.repeated).length,
+      parkedThisWeek,
+    },
+  };
+}
+
+function WeeklySettlementPanel({ settlement, onGoTo, onAction, onBatchLater }) {
+  const [open, setOpen] = useState(true);
+  if (!settlement || (settlement.stats.total === 0 && settlement.stats.parkedThisWeek === 0)) return null;
+  const { stats } = settlement;
+  const headline = stats.total === 0
+    ? `이번 주 정산 완료`
+    : settlement.status === `danger`
+    ? `Top 5만 살려도 충분`
+    : settlement.status === `warning`
+    ? `분류하면 가벼워짐`
+    : `가볍게 정리`;
+  const statItems = [
+    { label:`대상`, value:stats.total, color:settlement.tone },
+    { label:`이번 주`, value:stats.newThisWeek, color:C.book },
+    { label:`밀림`, value:stats.overdue, color:stats.overdue > 0 ? C.accent : C.muted },
+    { label:`어려움`, value:stats.hard, color:stats.hard > 0 ? C.warn : C.muted },
+    { label:`반복`, value:stats.repeated, color:stats.repeated > 0 ? C.accent : C.muted },
+  ];
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:10 }}>
+      <button onClick={() => setOpen(v => !v)} className={`tap`}
+        style={{ width:`100%`, background:`transparent`, border:`none`, padding:`12px 13px`, display:`flex`, alignItems:`center`, gap:10, cursor:`pointer`, textAlign:`left` }}>
+        <div style={{ width:3, alignSelf:`stretch`, minHeight:42, background:settlement.tone }} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:`flex`, alignItems:`center`, gap:6, marginBottom:3 }}>
+            <span className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>주간 정산소</span>
+            <span className={`mono`} style={{ color:settlement.tone, border:`1px solid ${settlement.tone}`, padding:`1px 5px`, fontSize:9, fontWeight:700 }}>
+              {Math.round(settlement.totalScore)}
+            </span>
+          </div>
+          <div style={{ fontSize:10, color:C.muted, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+            {headline} · {fmtShortDate(settlement.weekStart)}~{fmtShortDate(settlement.weekEnd)}
+          </div>
+        </div>
+        <ChevronDown size={14} color={C.muted} style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s`, flexShrink:0 }} />
+      </button>
+
+      {open && (
+        <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 12px 12px` }}>
+          <div style={{ display:`grid`, gridTemplateColumns:`repeat(5, minmax(0, 1fr))`, gap:5, marginBottom:10 }}>
+            {statItems.map(item => (
+              <div key={item.label} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 4px`, textAlign:`center`, minHeight:48 }}>
+                <div className={`mono`} style={{ color:item.color, fontSize:15, fontWeight:700, lineHeight:1 }}>{item.value}</div>
+                <div className={`kserif`} style={{ color:C.muted, fontSize:9, marginTop:4 }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {settlement.groups.length > 0 && (
+            <div style={{ marginBottom:10 }}>
+              <div className={`kserif`} style={{ fontSize:10, color:C.muted, fontWeight:700, marginBottom:5 }}>약점 묶음</div>
+              <div style={{ display:`flex`, gap:5, overflowX:`auto`, paddingBottom:2 }} className={`hide-scroll`}>
+                {settlement.groups.map(group => (
+                  <button key={group.key} onClick={() => onGoTo(group.label === `주제회독` ? `review` : `courses`)} className={`tap`}
+                    style={{ background:C.bg, color:group.tone, border:`1px solid ${C.lineSoft}`, padding:`5px 7px`, fontSize:10, cursor:`pointer`, whiteSpace:`nowrap` }}>
+                    {group.subject} · {group.label} {group.count}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {settlement.top.length === 0 ? (
+            <div style={{ fontSize:11, color:C.muted, padding:`8px 0` }}>
+              이번 주 정산 대상은 없습니다. 이미 수납한 항목 {stats.parkedThisWeek}개만 있습니다.
+            </div>
+          ) : (
+            <div style={{ display:`flex`, flexDirection:`column`, gap:7 }}>
+              {settlement.top.map(item => (
+                <div key={item.key} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, borderLeft:`3px solid ${item.tone}`, padding:`8px 9px` }}>
+                  <div style={{ display:`flex`, alignItems:`baseline`, gap:7, marginBottom:5 }}>
+                    <span className={`kserif`} style={{ color:item.tone, fontSize:10, fontWeight:700, flexShrink:0 }}>{item.kind}</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ color:C.ink, fontSize:11, fontWeight:600, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.title}</div>
+                      <div style={{ color:C.muted, fontSize:9, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, marginTop:2 }}>
+                        {item.meta} · {item.reasons.slice(0, 3).join(` · `)}
+                      </div>
+                    </div>
+                    <span className={`mono`} style={{ color:item.tone, fontSize:10, fontWeight:700, flexShrink:0 }}>{item.score}</span>
+                  </div>
+                  <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, minmax(0, 1fr))`, gap:4 }}>
+                    <button onClick={() => onAction(item, `today`)} className={`tap`}
+                      style={{ background:C.ink, color:`#fff`, border:`none`, padding:`5px 3px`, fontSize:9, cursor:`pointer` }}>오늘</button>
+                    <button onClick={() => onAction(item, `week`)} className={`tap`}
+                      style={{ background:C.paper, color:C.book, border:`1px solid ${C.line}`, padding:`5px 3px`, fontSize:9, cursor:`pointer` }}>주간</button>
+                    <button onClick={() => onAction(item, `later`)} className={`tap`}
+                      style={{ background:C.paper, color:C.warn, border:`1px solid ${C.line}`, padding:`5px 3px`, fontSize:9, cursor:`pointer` }}>후순위</button>
+                    <button onClick={() => onAction(item, `drop`)} className={`tap`}
+                      style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`5px 3px`, fontSize:9, cursor:`pointer` }}>버림</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {settlement.candidates.length > settlement.top.length && (
+            <button onClick={() => onBatchLater(settlement.candidates.slice(settlement.top.length))} className={`tap`}
+              style={{ width:`100%`, marginTop:9, background:C.ink, color:`#fff`, border:`none`, padding:`8px`, fontSize:10, cursor:`pointer` }}>
+              Top 5 외 {settlement.candidates.length - settlement.top.length}개 후순위로 정리
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function HomeReviewDebtPanel({ summary, onGoTo }) {
   if (!summary || summary.totalDue === 0) return null;
   const stats = [
@@ -3714,7 +4080,7 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
   );
 }
 
-function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, tracks, setTracks, examScores, moods, setMoods, trackInbox = [], setTrackInbox, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, parkingItems = [], user, onGoTo }) {
+function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, setTodos, tracks, setTracks, examScores, moods, setMoods, trackInbox = [], setTrackInbox, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, parkingItems = [], setParkingItems, user, onGoTo }) {
   const todayLog = logs[today] || {};
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
@@ -3796,6 +4162,15 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   const homeDueReviews = useMemo(() => dueReviews.filter(r => !(r.sourceType === `courseLecture` && courseReviewSourceKeys.has(r.sourceKey))), [dueReviews, courseReviewSourceKeys]);
   const coursePaceSummary = useMemo(() => buildCoursePaceSummary(homeCourses, today, settings), [homeCourses, today, settings]);
   const reviewDebtSummary = useMemo(() => buildReviewDebtSummary({ courseQueueItems, dueReviews: homeDueReviews, today }), [courseQueueItems, homeDueReviews, today]);
+  const weeklySettlement = useMemo(() => buildWeeklySettlement({
+    today,
+    courses: homeCourses,
+    courseQueueItems,
+    dueReviews: homeDueReviews,
+    todos,
+    parkingItems,
+    weeklyPlan: weeklyPlans[weekStart] || {},
+  }), [today, homeCourses, courseQueueItems, homeDueReviews, todos, parkingItems, weeklyPlans, weekStart]);
   const overdueCourseReviews = courseQueueItems.filter(item => item.type === `review` && item.lecture.nextReviewDate && item.lecture.nextReviewDate < today).length;
   const overdueTopicReviews = homeDueReviews.filter(r => r.dueDate < today).length;
   const overdueTotal = overdueTodosOpen + overdueCourseReviews + overdueTopicReviews;
@@ -3860,6 +4235,145 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
     setReviews(prev => prev.map(r => r.id === id ? advanceReviewCycle(r, today) : r));
   }
 
+  function markSettlementItem(item, action, date = today) {
+    if (!setWeeklyPlans || !item?.sourceId) return;
+    const weekKey = weekStartOf(today);
+    setWeeklyPlans(prev => {
+      const plan = cleanWeeklyPlan(prev[weekKey] || {});
+      const marks = getWeeklySettlementMarks(plan);
+      return {
+        ...prev,
+        [weekKey]: cleanWeeklyPlan({
+          ...plan,
+          _settlement: {
+            ...marks,
+            [item.sourceId]: {
+              action,
+              date,
+              title: item.title,
+              updatedAt: today,
+            },
+          },
+        }),
+      };
+    });
+  }
+
+  function moveTodoSourceToDate(item, targetDate) {
+    if (!setTodos) return false;
+    const parsed = parseParkingTodoSourceId(item.sourceId);
+    if (!parsed) return false;
+    if (parsed.date === targetDate) return true;
+    setTodos(prev => {
+      const sourceList = prev[parsed.date] || [];
+      const original = sourceList.find(todo => todo.id === parsed.id);
+      if (!original) return prev;
+      const targetList = prev[targetDate] || [];
+      const moved = { ...original, done:false, movedFrom: parsed.date };
+      const nextSource = sourceList.filter(todo => todo.id !== parsed.id);
+      const out = { ...prev };
+      if (nextSource.length === 0) delete out[parsed.date]; else out[parsed.date] = nextSource;
+      out[targetDate] = [...targetList.filter(todo => todo.id !== parsed.id), moved];
+      return out;
+    });
+    return true;
+  }
+
+  function addSettlementTodo(item, targetDate = today) {
+    if (!setTodos || !item) return;
+    if (item.sourceType === `todo` && moveTodoSourceToDate(item, targetDate)) return;
+    const title = `정산 · ${item.kind} · ${item.title}`;
+    setTodos(prev => {
+      const list = prev[targetDate] || [];
+      if (list.some(todo => todo.originSourceId === item.sourceId && !todo.done)) return prev;
+      return {
+        ...prev,
+        [targetDate]: [
+          ...list,
+          {
+            id: uid(),
+            title,
+            done: false,
+            sourceType: `settlement`,
+            sourceId: `settlement:${item.sourceId}`,
+            originSourceId: item.sourceId,
+          },
+        ],
+      };
+    });
+  }
+
+  function addSettlementToWeek(item) {
+    if (!setWeeklyPlans || !item) return;
+    const weekKey = weekStartOf(today);
+    const dates = weekDays(weekKey).filter(date => date >= today);
+    const line = `정산 · ${item.kind} · ${item.title}`;
+    setWeeklyPlans(prev => {
+      const plan = cleanWeeklyPlan(prev[weekKey] || {});
+      const dayPlans = getWeeklyDayPlans(plan);
+      const targetDate = (dates.length ? dates : [today]).sort((a, b) => {
+        const aCount = (dayPlans[a] || ``).split(/\r?\n/).filter(Boolean).length;
+        const bCount = (dayPlans[b] || ``).split(/\r?\n/).filter(Boolean).length;
+        return aCount - bCount || a.localeCompare(b);
+      })[0];
+      const already = Object.values(dayPlans).some(text => String(text || ``).includes(line));
+      const nextDays = already ? dayPlans : {
+        ...dayPlans,
+        [targetDate]: dayPlans[targetDate] ? `${dayPlans[targetDate]}\n${line}` : line,
+      };
+      return {
+        ...prev,
+        [weekKey]: cleanWeeklyPlan({
+          ...plan,
+          _days: nextDays,
+          _settlement: {
+            ...getWeeklySettlementMarks(plan),
+            [item.sourceId]: {
+              action: `week`,
+              date: targetDate,
+              title: item.title,
+              updatedAt: today,
+            },
+          },
+        }),
+      };
+    });
+  }
+
+  function parkSettlementItems(items, bucket) {
+    if (!setParkingItems) return;
+    const list = Array.isArray(items) ? items : [items];
+    setParkingItems(prev => {
+      const existing = new Set((prev || []).map(item => item.sourceId).filter(Boolean));
+      const fresh = list
+        .filter(item => item?.sourceId && !existing.has(item.sourceId))
+        .map(item => buildSettlementParkingItem(item, bucket, today));
+      return fresh.length > 0 ? [...fresh, ...(prev || [])] : prev;
+    });
+  }
+
+  function handleSettlementAction(item, action) {
+    if (!item) return;
+    if (action === `today`) {
+      addSettlementTodo(item, today);
+      markSettlementItem(item, `today`, today);
+      return;
+    }
+    if (action === `week`) {
+      addSettlementToWeek(item);
+      return;
+    }
+    if (action === `later` || action === `drop`) {
+      parkSettlementItems(item, action);
+    }
+  }
+
+  function handleSettlementBatchLater(items) {
+    if (!items?.length) return;
+    if (!confirm(`Top 5 외 ${items.length}개를 후순위로 정리할까요?`)) return;
+    parkSettlementItems(items, `later`);
+  }
+
   return (
     <div className={`fadeIn home-shell`} style={{ paddingTop:20 }}>
       <div className={`home-primary`}>
@@ -3879,6 +4393,13 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
       <HomeReviewDebtPanel
         summary={reviewDebtSummary}
         onGoTo={onGoTo}
+      />
+
+      <WeeklySettlementPanel
+        settlement={weeklySettlement}
+        onGoTo={onGoTo}
+        onAction={handleSettlementAction}
+        onBatchLater={handleSettlementBatchLater}
       />
 
       <HomeMinimumMode
