@@ -512,6 +512,10 @@ function parseParkingTodoSourceId(sourceId) {
   return match ? { date: match[1], id: match[2] } : null;
 }
 
+function parkingItemHidesSource(item) {
+  return item?.bucket === `drop` || item?.quiet === true;
+}
+
 function buildCourseTrackInboxItem(course, lecture, tagKey, date = todayISO()) {
   const tagLabel = COURSE_TAGS.find(t => t.key === tagKey)?.label || tagKey;
   return buildTrackInboxItem({
@@ -1889,7 +1893,7 @@ const globalStyles = (
     if (!loaded) return;
     const droppedTodoKeys = new Set(
       (parkingItems || [])
-        .filter(item => item.bucket === `drop`)
+        .filter(parkingItemHidesSource)
         .map(item => parseParkingTodoSourceId(item.sourceId))
         .filter(Boolean)
         .map(parsed => `${parsed.date}:${parsed.id}`)
@@ -2909,7 +2913,7 @@ function ParkingLotView({ parkingItems = [], setParkingItems, today, todos = {},
                           <div style={{ display:`flex`, alignItems:`center`, gap:5, marginBottom:4, minWidth:0 }}>
                             <span className={`kserif`} style={{ color:b.color, fontSize:9, fontWeight:700, flexShrink:0 }}>{item.sourceLabel}</span>
                             <span style={{ color:C.muted, fontSize:9, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
-                              {item.sourceMeta || item.sourceTitle}{(item.bucket || `drop`) === `drop` ? (item.sourceType === `todo` ? ` · 원본 숨김` : ` · 홈 숨김`) : ``}
+                              {item.sourceMeta || item.sourceTitle}{parkingItemHidesSource(item) ? (item.sourceType === `todo` ? ` · 원본 숨김` : ` · 홈 숨김`) : ``}
                             </span>
                           </div>
                         )}
@@ -3857,6 +3861,307 @@ function buildWeeklySettlement({ today, courses = [], courseQueueItems = [], due
   };
 }
 
+function buildCutLossCandidates({ today = todayISO(), todos = {}, courseQueueItems = [], dueReviews = [], parkingItems = [] }) {
+  const parkedSourceIds = new Set((parkingItems || []).map(item => item.sourceId).filter(Boolean));
+  const candidates = [];
+  const push = item => {
+    if (!item?.sourceId || parkedSourceIds.has(item.sourceId)) return;
+    candidates.push(item);
+  };
+
+  Object.entries(todos || {}).forEach(([date, list]) => {
+    const age = daysDiff(date, today);
+    if (age < 2) return;
+    (list || []).filter(todo => !todo.done && !todo.hidden).forEach(todo => {
+      push({
+        key:`cut-todo-${date}-${todo.id}`,
+        sourceType:`todo`,
+        sourceId:`todo:${date}:${todo.id}`,
+        sourceView:`calendar`,
+        sourceLabel:`할 일`,
+        kind:`할 일`,
+        title:todo.title,
+        meta:`${fmtShortDate(date)}부터 ${age}일 밀림`,
+        reason:`${age}일째 남아 있음`,
+        tone:age >= 7 ? C.accent : C.warn,
+        score:20 + age * 5,
+      });
+    });
+  });
+
+  courseQueueItems
+    .filter(item => item.type === `review` && item.lecture.nextReviewDate && item.lecture.nextReviewDate < today)
+    .forEach(item => {
+      const overdueDays = daysDiff(item.lecture.nextReviewDate, today);
+      if (overdueDays < 2 && !lectureHasTag(item.lecture, `hard`) && !lectureHasTag(item.lecture, `again`)) return;
+      const tagLabels = getLectureTagLabels(item.lecture);
+      push({
+        key:`cut-course-review-${item.course.id}-${item.lecture.num}`,
+        sourceType:`courseLecture`,
+        sourceId:courseLectureReviewKey(item.course.id, item.lecture.num),
+        sourceView:`courses`,
+        sourceLabel:`강의복습`,
+        kind:`강의복습`,
+        title:`${item.course.name} ${item.lecture.num}강 · ${item.lecture.title}`,
+        meta:`${item.course.subject} · ${overdueDays}일 밀림${tagLabels.length ? ` · ${tagLabels.join(` · `)}` : ``}`,
+        reason:`복습 밀림`,
+        tone:lectureHasTag(item.lecture, `hard`) || overdueDays >= 7 ? C.accent : C.warn,
+        score:24 + overdueDays * 4 + (lectureHasTag(item.lecture, `hard`) ? 12 : 0) + (lectureHasTag(item.lecture, `again`) ? 8 : 0),
+      });
+    });
+
+  dueReviews
+    .filter(review => review.dueDate && review.dueDate < today)
+    .forEach(review => {
+      const overdueDays = daysDiff(review.dueDate, today);
+      if (overdueDays < 3 && (review.cycleIndex || 0) < 1) return;
+      push({
+        key:`cut-review-${review.id}`,
+        sourceType:`review`,
+        sourceId:`review:${review.id}`,
+        sourceView:`review`,
+        sourceLabel:`주제회독`,
+        kind:`주제회독`,
+        title:review.title,
+        meta:`${review.subject} · ${overdueDays}일 밀림 · ${(review.cycleIndex || 0) + 1}회차`,
+        reason:`주제회독 밀림`,
+        tone:overdueDays >= 10 ? C.accent : C.warn,
+        score:18 + overdueDays * 4 + (review.cycleIndex || 0) * 3,
+      });
+    });
+
+  return candidates.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title)).slice(0, 6);
+}
+
+function buildCutLossParkingItem(candidate, bucket, today, reason) {
+  return {
+    id: uid(),
+    title:candidate.title,
+    bucket,
+    quiet:true,
+    note:`손절: ${reason}${candidate.reason ? ` · ${candidate.reason}` : ``}`,
+    sourceType:candidate.sourceType,
+    sourceId:candidate.sourceId,
+    sourceView:candidate.sourceView,
+    sourceLabel:candidate.sourceLabel,
+    sourceTitle:candidate.title,
+    sourceMeta:candidate.meta,
+    createdAt:today,
+    updatedAt:today,
+  };
+}
+
+function buildUncertaintyMap({ today = todayISO(), courses = [], reviews = [], mcqProgress = {}, checklists = [] }) {
+  const subjects = {};
+  Object.keys(SUBJECTS).forEach(subject => {
+    subjects[subject] = { subject, score:0, items:[], tags:new Set(), tone:SUBJECTS[subject].color };
+  });
+  const add = (subject, score, item) => {
+    const key = SUBJECTS[subject] ? subject : `민사법`;
+    const bucket = subjects[key];
+    bucket.score += score;
+    if (item?.tag) bucket.tags.add(item.tag);
+    if (item?.title) bucket.items.push({ ...item, score });
+  };
+
+  (courses || []).forEach(course => {
+    (course.lectures || []).forEach(lecture => {
+      const tags = lecture.tags || [];
+      const tagScore = tags.reduce((sum, tag) => sum + (
+        tag === `hard` ? 12 :
+        tag === `again` ? 10 :
+        tag === `memory` ? 7 :
+        tag === `case` ? 4 : 2
+      ), 0);
+      if (tagScore > 0) {
+        add(course.subject, tagScore, {
+          title:`${course.name} ${lecture.num}강`,
+          meta:[lecture.title, getLectureTagLabels(lecture).join(` · `)].filter(Boolean).join(` · `),
+          view:`courses`,
+          tag:`강의태그`,
+          tone:SUBJECTS[course.subject]?.color || C.book,
+        });
+      }
+      if (lecture.completed && !lecture.reviewed) {
+        const overdue = lecture.nextReviewDate ? Math.max(0, daysDiff(lecture.nextReviewDate, today)) : 0;
+        add(course.subject, 5 + Math.min(12, overdue * 2), {
+          title:`${course.name} ${lecture.num}강 미복습`,
+          meta:lecture.nextReviewDate ? `${fmtShortDate(lecture.nextReviewDate)} 예정` : `복습 미확정`,
+          view:`courses`,
+          tag:`미복습`,
+          tone:C.accent,
+        });
+      }
+      if ((lecture.note || ``).trim()) {
+        add(course.subject, 3, {
+          title:`${course.name} ${lecture.num}강 메모`,
+          meta:(lecture.note || ``).trim().slice(0, 48),
+          view:`courses`,
+          tag:`메모`,
+          tone:C.book,
+        });
+      }
+    });
+  });
+
+  (reviews || []).forEach(review => {
+    const due = getReviewDueInfo(review, today);
+    const overdue = Math.max(0, -due.daysUntilDue);
+    const lectureTags = getReviewLectureTags(review);
+    const hasSignal = overdue > 0 || lectureTags.length > 0 || (review.note || ``).trim();
+    if (!hasSignal) return;
+    add(review.subject, 4 + Math.min(15, overdue * 3) + lectureTags.length * 4, {
+      title:review.title,
+      meta:`${due.roundNum}회차${overdue > 0 ? ` · ${overdue}일 밀림` : ``}${lectureTags.length ? ` · ${lectureTags.join(` · `)}` : ``}`,
+      view:`review`,
+      tag:lectureTags[0] || `회독`,
+      tone:SUBJECTS[review.subject]?.color || C.good,
+    });
+  });
+
+  MCQ_AREAS.forEach(area => {
+    MCQ_PILLARS.forEach(pillar => {
+      const cell = mcqProgress[`${area.id}__${pillar}`] || { rounds:0, target:0 };
+      const weight = area.weights[pillar] || 0;
+      if (weight >= 4 && (cell.rounds || 0) === 0) {
+        add(area.group, weight * 3, {
+          title:`${area.name} ${pillar}`,
+          meta:`객관식 고비중 미시작`,
+          view:`review`,
+          tag:`객관식`,
+          tone:area.color,
+        });
+      }
+    });
+  });
+
+  (checklists || []).forEach(category => {
+    const staleDays = category.lastReviewed ? daysDiff(category.lastReviewed, today) : 99;
+    if (!category.items?.length || staleDays < 14) return;
+    const starSum = category.items.reduce((sum, item) => sum + (item.stars || 1), 0);
+    add(category.subject || `공법`, Math.min(18, 3 + Math.round(starSum / 3)), {
+      title:category.name,
+      meta:category.lastReviewed ? `${staleDays}일 전 점검` : `아직 미점검`,
+      view:`check`,
+      tag:`체크`,
+      tone:category.color || C.warn,
+    });
+  });
+
+  const list = Object.values(subjects)
+    .map(item => ({
+      ...item,
+      tags:[...item.tags],
+      items:item.items.sort((a, b) => b.score - a.score).slice(0, 5),
+      level:item.score >= 60 ? `위험` : item.score >= 30 ? `흐림` : item.score > 0 ? `주의` : `맑음`,
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  return {
+    subjects:list,
+    top:list[0],
+    total:list.reduce((sum, item) => sum + item.score, 0),
+    active:list.filter(item => item.score > 0),
+  };
+}
+
+function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], planItems = [], todos = {}, staleChecklists = [], uncertainty = null, today = todayISO() }) {
+  const picks = [];
+  const push = pick => { if (pick?.title) picks.push(pick); };
+  const firstCourseReview = courseQueueItems.find(item => item.type === `review`);
+  const firstCourseWatch = courseQueueItems.find(item => item.type === `watch`);
+  const overdueTodos = Object.entries(todos || {})
+    .flatMap(([date, list]) => (list || []).filter(todo => !todo.done && !todo.hidden && date <= today).map(todo => ({ date, todo, age:Math.max(0, daysDiff(date, today)) })))
+    .sort((a, b) => b.age - a.age || a.date.localeCompare(b.date));
+
+  push(firstCourseReview && {
+    key:`instant-course-review-${firstCourseReview.course.id}-${firstCourseReview.lecture.num}`,
+    type:`course`,
+    payload:firstCourseReview,
+    kind:`강의복습`,
+    title:`${firstCourseReview.lecture.num}강 · ${firstCourseReview.lecture.title}`,
+    meta:firstCourseReview.course.name,
+    minutes:15,
+    tone:C.accent,
+    view:`courses`,
+    priority:95,
+  });
+  push(dueReviews[0] && {
+    key:`instant-review-${dueReviews[0].id}`,
+    type:`review`,
+    payload:dueReviews[0],
+    kind:`주제회독`,
+    title:dueReviews[0].title,
+    meta:`${dueReviews[0].subject} · ${dueReviews[0].roundNum || (dueReviews[0].cycleIndex || 0) + 1}회차`,
+    minutes:12,
+    tone:SUBJECTS[dueReviews[0].subject]?.color || C.good,
+    view:`review`,
+    priority:90,
+  });
+  push(firstCourseWatch && {
+    key:`instant-course-watch-${firstCourseWatch.course.id}-${firstCourseWatch.lecture.num}`,
+    type:`course`,
+    payload:firstCourseWatch,
+    kind:`수강`,
+    title:`${firstCourseWatch.lecture.num}강 · ${firstCourseWatch.lecture.title}`,
+    meta:firstCourseWatch.course.name,
+    minutes:Math.max(15, Math.min(35, firstCourseWatch.lecture.durationMin || 25)),
+    tone:SUBJECTS[firstCourseWatch.course.subject]?.color || C.book,
+    view:`courses`,
+    priority:80,
+  });
+  push(overdueTodos[0] && {
+    key:`instant-todo-${overdueTodos[0].date}-${overdueTodos[0].todo.id}`,
+    type:`todo`,
+    payload:{ sourceId:`todo:${overdueTodos[0].date}:${overdueTodos[0].todo.id}` },
+    kind:`할 일`,
+    title:overdueTodos[0].todo.title,
+    meta:overdueTodos[0].age > 0 ? `${overdueTodos[0].age}일 밀림` : `오늘 할 일`,
+    minutes:10,
+    tone:overdueTodos[0].age > 0 ? C.warn : C.ink,
+    view:`calendar`,
+    priority:70 + overdueTodos[0].age,
+  });
+  push(planItems[0] && {
+    key:`instant-plan-${planItems[0].id}`,
+    type:`go`,
+    payload:{ view:`log` },
+    kind:`계획`,
+    title:planItems[0].title,
+    meta:`주간계획`,
+    minutes:20,
+    tone:C.ink,
+    view:`log`,
+    priority:62,
+  });
+  push(uncertainty?.top?.items?.[0] && {
+    key:`instant-uncertainty-${uncertainty.top.subject}-${uncertainty.top.items[0].title}`,
+    type:`go`,
+    payload:{ view:uncertainty.top.items[0].view || `review` },
+    kind:`약점`,
+    title:uncertainty.top.items[0].title,
+    meta:`${uncertainty.top.subject} · ${uncertainty.top.level}`,
+    minutes:15,
+    tone:uncertainty.top.tone,
+    view:uncertainty.top.items[0].view || `review`,
+    priority:58,
+  });
+  push(staleChecklists[0] && {
+    key:`instant-check-${staleChecklists[0].id}`,
+    type:`go`,
+    payload:{ view:`check` },
+    kind:`체크`,
+    title:staleChecklists[0].name,
+    meta:staleChecklists[0].lastReviewed ? `오래된 체크리스트` : `미점검`,
+    minutes:8,
+    tone:staleChecklists[0].color || C.warn,
+    view:`check`,
+    priority:50,
+  });
+
+  return picks.sort((a, b) => b.priority - a.priority).slice(0, 6);
+}
+
 function WeeklySettlementPanel({ settlement, onGoTo, onAction, onBatchLater }) {
   const [open, setOpen] = useState(true);
   if (!settlement || (settlement.stats.total === 0 && settlement.stats.parkedThisWeek === 0)) return null;
@@ -4005,6 +4310,190 @@ function HomeReviewDebtPanel({ summary, onGoTo }) {
             <div className={`kserif`} style={{ color:C.muted, fontSize:9, marginTop:4 }}>{stat.label}</div>
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function HomeInstantExecutionPanel({ picks = [], onComplete, onGoTo }) {
+  const [activeKey, setActiveKey] = useState(picks[0]?.key || ``);
+  const [startedAt, setStartedAt] = useState(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!picks.length) {
+      setActiveKey(``);
+      setStartedAt(null);
+      return;
+    }
+    if (!picks.some(pick => pick.key === activeKey)) {
+      setActiveKey(picks[0].key);
+      setStartedAt(null);
+    }
+  }, [picks, activeKey]);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  if (!picks.length) return null;
+
+  const active = picks.find(pick => pick.key === activeKey) || picks[0];
+  const durationSec = Math.max(60, (active.minutes || 15) * 60);
+  const elapsedSec = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
+  const remainingSec = Math.max(0, durationSec - elapsedSec);
+  const running = !!startedAt;
+  const done = running && remainingSec === 0;
+  const mm = Math.floor(remainingSec / 60);
+  const ss = remainingSec % 60;
+  const timeLabel = running ? `${String(mm).padStart(2, `0`)}:${String(ss).padStart(2, `0`)}` : `${active.minutes || 15}:00`;
+
+  function rotatePick() {
+    if (running || picks.length <= 1) return;
+    const idx = picks.findIndex(pick => pick.key === active.key);
+    setActiveKey(picks[(idx + 1) % picks.length].key);
+  }
+
+  function finish() {
+    onComplete(active);
+    setStartedAt(null);
+    setTick(t => t + 1);
+  }
+
+  return (
+    <section style={{ background:C.ink, color:`#fff`, border:`1px solid ${C.ink}`, marginBottom:10, padding:`12px 13px`, position:`relative`, overflow:`hidden` }}>
+      <div style={{ position:`absolute`, right:-14, top:-18, fontFamily:`Fraunces, serif`, fontSize:92, lineHeight:1, opacity:0.08 }}>{timeLabel}</div>
+      <div style={{ position:`relative` }}>
+        <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10, marginBottom:9 }}>
+          <div style={{ minWidth:0 }}>
+            <div className={`kserif`} style={{ fontSize:12, fontWeight:700, display:`flex`, alignItems:`center`, gap:6 }}>
+              <Clock size={13} /> 즉시 실행
+            </div>
+            <div style={{ fontSize:10, color:`rgba(255,255,255,0.68)`, marginTop:2 }}>생각 줄이고 하나만 닫기</div>
+          </div>
+          <div className={`mono`} style={{ fontSize:22, fontWeight:700, lineHeight:1, color:done ? `#FFD9D9` : `#fff`, flexShrink:0 }}>{timeLabel}</div>
+        </div>
+
+        <div style={{ background:`rgba(255,255,255,0.08)`, border:`1px solid rgba(255,255,255,0.14)`, padding:`9px 10px`, marginBottom:9 }}>
+          <div style={{ display:`flex`, alignItems:`baseline`, gap:7, marginBottom:4 }}>
+            <span className={`kserif`} style={{ color:active.tone || `#fff`, background:`rgba(255,255,255,0.12)`, padding:`2px 5px`, fontSize:10, fontWeight:700, flexShrink:0 }}>{active.kind}</span>
+            <div style={{ flex:1, minWidth:0, fontSize:12, fontWeight:700, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{active.title}</div>
+          </div>
+          <div style={{ fontSize:10, color:`rgba(255,255,255,0.7)`, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{active.meta}</div>
+          <div style={{ marginTop:8, height:4, background:`rgba(255,255,255,0.16)` }}>
+            <div style={{ height:`100%`, width:`${running ? Math.min(100, (elapsedSec / durationSec) * 100) : 0}%`, background:done ? C.accentSoft : `#fff`, transition:`width .2s` }} />
+          </div>
+        </div>
+
+        <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr 1fr`, gap:5 }}>
+          <button onClick={() => running ? setStartedAt(null) : setStartedAt(Date.now())} className={`tap`}
+            style={{ background:running ? `rgba(255,255,255,0.12)` : `#fff`, color:running ? `#fff` : C.ink, border:`1px solid rgba(255,255,255,0.18)`, padding:`8px 4px`, fontSize:10, fontWeight:700, cursor:`pointer` }}>
+            {running ? `중지` : `시작`}
+          </button>
+          <button onClick={finish} className={`tap`}
+            style={{ background:done ? C.accentSoft : `rgba(255,255,255,0.12)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`8px 4px`, fontSize:10, fontWeight:700, cursor:`pointer` }}>
+            완료
+          </button>
+          <button onClick={() => running ? onGoTo(active.view || `log`) : rotatePick()} className={`tap`}
+            style={{ background:`rgba(255,255,255,0.08)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`8px 4px`, fontSize:10, cursor:`pointer` }}>
+            {running ? `화면` : `바꾸기`}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CutLossPanel({ candidates = [], onAction, onGoTo }) {
+  const [open, setOpen] = useState(true);
+  if (!candidates.length) return null;
+  const top = candidates[0];
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:10 }}>
+      <button onClick={() => setOpen(v => !v)} className={`tap`}
+        style={{ width:`100%`, background:`transparent`, border:`none`, padding:`12px 13px`, display:`flex`, alignItems:`center`, gap:10, cursor:`pointer`, textAlign:`left` }}>
+        <div style={{ width:3, alignSelf:`stretch`, minHeight:42, background:top.tone || C.warn }} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:`flex`, alignItems:`center`, gap:6, marginBottom:3 }}>
+            <span className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>손절 알고리즘</span>
+            <span className={`mono`} style={{ color:top.tone || C.warn, border:`1px solid ${top.tone || C.warn}`, padding:`1px 5px`, fontSize:9, fontWeight:700 }}>{candidates.length}</span>
+          </div>
+          <div style={{ fontSize:10, color:C.muted, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+            계속 밀린 항목을 중요/불안/늦음/나중으로 판정
+          </div>
+        </div>
+        <ChevronDown size={14} color={C.muted} style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s`, flexShrink:0 }} />
+      </button>
+
+      {open && (
+        <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 12px 12px`, display:`flex`, flexDirection:`column`, gap:7 }}>
+          {candidates.slice(0, 4).map(item => (
+            <div key={item.key} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, borderLeft:`3px solid ${item.tone || C.warn}`, padding:`8px 9px` }}>
+              <div style={{ display:`flex`, gap:7, alignItems:`baseline`, marginBottom:5 }}>
+                <span className={`kserif`} style={{ color:item.tone || C.warn, fontSize:10, fontWeight:700, flexShrink:0 }}>{item.kind}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.title}</div>
+                  <div style={{ fontSize:9, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.meta}</div>
+                </div>
+                <button onClick={() => onGoTo(item.sourceView || `parking`)} className={`tap`}
+                  style={{ background:C.paper, border:`1px solid ${C.lineSoft}`, color:C.muted, width:27, height:27, display:`grid`, placeItems:`center`, cursor:`pointer`, flexShrink:0 }}>
+                  <ChevronRight size={12} />
+                </button>
+              </div>
+              <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, minmax(0, 1fr))`, gap:4 }}>
+                <button onClick={() => onAction(item, `keep`)} className={`tap`} style={{ background:C.ink, color:`#fff`, border:`none`, padding:`5px 2px`, fontSize:9, cursor:`pointer` }}>중요</button>
+                <button onClick={() => onAction(item, `anxiety`)} className={`tap`} style={{ background:C.paper, color:C.book, border:`1px solid ${C.line}`, padding:`5px 2px`, fontSize:9, cursor:`pointer` }}>불안</button>
+                <button onClick={() => onAction(item, `late`)} className={`tap`} style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`5px 2px`, fontSize:9, cursor:`pointer` }}>늦음</button>
+                <button onClick={() => onAction(item, `later`)} className={`tap`} style={{ background:C.paper, color:C.warn, border:`1px solid ${C.line}`, padding:`5px 2px`, fontSize:9, cursor:`pointer` }}>나중</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function UncertaintyMapPanel({ summary, onGoTo }) {
+  if (!summary || summary.active.length === 0) return null;
+  const maxScore = Math.max(1, summary.subjects[0]?.score || 1);
+  const topItem = summary.top?.items?.[0];
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 13px`, marginBottom:14 }}>
+      <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10, marginBottom:10 }}>
+        <div>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>불확실성 지도</div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>태그·미복습·객관식 공백·체크리스트 합산</div>
+        </div>
+        {topItem && (
+          <button onClick={() => onGoTo(topItem.view || `review`)} className={`tap`}
+            style={{ background:summary.top.tone, color:`#fff`, border:`none`, padding:`7px 9px`, fontSize:10, cursor:`pointer`, flexShrink:0 }}>
+            {summary.top.subject}
+          </button>
+        )}
+      </div>
+
+      <div style={{ display:`flex`, flexDirection:`column`, gap:7 }}>
+        {summary.subjects.map(item => {
+          const width = Math.max(4, Math.round((item.score / maxScore) * 100));
+          return (
+            <button key={item.subject} onClick={() => item.items[0] && onGoTo(item.items[0].view || `review`)} className={`tap`}
+              style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, cursor:item.items[0] ? `pointer` : `default`, textAlign:`left` }}>
+              <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:5 }}>
+                <span className={`kserif`} style={{ color:item.tone, fontSize:11, fontWeight:700 }}>{item.subject}</span>
+                <span className={`mono`} style={{ color:item.score > 0 ? item.tone : C.muted, fontSize:10, fontWeight:700 }}>{item.level} {Math.round(item.score)}</span>
+              </div>
+              <div style={{ height:5, background:C.lineSoft, position:`relative`, overflow:`hidden`, marginBottom:5 }}>
+                <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${item.score > 0 ? width : 0}%`, background:item.tone }} />
+              </div>
+              <div style={{ fontSize:9.5, color:C.muted, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                {item.items[0] ? `${item.items[0].title} · ${item.items[0].meta}` : `뚜렷한 불확실성 없음`}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -4319,13 +4808,13 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
   );
 }
 
-function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, setTodos, tracks, setTracks, examScores, moods, setMoods, trackInbox = [], setTrackInbox, checklists = [], routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, parkingItems = [], setParkingItems, user, onGoTo }) {
+function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, todos, setTodos, tracks, setTracks, examScores, moods, setMoods, trackInbox = [], setTrackInbox, checklists = [], mcqProgress = {}, routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, parkingItems = [], setParkingItems, user, onGoTo }) {
   const todayLog = logs[today] || {};
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
   const droppedParkingSourceIds = useMemo(() => new Set(
     (parkingItems || [])
-      .filter(item => (item.bucket || `drop`) === `drop`)
+      .filter(parkingItemHidesSource)
       .map(item => item.sourceId)
       .filter(Boolean)
   ), [parkingItems]);
@@ -4435,6 +4924,29 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
     if (!c.lastReviewed) return c.items.length > 0;
     return daysDiff(c.lastReviewed, today) >= 14;
   }), [checklists, today]);
+  const uncertaintySummary = useMemo(() => buildUncertaintyMap({
+    today,
+    courses: homeCourses,
+    reviews,
+    mcqProgress,
+    checklists,
+  }), [today, homeCourses, reviews, mcqProgress, checklists]);
+  const cutLossCandidates = useMemo(() => buildCutLossCandidates({
+    today,
+    todos,
+    courseQueueItems,
+    dueReviews: homeDueReviews,
+    parkingItems,
+  }), [today, todos, courseQueueItems, homeDueReviews, parkingItems]);
+  const instantPicks = useMemo(() => buildInstantExecutionPicks({
+    courseQueueItems,
+    dueReviews: homeDueReviews,
+    planItems: todayWeeklyPlanItems,
+    todos,
+    staleChecklists,
+    uncertainty: uncertaintySummary,
+    today,
+  }), [courseQueueItems, homeDueReviews, todayWeeklyPlanItems, todos, staleChecklists, uncertaintySummary, today]);
 
   function logCourseTime(subject, studyType, minutes) {
     if (!setLogs || minutes <= 0) return;
@@ -4473,6 +4985,89 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   function completeHomeReview(id) {
     if (!setReviews) return;
     setReviews(prev => prev.map(r => r.id === id ? advanceReviewCycle(r, today) : r));
+  }
+
+  function completeHomeTodoSource(sourceId) {
+    const parsed = parseParkingTodoSourceId(sourceId);
+    if (!parsed || !setTodos) return false;
+    setTodos(prev => {
+      const list = prev[parsed.date] || [];
+      if (!list.some(todo => todo.id === parsed.id)) return prev;
+      return {
+        ...prev,
+        [parsed.date]: list.map(todo => todo.id === parsed.id ? { ...todo, done:true } : todo),
+      };
+    });
+    return true;
+  }
+
+  function addCutCandidateToToday(candidate) {
+    if (!candidate || !setTodos) return;
+    if (candidate.sourceType === `todo` && moveTodoSourceToDate(candidate, today)) return;
+    const title = `중요 · ${candidate.kind} · ${candidate.title}`;
+    setTodos(prev => {
+      const list = prev[today] || [];
+      if (list.some(todo => todo.originSourceId === candidate.sourceId && !todo.done)) return prev;
+      return {
+        ...prev,
+        [today]: [
+          ...list,
+          {
+            id: uid(),
+            title,
+            done:false,
+            sourceType:`cutLoss`,
+            sourceId:`cut:${candidate.sourceId}`,
+            originSourceId:candidate.sourceId,
+          },
+        ],
+      };
+    });
+  }
+
+  function parkCutCandidate(candidate, bucket, reason) {
+    if (!candidate || !setParkingItems) return;
+    setParkingItems(prev => {
+      const list = prev || [];
+      if (list.some(item => item.sourceId === candidate.sourceId)) return prev;
+      return [buildCutLossParkingItem(candidate, bucket, today, reason), ...list];
+    });
+  }
+
+  function handleCutLossAction(candidate, action) {
+    if (!candidate) return;
+    if (action === `keep`) {
+      addCutCandidateToToday(candidate);
+      return;
+    }
+    if (action === `anxiety`) {
+      parkCutCandidate(candidate, `drop`, `불안해서 넣음`);
+      return;
+    }
+    if (action === `late`) {
+      parkCutCandidate(candidate, `drop`, `이미 늦음`);
+      return;
+    }
+    if (action === `later`) {
+      parkCutCandidate(candidate, `later`, `나중에`);
+    }
+  }
+
+  function completeInstantPick(pick) {
+    if (!pick) return;
+    if (pick.type === `course`) {
+      completeHomeCourseItem(pick.payload);
+      return;
+    }
+    if (pick.type === `review`) {
+      completeHomeReview(pick.payload.id);
+      return;
+    }
+    if (pick.type === `todo`) {
+      completeHomeTodoSource(pick.payload.sourceId);
+      return;
+    }
+    onGoTo(pick.view || pick.payload?.view || `log`);
   }
 
   function retargetHomeCourse(courseId, targetEndDate) {
@@ -4653,6 +5248,12 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         onGoTo={onGoTo}
       />
 
+      <HomeInstantExecutionPanel
+        picks={instantPicks}
+        onComplete={completeInstantPick}
+        onGoTo={onGoTo}
+      />
+
       <HomeReviewDebtPanel
         summary={reviewDebtSummary}
         onGoTo={onGoTo}
@@ -4663,6 +5264,12 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         onGoTo={onGoTo}
         onRetargetCourse={retargetHomeCourse}
         onReviewLecture={completeHomeLectureReview}
+      />
+
+      <CutLossPanel
+        candidates={cutLossCandidates}
+        onAction={handleCutLossAction}
+        onGoTo={onGoTo}
       />
 
       <WeeklySettlementPanel
@@ -4735,6 +5342,11 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
       <div className={`home-secondary`}>
       <HomeCoursePaceStrip
         summary={coursePaceSummary}
+        onGoTo={onGoTo}
+      />
+
+      <UncertaintyMapPanel
+        summary={uncertaintySummary}
         onGoTo={onGoTo}
       />
 
@@ -4842,7 +5454,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
 
   const droppedParkingSourceIds = useMemo(() => new Set(
     (parkingItems || [])
-      .filter(item => (item.bucket || `drop`) === `drop`)
+      .filter(parkingItemHidesSource)
       .map(item => item.sourceId)
       .filter(Boolean)
   ), [parkingItems]);
