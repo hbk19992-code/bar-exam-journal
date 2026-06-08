@@ -4809,7 +4809,7 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
 
 /* ============================================================ CALENDAR ============================================================ */
 
-function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks, moods, setMoods, schedules = [], setSchedules, routines = [], routineLog = {}, onGoToLog }) {
+function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks, moods, setMoods, schedules = [], setSchedules, routines = [], routineLog = {}, courses = [], parkingItems = [], onGoToLog }) {
   const [cursor, setCursor] = useState(() => {
     const d = new Date(today + `T00:00:00`);
     return { y: d.getFullYear(), m: d.getMonth() };
@@ -4839,6 +4839,31 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
     });
     return out;
   }, [cells, logs]);
+
+  const droppedParkingSourceIds = useMemo(() => new Set(
+    (parkingItems || [])
+      .filter(item => (item.bucket || `drop`) === `drop`)
+      .map(item => item.sourceId)
+      .filter(Boolean)
+  ), [parkingItems]);
+  const calendarCourses = useMemo(() => {
+    if (!droppedParkingSourceIds.size) return courses || [];
+    return (courses || [])
+      .filter(course => !droppedParkingSourceIds.has(`course:${course.id}`))
+      .map(course => {
+        const lectures = course.lectures || [];
+        const visibleLectures = lectures.filter(lecture => !droppedParkingSourceIds.has(courseLectureReviewKey(course.id, lecture.num)));
+        return visibleLectures.length === lectures.length ? course : { ...course, lectures: visibleLectures };
+      });
+  }, [courses, droppedParkingSourceIds]);
+  const courseCalendarPlan = useMemo(() => buildCourseCalendarPlan(
+    calendarCourses,
+    today,
+    settings,
+    cells[0],
+    cells[cells.length - 1]
+  ), [calendarCourses, today, settings, cells]);
+  const topCourseForecast = courseCalendarPlan.forecasts[0];
 
   //
   const [addMode, setAddMode] = useState(null);
@@ -4945,6 +4970,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
   const selMock = useMemo(() => getMockExam(selDate, settings), [selDate, settings]);
   const selExamWeek = useMemo(() => getExamWeek(selDate, settings), [selDate, settings]);
   const selTracks = tracks[selDate] || {};
+  const selCoursePlan = courseCalendarPlan.byDate[selDate] || { watch: [], groups: [], totalMinutes: 0 };
 
   function addTodo(title) {
     const t = title.trim(); if (!t) return;
@@ -5012,6 +5038,38 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
         </div>
       )}
 
+      {topCourseForecast && (
+        <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 12px`, marginBottom:8 }}>
+          <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:5 }}>
+            <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink, display:`flex`, alignItems:`center`, gap:6 }}>
+              <BookOpen size={13} /> 강의 페이스
+            </div>
+            <span className={`mono`} style={{ fontSize:9.5, color:C.muted, flexShrink:0 }}>
+              {courseCalendarPlan.totalInRange > 0
+                ? `보이는 날짜 ${courseCalendarPlan.totalInRange}강`
+                : courseCalendarPlan.nextPlanDate
+                ? `다음 ${fmtShortDate(courseCalendarPlan.nextPlanDate)}`
+                : `배정 없음`}
+            </span>
+          </div>
+          <div style={{ display:`flex`, alignItems:`center`, gap:7, minWidth:0 }}>
+            <span style={{ width:3, height:28, background: SUBJECTS[topCourseForecast.subject]?.color || C.book, flexShrink:0 }} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:12, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+                <span className={`kserif`} style={{ color: SUBJECTS[topCourseForecast.subject]?.color || C.book, fontWeight:700 }}>{topCourseForecast.subject}</span>
+                <span style={{ marginLeft:6 }}>{topCourseForecast.courseName}</span>
+              </div>
+              <div className={`mono`} style={{ fontSize:10, color:C.muted, marginTop:2 }}>
+                {formatCourseDailyPlanLabel(topCourseForecast)}
+                {' · '}목표 {fmtShortDate(topCourseForecast.targetEndDate)}
+                {' · '}예상 {fmtShortDate(topCourseForecast.projectedEndDate || topCourseForecast.plannedEndDate)}
+                {topCourseForecast.usesRecovery ? ` · 재배치` : ``}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`10px 8px`, marginBottom:14 }}>
         <div style={{ display:`grid`, gridTemplateColumns:`repeat(7, 1fr)`, marginBottom:6 }}>
           {[`일`,`월`,`화`,`수`,`목`,`금`,`토`].map((d, i) => (
@@ -5034,6 +5092,9 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
             const reviewsOnDay = reviewsByDate[d] || [];
             const todosOnDay = (todos[d] || []).filter(t => !t.hidden);
             const todoOpen = todosOnDay.filter(t => !t.done).length;
+            const courseDayPlan = courseCalendarPlan.byDate[d];
+            const courseWatchCount = courseDayPlan?.watch?.length || 0;
+            const courseSubjects = [...new Set((courseDayPlan?.watch || []).map(item => item.subject))].slice(0, 3);
             const cInfo = cellMeta[d]?.cycle;
             const cycleColor = cInfo ? SUBJECTS[cInfo.subject].color : null;
             const isBlockFirst = cInfo?.dayInBlock === 1;
@@ -5115,6 +5176,14 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
                       ))}
                     </div>
                   )}
+                  {courseWatchCount > 0 && (
+                    <div style={{ display:`flex`, alignItems:`center`, justifyContent:`center`, gap:2, lineHeight:1 }}>
+                      <span className={`mono`} style={{ fontSize:8, fontWeight:700, color: isSelected ? C.paper : C.book }}>강{courseWatchCount}</span>
+                      {courseSubjects.map(sub => (
+                        <span key={sub} style={{ width:3, height:3, borderRadius:`50%`, background: SUBJECTS[sub]?.color || C.book, opacity: isSelected ? 0.95 : 1 }} />
+                      ))}
+                    </div>
+                  )}
                   {(() => {
                     const dayLog = routineLog[d] || {};
                     const allDone = routines.length > 0 && routines.every(r => dayLog[r.id]);
@@ -5143,6 +5212,10 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
             <span>일정</span>
           </span>
           <span style={{ display:`flex`, alignItems:`center`, gap:4 }}>
+            <span className={`mono`} style={{ fontSize:8, color:C.book, fontWeight:700 }}>강N</span>
+            <span>강의페이스</span>
+          </span>
+          <span style={{ display:`flex`, alignItems:`center`, gap:4 }}>
             <span style={{ display:`flex`, gap:1 }}>
               {intensityBg.slice(1).map((bg, i) => (<span key={i} style={{ width:7, height:7, background:bg, border:`1px solid ${C.lineSoft}` }} />))}
             </span>
@@ -5156,6 +5229,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
       <DayDetail
         date={selDate} minutes={selMinutes} log={selLog} todos={selTodos}
         dueReviews={selDueReviews}
+        coursePlan={selCoursePlan}
         cycleInfo={selCycleInfo} mock={selMock} examWeek={selExamWeek} tracks={selTracks}
         schedules={schedulesOnDay(selDate)}
         mood={moods[selDate] || ``}
@@ -5173,7 +5247,7 @@ function CalendarView({ today, logs, reviews, todos, setTodos, settings, tracks,
   );
 }
 
-function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, examWeek, tracks, schedules = [], mood, setMood, onAddTodo, onToggleTodo, onRemoveTodo, onGoToLog, isToday }) {
+function DayDetail({ date, minutes, log, todos, dueReviews, coursePlan = { watch: [], groups: [], totalMinutes: 0 }, cycleInfo, mock, examWeek, tracks, schedules = [], mood, setMood, onAddTodo, onToggleTodo, onRemoveTodo, onGoToLog, isToday }) {
   const [newTodo, setNewTodo] = useState(``);
   const [moodLocal, setMoodLocal] = useState(mood);
   useEffect(() => { setMoodLocal(mood); }, [mood, date]);
@@ -5243,6 +5317,43 @@ function DayDetail({ date, minutes, log, todos, dueReviews, cycleInfo, mock, exa
           {cycleInfo.isBlockLast && (
             <div style={{ fontSize:10, padding:`3px 8px`, background:`rgba(255,255,255,0.2)`, fontFamily:`Noto Serif KR, serif`, fontWeight:600, letterSpacing:`0.05em` }}>블록 마지막날</div>
           )}
+        </div>
+      )}
+
+      {coursePlan.watch.length > 0 && (
+        <div style={{ padding:`12px 16px`, borderBottom:`1px solid ${C.lineSoft}`, background:`#F7F1E4` }}>
+          <div className={`kserif`} style={{ fontSize:10, letterSpacing:`0.2em`, color:C.muted, fontWeight:600, marginBottom:8, display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8 }}>
+            <span style={{ display:`inline-flex`, alignItems:`center`, gap:5 }}><BookOpen size={12} /> 강의 페이스</span>
+            <span className={`mono`} style={{ letterSpacing:0, fontSize:10, color:C.ink }}>{coursePlan.watch.length}강 · {fmtMin(coursePlan.totalMinutes)}</span>
+          </div>
+          <div style={{ display:`flex`, flexDirection:`column`, gap:7 }}>
+            {coursePlan.groups.map(group => {
+              const subColor = SUBJECTS[group.subject]?.color || C.book;
+              const titles = group.items.slice(0, 2).map(item => `${item.lecture.num}강 ${item.lecture.title}`).join(` / `);
+              const rest = Math.max(0, group.items.length - 2);
+              return (
+                <div key={group.courseId} style={{ background:C.paper, border:`1px solid ${C.lineSoft}`, borderLeft:`3px solid ${subColor}`, padding:`8px 9px` }}>
+                  <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:4 }}>
+                    <div style={{ minWidth:0 }}>
+                      <span className={`kserif`} style={{ color:subColor, fontWeight:700, fontSize:11 }}>{group.subject}</span>
+                      <span style={{ marginLeft:6, fontSize:12, color:C.ink, fontWeight:600 }}>{group.courseName}</span>
+                    </div>
+                    <span className={`mono`} style={{ color:C.ink, fontSize:10, flexShrink:0 }}>{group.lectureLabel}</span>
+                  </div>
+                  <div style={{ fontSize:11, color:C.muted, lineHeight:1.45, wordBreak:`keep-all` }}>
+                    {titles}{rest > 0 ? ` 외 ${rest}강` : ``}
+                  </div>
+                  <div className={`mono`} style={{ marginTop:5, fontSize:9.5, color:C.muted, display:`flex`, flexWrap:`wrap`, gap:`3px 8px` }}>
+                    <span>{group.dailyAverage < 1 ? `간격 배치` : `하루 ${group.dailyCeil}강`}</span>
+                    <span>목표 {fmtShortDate(group.targetEndDate)}</span>
+                    <span>배정완료 {fmtShortDate(group.plannedEndDate)}</span>
+                    <span>예상 {fmtShortDate(group.projectedEndDate || group.plannedEndDate)}</span>
+                    {group.usesRecovery && <span style={{ color:C.accent }}>재배치</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -7983,6 +8094,156 @@ function buildCourseOperationSummary(courses = [], today = todayISO(), settings 
     totalLeaks: leaks.length,
     hasIssue: collapses.length > 0 || leaks.length > 0,
   };
+}
+
+function summarizeLectureNums(items = []) {
+  const nums = [...new Set(items.map(item => Number(item.lecture?.num)).filter(Number.isFinite))]
+    .sort((a, b) => a - b);
+  if (!nums.length) return `${items.length}강`;
+  const ranges = [];
+  let start = nums[0];
+  let prev = nums[0];
+  for (let i = 1; i < nums.length; i++) {
+    if (nums[i] === prev + 1) {
+      prev = nums[i];
+      continue;
+    }
+    ranges.push([start, prev]);
+    start = nums[i];
+    prev = nums[i];
+  }
+  ranges.push([start, prev]);
+  return ranges.map(([s, e]) => s === e ? `${s}강` : `${s}-${e}강`).join(`, `);
+}
+
+function groupCourseCalendarItems(items = []) {
+  const groups = new Map();
+  items.forEach(item => {
+    const key = item.courseId;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        courseId: item.courseId,
+        courseName: item.courseName,
+        subject: item.subject,
+        targetEndDate: item.targetEndDate,
+        plannedEndDate: item.plannedEndDate,
+        projectedEndDate: item.projectedEndDate,
+        dailyAverage: item.dailyAverage,
+        dailyCeil: item.dailyCeil,
+        usesRecovery: item.usesRecovery,
+        durationMin: 0,
+        items: [],
+      });
+    }
+    const group = groups.get(key);
+    group.items.push(item);
+    group.durationMin += item.lecture?.durationMin || 0;
+  });
+  return [...groups.values()]
+    .map(group => ({ ...group, lectureLabel: summarizeLectureNums(group.items) }))
+    .sort((a, b) => (SUBJECTS[a.subject]?.short || a.subject).localeCompare(SUBJECTS[b.subject]?.short || b.subject) || a.courseName.localeCompare(b.courseName));
+}
+
+function buildCourseCalendarPlan(courses = [], today = todayISO(), settings = {}, fromDate = today, toDate = addDays(today, 41)) {
+  const byDate = {};
+  const forecasts = [];
+
+  (courses || []).forEach(course => {
+    const lectures = [...(course.lectures || [])]
+      .filter(lecture => !lecture.completed)
+      .sort((a, b) => a.num - b.num);
+    if (!lectures.length) return;
+
+    const pace = getCoursePace(course, today, settings);
+    const recovery = getCourseRecoveryPlan(course, pace, today);
+    const rawTargetEndDate = course.targetEndDate || settings?.examDate || addDays(today, 30);
+    const usesRecovery = recovery.isCollapsed;
+    const targetEndDate = usesRecovery ? recovery.suggestedTargetDate : rawTargetEndDate;
+    const planDays = Math.max(1, daysDiff(today, targetEndDate) + 1);
+    const dailyAverage = lectures.length / planDays;
+    const dailyCeil = Math.max(1, Math.ceil(dailyAverage));
+    const plannedEndDate = addDays(today, planDays - 1);
+    const avgMinutes = lectures.reduce((sum, lecture) => sum + (lecture.durationMin || 0), 0) / lectures.length;
+    let assignedInRange = 0;
+    const assignedDates = new Set();
+
+    lectures.forEach((lecture, idx) => {
+      const dayIndex = Math.min(planDays - 1, Math.floor((idx * planDays) / lectures.length));
+      const date = addDays(today, dayIndex);
+      assignedDates.add(date);
+      if (date < fromDate || date > toDate) return;
+      const item = {
+        type: `watch`,
+        sourceKey: courseLectureReviewKey(course.id, lecture.num),
+        courseId: course.id,
+        courseName: course.name,
+        subject: course.subject,
+        lecture,
+        targetEndDate,
+        rawTargetEndDate,
+        plannedEndDate,
+        projectedEndDate: pace.projectedEndDate,
+        dailyAverage,
+        dailyCeil,
+        usesRecovery,
+      };
+      if (!byDate[date]) byDate[date] = { watch: [], groups: [], totalMinutes: 0 };
+      byDate[date].watch.push(item);
+      byDate[date].totalMinutes += lecture.durationMin || 0;
+      assignedInRange += 1;
+    });
+
+    forecasts.push({
+      course,
+      subject: course.subject,
+      courseName: course.name,
+      remaining: lectures.length,
+      targetEndDate,
+      rawTargetEndDate,
+      plannedEndDate,
+      projectedEndDate: pace.projectedEndDate,
+      dailyAverage,
+      dailyCeil,
+      avgMinutes: Number.isFinite(avgMinutes) ? avgMinutes : 0,
+      planDays,
+      assignedInRange,
+      assignedDayCount: assignedDates.size,
+      usesRecovery,
+      status: pace.status,
+      plannedBehind: pace.plannedBehind,
+      lagDays: pace.lagDays,
+    });
+  });
+
+  Object.keys(byDate).forEach(date => {
+    byDate[date].watch.sort((a, b) => (
+      (SUBJECTS[a.subject]?.short || a.subject).localeCompare(SUBJECTS[b.subject]?.short || b.subject)
+      || a.courseName.localeCompare(b.courseName)
+      || a.lecture.num - b.lecture.num
+    ));
+    byDate[date].groups = groupCourseCalendarItems(byDate[date].watch);
+  });
+
+  forecasts.sort((a, b) => (
+    (a.usesRecovery ? 0 : 1) - (b.usesRecovery ? 0 : 1)
+    || (b.lagDays || 0) - (a.lagDays || 0)
+    || a.targetEndDate.localeCompare(b.targetEndDate)
+    || a.courseName.localeCompare(b.courseName)
+  ));
+
+  const rangeDates = Object.keys(byDate).sort();
+  return {
+    byDate,
+    forecasts,
+    totalInRange: forecasts.reduce((sum, item) => sum + item.assignedInRange, 0),
+    nextPlanDate: rangeDates.find(date => date >= today) || ``,
+  };
+}
+
+function formatCourseDailyPlanLabel(item) {
+  if (!item) return ``;
+  if (item.dailyAverage < 1) return `${item.assignedDayCount || item.planDays}일에 ${item.remaining}강`;
+  return `하루 ${item.dailyCeil}강`;
 }
 
 function buildCourseDailyQueue(course, today, settings) {
