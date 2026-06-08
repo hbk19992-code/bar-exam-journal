@@ -1181,6 +1181,56 @@ function buildWeeklyPlanQueueItems(text = ``, date = todayISO()) {
     }));
 }
 
+function splitWeeklyPlanLines(text = ``) {
+  return String(text || ``)
+    .split(/\r?\n/)
+    .flatMap(line => line.split(/\s+\/\s+/))
+    .map(line => line.replace(/^\s*[-*•□✓]\s*/, ``).trim())
+    .filter(Boolean);
+}
+
+function normalizeWeeklyPlanLine(line = ``) {
+  return String(line || ``)
+    .toLowerCase()
+    .replace(/^\s*\d{1,2}\s*[./-]\s*\d{1,2}\s*(?:\([^)]*\))?\s*[-–—:·]?\s*/, ``)
+    .replace(/^\s*(월|화|수|목|금|토|일)(?:요일)?\s*[-–—:·]?\s*/, ``)
+    .replace(/[^0-9a-z가-힣]+/g, ``);
+}
+
+function buildWeeklyPlanMemoSummary(plan = {}) {
+  const dayNorms = Object.values(getWeeklyDayPlans(plan))
+    .flatMap(splitWeeklyPlanLines)
+    .map(normalizeWeeklyPlanLine)
+    .filter(v => v.length >= 6);
+
+  const subjects = Object.keys(SUBJECTS).map(subject => {
+    const lines = splitWeeklyPlanLines(plan[subject]);
+    const uniqueLines = [];
+    const duplicateLines = [];
+    lines.forEach(line => {
+      const norm = normalizeWeeklyPlanLine(line);
+      const isDuplicate = norm.length >= 6 && dayNorms.some(dayNorm => dayNorm.includes(norm) || norm.includes(dayNorm));
+      if (isDuplicate) duplicateLines.push(line);
+      else uniqueLines.push(line);
+    });
+    return {
+      subject,
+      lines,
+      uniqueLines,
+      duplicateLines,
+      duplicateCount: duplicateLines.length,
+      text: lines.join(`\n`),
+      uniqueText: uniqueLines.join(`\n`),
+    };
+  });
+
+  return {
+    subjects,
+    duplicateCount: subjects.reduce((sum, item) => sum + item.duplicateCount, 0),
+    uniqueCount: subjects.reduce((sum, item) => sum + item.uniqueLines.length, 0),
+  };
+}
+
 function monthGrid(year, month0) {
   const first = new Date(year, month0, 1);
   const startDow = first.getDay();
@@ -1873,6 +1923,38 @@ const globalStyles = (
       return changed ? next : prev;
     });
   }, [loaded, parkingItems]);
+
+  useEffect(() => {
+    if (!loaded || !reviews.length) return;
+    const reviewTagMap = new Map();
+    reviews.forEach(review => {
+      if (review.sourceType !== `courseLecture` || !review.sourceKey) return;
+      const tagKeys = getReviewLectureTagKeys(review);
+      if (tagKeys.length > 0) reviewTagMap.set(review.sourceKey, tagKeys);
+    });
+    if (reviewTagMap.size === 0) return;
+
+    setCourses(prev => {
+      let changed = false;
+      const next = (prev || []).map(course => {
+        const lectures = (course.lectures || []).map(lecture => {
+          const sourceKey = courseLectureReviewKey(course.id, lecture.num);
+          const reviewTagKeys = reviewTagMap.get(sourceKey);
+          if (!reviewTagKeys?.length) return lecture;
+          const currentTags = lecture.tags || [];
+          const mergedTags = [...currentTags];
+          reviewTagKeys.forEach(key => {
+            if (!mergedTags.includes(key)) mergedTags.push(key);
+          });
+          if (mergedTags.length === currentTags.length) return lecture;
+          changed = true;
+          return { ...lecture, tags: mergedTags };
+        });
+        return lectures === course.lectures ? course : { ...course, lectures };
+      });
+      return changed ? next : prev;
+    });
+  }, [loaded, reviews]);
   // 모의고사 리뷰 자동 생성 방어
   useEffect(() => {
     if (!loaded || !settings.autoGenMockReview) return;
@@ -2985,15 +3067,21 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans, defaultOpen = true
   const [open, setOpen] = useState(defaultOpen);
   const [drafts, setDrafts] = useState(() => cleanWeeklyPlan(plan));
   const [parseOpen, setParseOpen] = useState(false);
+  const [subjectMemoOpen, setSubjectMemoOpen] = useState(false);
   const [parseText, setParseText] = useState(``);
 
   // 주가 바뀌면 draft도 갱신
-  useEffect(() => { setDrafts(cleanWeeklyPlan(weeklyPlans[weekStart] || {})); }, [weekStart, weeklyPlans]);
+  useEffect(() => {
+    setDrafts(cleanWeeklyPlan(weeklyPlans[weekStart] || {}));
+    setSubjectMemoOpen(false);
+  }, [weekStart, weeklyPlans]);
 
   const dates = useMemo(() => weekDays(weekStart), [weekStart]);
   const dayPlans = getWeeklyDayPlans(drafts);
   const parsedDays = useMemo(() => parseWeeklyDayText(parseText, weekStart), [parseText, weekStart]);
   const parsedCount = Object.keys(parsedDays).length;
+  const memoSummary = useMemo(() => buildWeeklyPlanMemoSummary(drafts), [drafts]);
+  const subjectMemoSummaries = memoSummary.subjects;
 
   function savePlan(nextPlan) {
     const cleaned = cleanWeeklyPlan(nextPlan);
@@ -3013,6 +3101,15 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans, defaultOpen = true
       ...drafts,
       _days: { ...getWeeklyDayPlans(drafts), [date]: val || `` },
     });
+  }
+
+  function cleanDuplicateSubjectMemos() {
+    const next = { ...drafts };
+    subjectMemoSummaries.forEach(item => {
+      next[item.subject] = item.uniqueText;
+    });
+    savePlan(next);
+    setSubjectMemoOpen(false);
   }
 
   function applyParsedDays(mode = `append`) {
@@ -3116,29 +3213,70 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans, defaultOpen = true
               </div>
             </div>
 
-            <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink, marginBottom:3 }}>과목별 메모</div>
-            {Object.keys(SUBJECTS).map((sub, i) => (
-              <div key={sub} style={{
-                paddingTop: i === 0 ? 0 : 8, paddingBottom: 8,
-                borderBottom: i < Object.keys(SUBJECTS).length - 1 ? `1px dashed ${C.lineSoft}` : `none`,
-              }}>
-                <div style={{ display:`flex`, alignItems:`center`, gap:6, marginBottom:4 }}>
-                  <span style={{ width:3, height:12, background: SUBJECTS[sub].color }} />
-                  <span className={`kserif`} style={{ fontSize:11, fontWeight:600, color: SUBJECTS[sub].color }}>{sub}</span>
+            <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`9px 10px` }}>
+              <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:subjectMemoOpen || dayFilledCount === 0 ? 8 : 0 }}>
+                <div>
+                  <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink }}>과목별 메모</div>
+                  <div style={{ fontSize:9.5, color:C.muted, marginTop:2 }}>
+                    {memoSummary.duplicateCount > 0 ? `요일계획과 중복 ${memoSummary.duplicateCount}줄` : `요일계획에 없는 보충 메모만 표시`}
+                  </div>
                 </div>
-                <textarea
-                  value={drafts[sub] || ``}
-                  onChange={e => setDrafts({ ...drafts, [sub]: e.target.value })}
-                  onBlur={() => commit(sub, drafts[sub])}
-                  placeholder={`예: 청취 1회독 / 14회 객관식 / 사례집 50p`}
-                  rows={2}
-                  style={{
-                    width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`,
-                    padding:`6px 8px`, fontSize:12, outline:`none`, resize:`vertical`,
-                    fontFamily:`Noto Serif KR, serif`, lineHeight:1.5,
-                  }} />
+                <div style={{ display:`flex`, gap:5, flexShrink:0 }}>
+                  {memoSummary.duplicateCount > 0 && (
+                    <button onClick={cleanDuplicateSubjectMemos}
+                      style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`5px 7px`, fontSize:9.5, cursor:`pointer` }}>
+                      중복 정리
+                    </button>
+                  )}
+                  <button onClick={() => setSubjectMemoOpen(v => !v)}
+                    style={{ background:subjectMemoOpen || dayFilledCount === 0 ? C.ink : C.paper, color:subjectMemoOpen || dayFilledCount === 0 ? `#fff` : C.muted, border:`1px solid ${subjectMemoOpen || dayFilledCount === 0 ? C.ink : C.line}`, padding:`5px 7px`, fontSize:9.5, cursor:`pointer` }}>
+                    {subjectMemoOpen || dayFilledCount === 0 ? `접기` : `편집`}
+                  </button>
+                </div>
               </div>
-            ))}
+
+              {!(subjectMemoOpen || dayFilledCount === 0) && (
+                <div style={{ display:`flex`, flexDirection:`column`, gap:4 }}>
+                  {subjectMemoSummaries.filter(item => item.uniqueLines.length > 0).map(item => (
+                    <div key={item.subject} style={{ display:`flex`, gap:6, fontSize:10.5, minWidth:0 }}>
+                      <span className={`kserif`} style={{ color:SUBJECTS[item.subject].color, fontWeight:700, minWidth:42 }}>{item.subject}</span>
+                      <span style={{ color:C.ink, flex:1, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.uniqueLines.join(` / `)}</span>
+                    </div>
+                  ))}
+                  {memoSummary.uniqueCount === 0 && (
+                    <div style={{ fontSize:10.5, color:C.muted }}>과목 메모가 요일별 계획과 거의 같아서 접어뒀습니다.</div>
+                  )}
+                </div>
+              )}
+
+              {(subjectMemoOpen || dayFilledCount === 0) && Object.keys(SUBJECTS).map((sub, i) => (
+                <div key={sub} style={{
+                  paddingTop: i === 0 ? 0 : 8, paddingBottom: 8,
+                  borderBottom: i < Object.keys(SUBJECTS).length - 1 ? `1px dashed ${C.lineSoft}` : `none`,
+                }}>
+                  <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:6, marginBottom:4 }}>
+                    <div style={{ display:`flex`, alignItems:`center`, gap:6 }}>
+                      <span style={{ width:3, height:12, background: SUBJECTS[sub].color }} />
+                      <span className={`kserif`} style={{ fontSize:11, fontWeight:600, color: SUBJECTS[sub].color }}>{sub}</span>
+                    </div>
+                    {subjectMemoSummaries.find(item => item.subject === sub)?.duplicateCount > 0 && (
+                      <span className={`mono`} style={{ fontSize:9, color:C.accent }}>중복 {subjectMemoSummaries.find(item => item.subject === sub)?.duplicateCount}</span>
+                    )}
+                  </div>
+                  <textarea
+                    value={drafts[sub] || ``}
+                    onChange={e => setDrafts({ ...drafts, [sub]: e.target.value })}
+                    onBlur={() => commit(sub, drafts[sub])}
+                    placeholder={`예: 청취 1회독 / 14회 객관식 / 사례집 50p`}
+                    rows={2}
+                    style={{
+                      width:`100%`, background:C.paper, border:`1px solid ${C.lineSoft}`,
+                      padding:`6px 8px`, fontSize:12, outline:`none`, resize:`vertical`,
+                      fontFamily:`Noto Serif KR, serif`, lineHeight:1.5,
+                    }} />
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <div style={{ padding:`10px 14px`, fontSize:11, color:C.muted, lineHeight:1.6 }}>
@@ -3155,10 +3293,15 @@ function WeeklyPlanCard({ today, weeklyPlans, setWeeklyPlans, defaultOpen = true
                       </div>
                     );
                   })}
-                  {Object.keys(SUBJECTS).filter(s => (drafts[s] || ``).trim()).map(s =>
-                    <div key={s} style={{ display:`flex`, gap:6, marginBottom:3 }}>
-                      <span className={`kserif`} style={{ color: SUBJECTS[s].color, fontWeight:600, minWidth:42, fontSize:11 }}>{s}</span>
-                      <span style={{ color:C.ink, fontSize:11, flex:1, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{drafts[s]}</span>
+                  {subjectMemoSummaries.filter(item => item.uniqueLines.length > 0).map(item =>
+                    <div key={item.subject} style={{ display:`flex`, gap:6, marginBottom:3 }}>
+                      <span className={`kserif`} style={{ color: SUBJECTS[item.subject].color, fontWeight:600, minWidth:42, fontSize:11 }}>{item.subject}</span>
+                      <span style={{ color:C.ink, fontSize:11, flex:1, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.uniqueLines.join(` / `)}</span>
+                    </div>
+                  )}
+                  {memoSummary.duplicateCount > 0 && (
+                    <div className={`mono`} style={{ fontSize:9, color:C.muted, marginTop:4 }}>
+                      과목 메모 중복 {memoSummary.duplicateCount}줄 접힘
                     </div>
                   )}
                 </>
@@ -3327,6 +3470,102 @@ function HomeCoursePaceStrip({ summary, onGoTo }) {
             style={{ width:`100%`, marginTop:8, background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.ink, padding:`7px 8px`, fontSize:10, cursor:`pointer` }}>
             강의에서 목표일 조정
           </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CourseOperationAlert({ summary, onGoTo, onRetargetCourse, onReviewLecture, compact = false }) {
+  const [open, setOpen] = useState(!compact);
+  if (!summary?.hasIssue) return null;
+  const firstCollapse = summary.collapses[0];
+  const topLeaks = summary.leaks.slice(0, compact ? 3 : 4);
+  const tone = summary.collapses.length > 0 ? C.accent : C.warn;
+  const headline = summary.collapses.length > 0
+    ? `목표 재계산 필요`
+    : `복습 누수 ${summary.totalLeaks}강`;
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${tone}`, marginBottom:10 }}>
+      <button onClick={() => setOpen(v => !v)} className={`tap`}
+        style={{ width:`100%`, background:`transparent`, border:`none`, padding:`11px 12px`, display:`flex`, alignItems:`center`, gap:10, cursor:`pointer`, textAlign:`left` }}>
+        <div style={{ width:3, alignSelf:`stretch`, background:tone, minHeight:38 }} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:`flex`, alignItems:`center`, gap:6, marginBottom:3 }}>
+            <span className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>강의 운영 경고</span>
+            <span className={`mono`} style={{ color:tone, border:`1px solid ${tone}`, padding:`1px 5px`, fontSize:9, fontWeight:700 }}>
+              {summary.collapses.length}/{summary.totalLeaks}
+            </span>
+          </div>
+          <div style={{ fontSize:10, color:C.muted, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+            {headline}{firstCollapse ? ` · ${firstCollapse.course.name}` : ``}
+          </div>
+        </div>
+        <ChevronDown size={14} color={C.muted} style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s`, flexShrink:0 }} />
+      </button>
+
+      {open && (
+        <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 12px 12px` }}>
+          <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:5, marginBottom:10 }}>
+            <CourseMiniStat label={`목표붕괴`} value={summary.collapses.length} tone={summary.collapses.length ? C.accent : C.muted} />
+            <CourseMiniStat label={`미복습`} value={summary.totalLeaks} tone={summary.totalLeaks ? C.warn : C.muted} />
+            <CourseMiniStat label={`누수강의`} value={summary.leakByCourse.length} tone={summary.leakByCourse.length ? C.book : C.muted} />
+          </div>
+
+          {summary.collapses.slice(0, compact ? 2 : 3).map(item => (
+            <div key={item.course.id} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, borderLeft:`3px solid ${C.accent}`, padding:`8px 9px`, marginBottom:7 }}>
+              <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8, marginBottom:5 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.course.name}</div>
+                  <div style={{ fontSize:9, color:C.muted, marginTop:2 }}>
+                    남은 {item.remaining}강 · 필요 {item.requiredDailyCeil}강/일 · 적정 {item.recovery.reasonableDaily}강/일
+                    {item.targetPassedDays > 0 ? ` · 목표 ${item.targetPassedDays}일 지남` : ``}
+                  </div>
+                </div>
+                <span className={`mono`} style={{ fontSize:10, color:C.accent, fontWeight:700, flexShrink:0 }}>
+                  {fmtShortDate(item.recovery.suggestedTargetDate)}
+                </span>
+              </div>
+              <div style={{ display:`flex`, gap:5 }}>
+                {onRetargetCourse && (
+                  <button onClick={() => onRetargetCourse(item.course.id, item.recovery.suggestedTargetDate)} className={`tap`}
+                    style={{ flex:1, background:C.ink, color:`#fff`, border:`none`, padding:`6px 7px`, fontSize:10, cursor:`pointer`, fontWeight:700 }}>
+                    목표 재계산
+                  </button>
+                )}
+                {onGoTo && (
+                  <button onClick={() => onGoTo(`courses`)} className={`tap`}
+                    style={{ flex:1, background:C.paper, color:C.ink, border:`1px solid ${C.line}`, padding:`6px 7px`, fontSize:10, cursor:`pointer` }}>
+                    강의 보기
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {topLeaks.length > 0 && (
+            <div style={{ marginTop:summary.collapses.length ? 10 : 0 }}>
+              <div className={`kserif`} style={{ fontSize:10, color:C.muted, fontWeight:700, marginBottom:6 }}>완강 후 미복습</div>
+              <div style={{ display:`flex`, flexDirection:`column`, gap:5 }}>
+                {topLeaks.map(item => (
+                  <div key={item.sourceKey} style={{ display:`flex`, alignItems:`center`, gap:7, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px` }}>
+                    <span className={`mono`} style={{ color:C.muted, fontSize:10, minWidth:32 }}>{item.lecture.num}강</span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ color:C.ink, fontSize:10.5, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.lecture.title}</div>
+                      <div style={{ color:C.muted, fontSize:9, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.course.name}{item.tags.length ? ` · ${item.tags.slice(0, 2).join(` · `)}` : ``}</div>
+                    </div>
+                    {onReviewLecture && (
+                      <button onClick={() => onReviewLecture(item.course.id, item.lecture.num)} className={`tap`}
+                        style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, width:34, height:28, display:`grid`, placeItems:`center`, cursor:`pointer`, flexShrink:0 }}>
+                        <Check size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -4162,6 +4401,7 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   const homeDueReviews = useMemo(() => dueReviews.filter(r => !(r.sourceType === `courseLecture` && courseReviewSourceKeys.has(r.sourceKey))), [dueReviews, courseReviewSourceKeys]);
   const coursePaceSummary = useMemo(() => buildCoursePaceSummary(homeCourses, today, settings), [homeCourses, today, settings]);
   const reviewDebtSummary = useMemo(() => buildReviewDebtSummary({ courseQueueItems, dueReviews: homeDueReviews, today }), [courseQueueItems, homeDueReviews, today]);
+  const courseOperationSummary = useMemo(() => buildCourseOperationSummary(homeCourses, today, settings), [homeCourses, today, settings]);
   const weeklySettlement = useMemo(() => buildWeeklySettlement({
     today,
     courses: homeCourses,
@@ -4233,6 +4473,29 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
   function completeHomeReview(id) {
     if (!setReviews) return;
     setReviews(prev => prev.map(r => r.id === id ? advanceReviewCycle(r, today) : r));
+  }
+
+  function retargetHomeCourse(courseId, targetEndDate) {
+    if (!setCourses || !courseId || !targetEndDate) return;
+    setCourses(prev => prev.map(course => course.id === courseId ? {
+      ...course,
+      targetEndDate,
+      targetReviewDate: !course.targetReviewDate || course.targetReviewDate < targetEndDate ? targetEndDate : course.targetReviewDate,
+      lastUpdated: today,
+    } : course));
+  }
+
+  function completeHomeLectureReview(courseId, lectureNum) {
+    if (!setCourses || !courseId || !lectureNum) return;
+    const sourceKey = courseLectureReviewKey(courseId, lectureNum);
+    setCourses(prev => prev.map(course => course.id === courseId ? {
+      ...course,
+      lectures: (course.lectures || []).map(lecture => lecture.num === lectureNum ? completeCourseLectureReview(lecture, today) : lecture),
+      lastUpdated: today,
+    } : course));
+    if (setReviews) {
+      setReviews(prev => prev.map(review => review.sourceKey === sourceKey ? advanceReviewCycle(review, today) : review));
+    }
   }
 
   function markSettlementItem(item, action, date = today) {
@@ -4393,6 +4656,13 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
       <HomeReviewDebtPanel
         summary={reviewDebtSummary}
         onGoTo={onGoTo}
+      />
+
+      <CourseOperationAlert
+        summary={courseOperationSummary}
+        onGoTo={onGoTo}
+        onRetargetCourse={retargetHomeCourse}
+        onReviewLecture={completeHomeLectureReview}
       />
 
       <WeeklySettlementPanel
@@ -6825,6 +7095,13 @@ function getReviewLectureTags(review) {
   return tagLine.replace(/^태그:\s*/, ``).split(`,`).map(t => t.trim()).filter(Boolean);
 }
 
+function getReviewLectureTagKeys(review) {
+  const labelToKey = new Map(COURSE_TAGS.map(tag => [tag.label, tag.key]));
+  return getReviewLectureTags(review)
+    .map(label => labelToKey.get(label))
+    .filter(Boolean);
+}
+
 function getReviewDueInfo(review, today) {
   const intervals = review.intervals || [5, 3, 2];
   const idx = Math.min(review.cycleIndex || 0, intervals.length - 1);
@@ -7611,6 +7888,7 @@ function getCoursePace(course, today, settings) {
     requiredDailyCeil,
     projectedEndDate,
     projectedLagDays,
+    targetPassedDays,
     lagDays,
     status,
   };
@@ -7633,6 +7911,77 @@ function buildCoursePaceSummary(courses, today, settings) {
     delayed: items.filter(item => item.status === `delayed`).length,
     caution: items.filter(item => item.status === `caution`).length,
     done: items.filter(item => item.status === `done`).length,
+  };
+}
+
+function getCourseRecoveryPlan(course, paceItem, today) {
+  const remainingLectures = (course.lectures || []).filter(l => !l.completed);
+  const remainingMinutes = remainingLectures.reduce((sum, lecture) => sum + (lecture.durationMin || 0), 0);
+  const avgMinutes = remainingLectures.length ? remainingMinutes / remainingLectures.length : 60;
+  const reasonableDaily = Math.max(1, Math.min(5, Math.floor(300 / Math.max(45, avgMinutes))));
+  const suggestedDays = remainingLectures.length ? Math.max(1, Math.ceil(remainingLectures.length / reasonableDaily)) : 0;
+  const suggestedTargetDate = suggestedDays ? addDays(today, suggestedDays) : today;
+  const isCollapsed = paceItem.remaining > 0 && (
+    paceItem.targetPassedDays > 0
+    || paceItem.requiredDailyCeil > reasonableDaily
+    || paceItem.plannedBehind >= 3
+  );
+
+  return {
+    remainingMinutes,
+    avgMinutes,
+    reasonableDaily,
+    suggestedDays,
+    suggestedTargetDate,
+    isCollapsed,
+    overDailyBy: Math.max(0, paceItem.requiredDailyCeil - reasonableDaily),
+  };
+}
+
+function buildCourseOperationSummary(courses = [], today = todayISO(), settings = {}) {
+  const paceSummary = buildCoursePaceSummary(courses, today, settings);
+  const collapses = paceSummary.active
+    .map(item => {
+      const recovery = getCourseRecoveryPlan(item.course, item, today);
+      return { ...item, recovery };
+    })
+    .filter(item => item.recovery.isCollapsed)
+    .sort((a, b) => (
+      b.targetPassedDays - a.targetPassedDays
+      || b.recovery.overDailyBy - a.recovery.overDailyBy
+      || b.plannedBehind - a.plannedBehind
+    ));
+
+  const leaks = courses.flatMap(course => (course.lectures || [])
+    .filter(lecture => lecture.completed && !lecture.reviewed)
+    .map(lecture => ({
+      course,
+      lecture,
+      sourceKey: courseLectureReviewKey(course.id, lecture.num),
+      tags: getLectureTagLabels(lecture),
+      priority: (lectureHasTag(lecture, `hard`) ? 3 : 0)
+        + (lectureHasTag(lecture, `again`) ? 2 : 0)
+        + (lecture.nextReviewDate && lecture.nextReviewDate <= today ? 2 : 0)
+        + (!lecture.lastReviewed ? 1 : 0),
+    })))
+    .sort((a, b) => b.priority - a.priority || a.course.name.localeCompare(b.course.name) || a.lecture.num - b.lecture.num);
+
+  const leakByCourse = courses
+    .map(course => ({
+      course,
+      count: (course.lectures || []).filter(lecture => lecture.completed && !lecture.reviewed).length,
+      completed: (course.lectures || []).filter(lecture => lecture.completed).length,
+    }))
+    .filter(item => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.course.name.localeCompare(b.course.name));
+
+  return {
+    paceSummary,
+    collapses,
+    leaks,
+    leakByCourse,
+    totalLeaks: leaks.length,
+    hasIssue: collapses.length > 0 || leaks.length > 0,
   };
 }
 
@@ -7923,6 +8272,15 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
   }, { total: 0, completed: 0, reviewed: 0, tagged: 0 });
   const watchPct = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
   const reviewPct = stats.total ? Math.round((stats.reviewed / stats.total) * 100) : 0;
+  const courseOperationSummary = useMemo(() => buildCourseOperationSummary(filtered, today, settings), [filtered, today, settings]);
+
+  function retargetCourseFromRecovery(courseId, targetEndDate) {
+    const course = courses.find(c => c.id === courseId);
+    updateCourseMeta(courseId, {
+      targetEndDate,
+      targetReviewDate: !course?.targetReviewDate || course.targetReviewDate < targetEndDate ? targetEndDate : course.targetReviewDate,
+    });
+  }
 
   return (
     <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
@@ -7953,6 +8311,13 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
         settings={settings}
         onCompleteLecture={completeQueuedLecture}
         onReviewLecture={reviewQueuedLecture}
+      />
+
+      <CourseOperationAlert
+        summary={courseOperationSummary}
+        onRetargetCourse={retargetCourseFromRecovery}
+        onReviewLecture={reviewQueuedLecture}
+        compact
       />
 
       <CourseQueuePanel courses={filtered} today={today} settings={settings} onCompleteLecture={completeQueuedLecture} onReviewLecture={reviewQueuedLecture} />
