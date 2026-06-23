@@ -488,6 +488,164 @@ function buildTrackInboxItem({ date = todayISO(), trackKey = `memo`, text, sourc
   };
 }
 
+const QUICK_SUBJECT_ALIASES = [
+  { subject:`공법`, aliases:[`공법`, `헌법`, `행정`, `행정법`, `공`] },
+  { subject:`형사법`, aliases:[`형사법`, `형법`, `형소`, `형소법`, `형사소송`, `형`] },
+  { subject:`민사법`, aliases:[`민사법`, `민법`, `민소`, `민소법`, `민사소송`, `상법`, `민`] },
+  { subject:`선택법`, aliases:[`선택법`, `선택`] },
+];
+
+const QUICK_COURSE_HINTS = [
+  { aliases:[`민소`, `민소법`], needles:[`민사소송`, `민소`] },
+  { aliases:[`민법`], needles:[`민법`] },
+  { aliases:[`상법`], needles:[`상법`] },
+  { aliases:[`형소`, `형소법`], needles:[`형소`, `형사소송`] },
+  { aliases:[`형법`], needles:[`형법`] },
+  { aliases:[`행정`, `행정법`], needles:[`행정`] },
+  { aliases:[`헌법`], needles:[`헌법`] },
+];
+
+function compactQuickText(value = ``) {
+  return String(value || ``).toLowerCase().replace(/\s+/g, ``);
+}
+
+function inferQuickSubject(text = ``) {
+  const compact = compactQuickText(text);
+  const hit = QUICK_SUBJECT_ALIASES.find(group => group.aliases.some(alias => compact.includes(compactQuickText(alias))));
+  return hit?.subject || `민사법`;
+}
+
+function inferQuickTrackKey(text = ``) {
+  const value = String(text || ``);
+  if (/청취|청원|듣기|오디오/.test(value)) return `audio`;
+  if (/객관식|선택형|객\b|민객|공객|형객|문제/.test(value)) return `mcq`;
+  if (/사례|답안|목차|쟁점/.test(value)) return `case`;
+  if (/최판|최신판례|보조|요사|캡슐|찌라시|로만/.test(value)) return `aux`;
+  if (/암기|암기장|핸드북|정리|노트/.test(value)) return `memo`;
+  return null;
+}
+
+function inferQuickStudyType(text = ``, subject = `민사법`) {
+  const value = String(text || ``);
+  if (/강의복습|인강복습/.test(value)) return COURSE_REVIEW_TYPE;
+  if (/강의|수강|인강|완강/.test(value)) return COURSE_WATCH_TYPE;
+  if (/기록형|기록/.test(value)) return `기록형`;
+  if (/객관식|선택형|객\b|민객|공객|형객/.test(value)) return `선택형`;
+  if (/3문|사례\s*3/.test(value) && getStudyTypes(subject).some(t => t.key === `사례형_3문`)) return `사례형_3문`;
+  if (/2문|사례\s*2/.test(value)) return `사례형_2문`;
+  if (/1문|사례/.test(value)) return `사례형_1문`;
+  return COURSE_WATCH_TYPE;
+}
+
+function findQuickCourse(text = ``, courses = []) {
+  const compact = compactQuickText(text);
+  let best = null;
+  let bestScore = 0;
+  (courses || []).forEach(course => {
+    const hay = compactQuickText(`${course.name || ``} ${course.subject || ``}`);
+    let score = 0;
+    if (compact && hay.includes(compact)) score += 20;
+    if (course.name && compact.includes(compactQuickText(course.name))) score += 40;
+    QUICK_COURSE_HINTS.forEach(group => {
+      const aliasHit = group.aliases.some(alias => compact.includes(compactQuickText(alias)));
+      const courseHit = group.needles.some(needle => hay.includes(compactQuickText(needle)));
+      if (aliasHit && courseHit) score += 35;
+    });
+    if (compact.includes(compactQuickText(course.subject || ``))) score += 4;
+    if (score > bestScore) {
+      best = course;
+      bestScore = score;
+    }
+  });
+  return bestScore > 0 ? best : null;
+}
+
+function parseQuickLectureNums(text = ``, course) {
+  const lectures = course?.lectures || [];
+  const matches = [...String(text || ``).matchAll(/(\d+(?:\s*(?:-|~|–|—|부터|에서)\s*\d+)?(?:\s*,\s*\d+(?:\s*(?:-|~|–|—|부터|에서)\s*\d+)?)*)\s*강/g)];
+  const nums = matches.flatMap(match => {
+    const rangeText = match[1].replace(/부터|에서/g, `-`).replace(/[–—~]/g, `-`);
+    return parseLectureRangeText(rangeText, lectures);
+  });
+  return [...new Set(nums)].sort((a, b) => a - b);
+}
+
+function parseQuickStudyMinutes(text = ``) {
+  const match = String(text || ``).match(/(\d+(?:\.\d+)?)\s*(시간|h|분)/i);
+  if (!match) return 0;
+  const amount = Number(match[1]) || 0;
+  return match[2] === `분` ? Math.round(amount) : Math.round(amount * 60);
+}
+
+function buildQuickCapturePlan(text = ``, { courses = [], date = todayISO() } = {}) {
+  const raw = String(text || ``).trim();
+  if (!raw) return { date, actions: [], unknown: [], summary: [] };
+  const pieces = raw
+    .split(/\n|,|;|，|、|그리고|\/+/)
+    .map(piece => piece.trim())
+    .filter(Boolean);
+  const actions = [];
+  const unknown = [];
+
+  pieces.forEach(piece => {
+    let recognized = false;
+    const subject = inferQuickSubject(piece);
+    const course = findQuickCourse(piece, courses);
+    const lectureNums = course ? parseQuickLectureNums(piece, course) : [];
+    if (course && lectureNums.length > 0) {
+      const kind = /복습|회독/.test(piece) && !/수강|완강/.test(piece) ? `courseReview` : `courseWatch`;
+      actions.push({
+        type:kind,
+        date,
+        courseId:course.id,
+        courseName:course.name,
+        subject:course.subject,
+        lectureNums,
+        text:piece,
+      });
+      recognized = true;
+    }
+
+    const minutes = parseQuickStudyMinutes(piece);
+    if (minutes > 0) {
+      const studyType = inferQuickStudyType(piece, subject);
+      actions.push({ type:`studyLog`, date, subject, studyType, minutes, text:piece });
+      recognized = true;
+    }
+
+    const trackKey = inferQuickTrackKey(piece);
+    if (trackKey && lectureNums.length === 0) {
+      actions.push({ type:`track`, date, trackKey, subject, text:piece });
+      recognized = true;
+    }
+
+    if (/피곤|불안|졸|아프|두통|집중|좋|괜찮|컨디션|멘탈|무기력|회복|망함|힘듦|힘들/.test(piece)) {
+      actions.push({ type:`mood`, date, text:piece });
+      recognized = true;
+    }
+
+    if (!recognized) unknown.push(piece);
+  });
+
+  if (actions.length === 0 && raw) {
+    actions.push({ type:`mood`, date, text:raw });
+  }
+
+  const summary = [];
+  const watch = actions.filter(a => a.type === `courseWatch`).reduce((sum, a) => sum + a.lectureNums.length, 0);
+  const review = actions.filter(a => a.type === `courseReview`).reduce((sum, a) => sum + a.lectureNums.length, 0);
+  const tracks = actions.filter(a => a.type === `track`).length;
+  const logs = actions.filter(a => a.type === `studyLog`).length;
+  const moods = actions.filter(a => a.type === `mood`).length;
+  if (watch) summary.push(`수강 ${watch}강`);
+  if (review) summary.push(`복습 ${review}강`);
+  if (tracks) summary.push(`트랙 ${tracks}`);
+  if (logs) summary.push(`시간 ${logs}`);
+  if (moods) summary.push(`메모`);
+
+  return { date, actions, unknown, summary };
+}
+
 function enqueueTrackInbox(prev, item) {
   if (!item?.text) return prev;
   const body = normalizeTrackInboxText(item.text);
@@ -4315,6 +4473,59 @@ function HomeReviewDebtPanel({ summary, onGoTo }) {
   );
 }
 
+function QuickCapturePanel({ date, courses = [], onApply }) {
+  const [text, setText] = useState(``);
+  const [lastMessage, setLastMessage] = useState(``);
+  const plan = useMemo(() => buildQuickCapturePlan(text, { courses, date }), [text, courses, date]);
+  const hasText = text.trim().length > 0;
+
+  function apply() {
+    if (!hasText) return;
+    const result = onApply(plan);
+    setLastMessage(result?.message || `반영했어요.`);
+    setText(``);
+  }
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:10, padding:`12px 13px` }}>
+      <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8, marginBottom:8 }}>
+        <div>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>한 줄 입력</div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>대충 적으면 수강·복습·트랙·메모로 나눠 넣습니다.</div>
+        </div>
+        {(plan.summary.length > 0 || lastMessage) && (
+          <span className={`mono`} style={{ fontSize:9, color:plan.summary.length ? C.accent : C.muted, flexShrink:0 }}>
+            {plan.summary.join(` · `) || lastMessage}
+          </span>
+        )}
+      </div>
+      <div style={{ display:`flex`, gap:6, alignItems:`stretch` }}>
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === `Enter` && !e.shiftKey && !e.nativeEvent?.isComposing) {
+              e.preventDefault();
+              apply();
+            }
+          }}
+          placeholder={`예: 형법 41-45강 완강, 민소 12강 복습, 민법 사례 1문, 오늘 피곤`}
+          style={{ flex:1, minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`9px 10px`, fontSize:12, outline:`none`, fontFamily:`Noto Serif KR, serif` }}
+        />
+        <button onClick={apply} disabled={!hasText} className={`tap`}
+          style={{ background:hasText ? C.ink : C.line, color:`#fff`, border:`none`, padding:`0 12px`, fontSize:11, fontWeight:700, cursor:hasText ? `pointer` : `default`, flexShrink:0 }}>
+          적용
+        </button>
+      </div>
+      {hasText && plan.unknown.length > 0 && plan.actions.length > 0 && (
+        <div style={{ fontSize:9.5, color:C.muted, marginTop:6, lineHeight:1.45 }}>
+          못 알아들은 조각: {plan.unknown.slice(0, 2).join(` · `)}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function HomeInstantExecutionPanel({ picks = [], onComplete, onGoTo }) {
   const [activeKey, setActiveKey] = useState(picks[0]?.key || ``);
   const [startedAt, setStartedAt] = useState(null);
@@ -5070,6 +5281,98 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
     onGoTo(pick.view || pick.payload?.view || `log`);
   }
 
+  function applyQuickCapture(plan) {
+    const actions = plan?.actions || [];
+    if (!actions.length) return { message:`읽을 항목이 없어요.` };
+
+    const watchActions = actions.filter(action => action.type === `courseWatch`);
+    const reviewActions = actions.filter(action => action.type === `courseReview`);
+    const studyLogActions = actions.filter(action => action.type === `studyLog`);
+    const trackActions = actions.filter(action => action.type === `track`);
+    const moodActions = actions.filter(action => action.type === `mood`);
+
+    const watchMinutes = {};
+    watchActions.forEach(action => {
+      const course = (courses || []).find(item => item.id === action.courseId);
+      if (!course) return;
+      (course.lectures || []).forEach(lecture => {
+        if (action.lectureNums.includes(lecture.num) && !lecture.completed) {
+          watchMinutes[course.subject] = (watchMinutes[course.subject] || 0) + (lecture.durationMin || 0);
+        }
+      });
+    });
+
+    if ((watchActions.length || reviewActions.length) && setCourses) {
+      setCourses(prev => (prev || []).map(course => {
+        const watchNums = new Set(watchActions.filter(action => action.courseId === course.id).flatMap(action => action.lectureNums));
+        const reviewNums = new Set(reviewActions.filter(action => action.courseId === course.id).flatMap(action => action.lectureNums));
+        if (watchNums.size === 0 && reviewNums.size === 0) return course;
+        return {
+          ...course,
+          lectures:(course.lectures || []).map(lecture => {
+            if (reviewNums.has(lecture.num)) return completeCourseLectureReview(lecture, today);
+            if (watchNums.has(lecture.num)) return { ...lecture, progress:100, completed:true };
+            return lecture;
+          }),
+          lastUpdated:today,
+        };
+      }));
+    }
+
+    if (setReviews && reviewActions.length) {
+      const reviewSourceKeys = new Set(reviewActions.flatMap(action => action.lectureNums.map(num => courseLectureReviewKey(action.courseId, num))));
+      setReviews(prev => (prev || []).map(review => reviewSourceKeys.has(review.sourceKey) ? advanceReviewCycle(review, today) : review));
+    }
+
+    if (setLogs && (Object.keys(watchMinutes).length || studyLogActions.length)) {
+      setLogs(prev => {
+        const dayLog = { ...(prev[today] || {}) };
+        Object.entries(watchMinutes).forEach(([subject, minutes]) => {
+          if (minutes > 0) {
+            const key = `${subject}::${COURSE_WATCH_TYPE}`;
+            dayLog[key] = (dayLog[key] || 0) + minutes;
+          }
+        });
+        studyLogActions.forEach(action => {
+          const key = `${action.subject}::${action.studyType}`;
+          dayLog[key] = (dayLog[key] || 0) + action.minutes;
+        });
+        return { ...prev, [today]: dayLog };
+      });
+    }
+
+    if (setTracks && trackActions.length) {
+      setTracks(prev => {
+        let next = prev || {};
+        trackActions.forEach(action => {
+          const text = action.subject ? `[${action.subject}] ${action.text}` : action.text;
+          next = appendTrackText(next, today, action.trackKey, text);
+        });
+        const dayTracks = { ...(next[today] || {}) };
+        trackActions.forEach(action => {
+          const current = dayTracks[action.trackKey] || {};
+          dayTracks[action.trackKey] = { ...current, done:true };
+        });
+        return { ...next, [today]: dayTracks };
+      });
+    }
+
+    if (setMoods && moodActions.length) {
+      setMoods(prev => {
+        const existing = (prev[today] || ``).trim();
+        const lines = existing.split(/\n/).map(line => line.trim()).filter(Boolean);
+        moodActions.forEach(action => {
+          const nextLine = normalizeTrackInboxText(action.text);
+          if (nextLine && !lines.includes(nextLine)) lines.push(nextLine);
+        });
+        return { ...prev, [today]: lines.join(`\n`) };
+      });
+    }
+
+    const summary = plan.summary?.join(` · `) || `${actions.length}개`;
+    return { message:`반영: ${summary}` };
+  }
+
   function retargetHomeCourse(courseId, targetEndDate) {
     if (!setCourses || !courseId || !targetEndDate) return;
     setCourses(prev => prev.map(course => course.id === courseId ? {
@@ -5246,6 +5549,12 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         planCount={todayWeeklyPlanItems.length}
         overdueTotal={overdueTotal}
         onGoTo={onGoTo}
+      />
+
+      <QuickCapturePanel
+        date={today}
+        courses={courses}
+        onApply={applyQuickCapture}
       />
 
       <HomeInstantExecutionPanel
@@ -6140,7 +6449,7 @@ function TodoRow({ todo, onToggle, onRemove }) {
 
 /* ============================================================ LOG (기록) ============================================================ */
 
-function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores, setExamScores, rankScores = [], setRankScores, weeklyPlans = {}, setWeeklyPlans, todos = {}, moods = {}, setMoods, trackInbox = [], setTrackInbox, initialDate }) {
+function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores, setExamScores, rankScores = [], setRankScores, weeklyPlans = {}, setWeeklyPlans, todos = {}, setTodos, moods = {}, setMoods, trackInbox = [], setTrackInbox, parkingItems = [], setParkingItems, initialDate }) {
   const [date, setDate] = useState(initialDate || today);
 
   function setDailyMood(value) {
@@ -6186,6 +6495,15 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
 
       <WeeklyPlanCard today={date} weeklyPlans={weeklyPlans} setWeeklyPlans={setWeeklyPlans} defaultOpen={false} />
 
+      <DailyClosePanel
+        date={date}
+        mood={moods[date] || ``}
+        setMoods={setMoods}
+        setTodos={setTodos}
+        setTracks={setTracks}
+        setParkingItems={setParkingItems}
+      />
+
       <TimerSection today={today} logs={logs} setLogs={setLogs} />
 
       <TrackInboxSection
@@ -6214,6 +6532,132 @@ function LogView({ today, settings, logs, setLogs, tracks, setTracks, examScores
 
       <RankPasteSection date={date} rankScores={rankScores} setRankScores={setRankScores} />
     </div>
+  );
+}
+
+function DailyClosePanel({ date, mood = ``, setMoods, setTodos, setTracks, setParkingItems }) {
+  const alreadyClosed = String(mood || ``).includes(`마감:`);
+  const [open, setOpen] = useState(!alreadyClosed);
+  const [draft, setDraft] = useState({ core:``, late:``, drop:``, tomorrow:`` });
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setDraft({ core:``, late:``, drop:``, tomorrow:`` });
+    setSaved(false);
+    setOpen(!String(mood || ``).includes(`마감:`));
+  }, [date]);
+
+  const hasDraft = Object.values(draft).some(value => value.trim());
+
+  function update(field, value) {
+    setDraft(prev => ({ ...prev, [field]:value }));
+    setSaved(false);
+  }
+
+  function addTodo(targetDate, title, meta = {}) {
+    if (!setTodos || !title.trim()) return;
+    setTodos(prev => ({
+      ...prev,
+      [targetDate]: [
+        ...(prev?.[targetDate] || []),
+        { id:uid(), title:title.trim(), done:false, ...meta },
+      ],
+    }));
+  }
+
+  function saveClose() {
+    if (!hasDraft) return;
+    const lines = [
+      draft.core.trim() && `핵심: ${draft.core.trim()}`,
+      draft.late.trim() && `밀림: ${draft.late.trim()}`,
+      draft.drop.trim() && `버림: ${draft.drop.trim()}`,
+      draft.tomorrow.trim() && `내일: ${draft.tomorrow.trim()}`,
+    ].filter(Boolean);
+
+    if (setMoods) {
+      setMoods(prev => {
+        const existing = (prev?.[date] || ``).trim();
+        const nextLine = `마감: ${lines.join(` / `)}`;
+        const nextText = existing ? `${existing}\n${nextLine}` : nextLine;
+        return { ...prev, [date]: nextText };
+      });
+    }
+
+    if (draft.core.trim() && setTracks) {
+      setTracks(prev => {
+        const next = appendTrackText(prev || {}, date, `memo`, `마감 핵심 · ${draft.core.trim()}`);
+        const dayTracks = { ...(next[date] || {}) };
+        dayTracks.memo = { ...(dayTracks.memo || {}), done:true };
+        return { ...next, [date]: dayTracks };
+      });
+    }
+
+    if (draft.late.trim()) {
+      addTodo(date, `마감 밀림 · ${draft.late.trim()}`, { sourceType:`dailyClose`, sourceId:`daily-close-late:${date}:${uid()}` });
+    }
+    if (draft.tomorrow.trim()) {
+      addTodo(addDays(date, 1), `내일 1순위 · ${draft.tomorrow.trim()}`, { sourceType:`dailyClose`, sourceId:`daily-close-tomorrow:${date}:${uid()}` });
+    }
+    if (draft.drop.trim() && setParkingItems) {
+      setParkingItems(prev => [
+        {
+          id:uid(),
+          title:`마감 버림 · ${draft.drop.trim()}`,
+          bucket:`drop`,
+          note:`하루 마감에서 보냄`,
+          sourceType:`dailyClose`,
+          sourceId:`daily-close-drop:${date}:${normalizeTrackInboxText(draft.drop)}`,
+          sourceLabel:`하루 마감`,
+          sourceTitle:draft.drop.trim(),
+          sourceMeta:fmtShortDate(date),
+          createdAt:date,
+          updatedAt:date,
+        },
+        ...(prev || []),
+      ]);
+    }
+
+    setDraft({ core:``, late:``, drop:``, tomorrow:`` });
+    setSaved(true);
+    setOpen(false);
+  }
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, marginBottom:18 }}>
+      <button onClick={() => setOpen(v => !v)} className={`tap`}
+        style={{ width:`100%`, background:`transparent`, border:`none`, padding:`11px 13px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10, cursor:`pointer`, textAlign:`left` }}>
+        <div style={{ minWidth:0 }}>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:700, color:C.ink }}>30초 마감</div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+            {saved ? `마감 저장됨` : alreadyClosed ? `이미 마감 메모 있음` : `핵심·밀림·버림·내일만 적기`}
+          </div>
+        </div>
+        <ChevronDown size={14} color={C.muted} style={{ transform: open ? `rotate(180deg)` : `none`, transition:`transform .2s`, flexShrink:0 }} />
+      </button>
+
+      {open && (
+        <div style={{ borderTop:`1px dashed ${C.lineSoft}`, padding:`10px 12px 12px` }}>
+          <div style={{ display:`grid`, gridTemplateColumns:`repeat(2, minmax(0, 1fr))`, gap:7, marginBottom:8 }}>
+            {[
+              [`core`, `오늘 핵심`, `예: 형법 5강 진도`],
+              [`late`, `밀린 것`, `예: 민소 복습 3개`],
+              [`drop`, `버릴 것`, `예: 오늘은 최판 안 봄`],
+              [`tomorrow`, `내일 1순위`, `예: 형법 복습 먼저`],
+            ].map(([key, label, placeholder]) => (
+              <label key={key} style={{ display:`flex`, flexDirection:`column`, gap:4 }}>
+                <span className={`kserif`} style={{ fontSize:10, color:C.muted, fontWeight:700 }}>{label}</span>
+                <input value={draft[key]} onChange={e => update(key, e.target.value)} placeholder={placeholder}
+                  style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, fontFamily:`Noto Serif KR, serif` }} />
+              </label>
+            ))}
+          </div>
+          <button onClick={saveClose} disabled={!hasDraft} className={`tap`}
+            style={{ width:`100%`, background:hasDraft ? C.ink : C.line, color:`#fff`, border:`none`, padding:`8px`, fontSize:11, fontWeight:700, cursor:hasDraft ? `pointer` : `default` }}>
+            마감 저장
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 
