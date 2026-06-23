@@ -4320,6 +4320,62 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
   return picks.sort((a, b) => b.priority - a.priority).slice(0, 6);
 }
 
+function buildLazyPickParkingItem(pick, bucket, today, reason) {
+  const base = {
+    id:uid(),
+    title:pick?.title || `귀찮음 모드 항목`,
+    bucket,
+    quiet:true,
+    note:`귀찮음 모드: ${reason}`,
+    sourceType:`lazyPick`,
+    sourceId:`lazy:${pick?.key || uid()}`,
+    sourceView:pick?.view || pick?.payload?.view || `home`,
+    sourceLabel:pick?.kind || `홈`,
+    sourceTitle:pick?.title || ``,
+    sourceMeta:pick?.meta || ``,
+    createdAt:today || todayISO(),
+    updatedAt:today || todayISO(),
+  };
+
+  if (pick?.type === `course` && pick.payload?.course && pick.payload?.lecture) {
+    const { course, lecture } = pick.payload;
+    return {
+      ...base,
+      title:`${pick.kind} · ${course.name} ${lecture.num}강`,
+      sourceType:`courseLecture`,
+      sourceId:courseLectureReviewKey(course.id, lecture.num),
+      sourceView:`courses`,
+      sourceLabel:pick.kind,
+      sourceTitle:`${course.name} ${lecture.num}강 · ${lecture.title}`,
+      sourceMeta:`${course.subject} · ${pick.meta || course.name}`,
+    };
+  }
+
+  if (pick?.type === `review` && pick.payload?.id) {
+    return {
+      ...base,
+      sourceType:`review`,
+      sourceId:`review:${pick.payload.id}`,
+      sourceView:`review`,
+      sourceLabel:`주제회독`,
+      sourceTitle:pick.payload.title || pick.title,
+      sourceMeta:pick.meta || pick.payload.subject || ``,
+    };
+  }
+
+  if (pick?.type === `todo` && pick.payload?.sourceId) {
+    return {
+      ...base,
+      sourceType:`todo`,
+      sourceId:pick.payload.sourceId,
+      sourceView:`calendar`,
+      sourceLabel:`할 일`,
+    };
+  }
+
+  return base;
+}
+
 function WeeklySettlementPanel({ settlement, onGoTo, onAction, onBatchLater }) {
   const [open, setOpen] = useState(true);
   if (!settlement || (settlement.stats.total === 0 && settlement.stats.parkedThisWeek === 0)) return null;
@@ -4610,6 +4666,171 @@ function HomeInstantExecutionPanel({ picks = [], onComplete, onGoTo }) {
           <button onClick={() => running ? onGoTo(active.view || `log`) : rotatePick()} className={`tap`}
             style={{ background:`rgba(255,255,255,0.08)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`8px 4px`, fontSize:10, cursor:`pointer` }}>
             {running ? `화면` : `바꾸기`}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LazyModePanel({ enabled = false, picks = [], onToggle, onComplete, onPostpone, onDrop, onGoTo }) {
+  const [activeKey, setActiveKey] = useState(picks[0]?.key || ``);
+  const [startedAt, setStartedAt] = useState(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) {
+      setStartedAt(null);
+      return;
+    }
+    if (!picks.length) {
+      setActiveKey(``);
+      setStartedAt(null);
+      return;
+    }
+    if (!picks.some(pick => pick.key === activeKey)) {
+      setActiveKey(picks[0].key);
+      setStartedAt(null);
+    }
+  }, [enabled, picks, activeKey]);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  if (!enabled) {
+    return (
+      <section style={{ background:C.paper, border:`1px dashed ${C.line}`, marginBottom:10, padding:`10px 12px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10 }}>
+        <div style={{ minWidth:0 }}>
+          <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink }}>귀찮음 모드</div>
+          <div style={{ fontSize:9.5, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+            홈을 4버튼으로 줄입니다{picks.length ? ` · 후보 ${picks.length}개` : ``}
+          </div>
+        </div>
+        <button onClick={() => onToggle?.(true)} className={`tap`}
+          style={{ background:C.ink, color:`#fff`, border:`none`, padding:`7px 9px`, fontSize:10, fontWeight:700, cursor:`pointer`, flexShrink:0 }}>
+          켜기
+        </button>
+      </section>
+    );
+  }
+
+  if (!picks.length) {
+    return (
+      <section style={{ background:C.ink, color:`#fff`, border:`1px solid ${C.ink}`, marginBottom:10, padding:`18px 16px` }}>
+        <div className={`kserif`} style={{ fontSize:14, fontWeight:700, display:`flex`, alignItems:`center`, gap:7 }}>
+          <Clock size={15} /> 귀찮음 모드
+        </div>
+        <div style={{ fontSize:12, color:`rgba(255,255,255,0.72)`, marginTop:8, lineHeight:1.5 }}>
+          지금 바로 닫을 항목이 없습니다. 오늘은 한 줄 입력으로만 가볍게 기록해도 됩니다.
+        </div>
+        <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr`, gap:6, marginTop:14 }}>
+          <button onClick={() => onGoTo?.(`log`)} className={`tap`}
+            style={{ background:`#fff`, color:C.ink, border:`none`, padding:`10px 4px`, fontSize:11, fontWeight:700, cursor:`pointer` }}>
+            기록
+          </button>
+          <button onClick={() => onToggle?.(false)} className={`tap`}
+            style={{ background:`rgba(255,255,255,0.1)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`10px 4px`, fontSize:11, cursor:`pointer` }}>
+            끄기
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const active = picks.find(pick => pick.key === activeKey) || picks[0];
+  const durationSec = Math.max(60, (active.minutes || 10) * 60);
+  const elapsedSec = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
+  const remainingSec = Math.max(0, durationSec - elapsedSec);
+  const running = !!startedAt;
+  const done = running && remainingSec === 0;
+  const mm = Math.floor(remainingSec / 60);
+  const ss = remainingSec % 60;
+  const timeLabel = running ? `${String(mm).padStart(2, `0`)}:${String(ss).padStart(2, `0`)}` : `${active.minutes || 10}:00`;
+  const progress = running ? Math.min(100, (elapsedSec / durationSec) * 100) : 0;
+
+  function rotatePick() {
+    if (running || picks.length <= 1) return;
+    const idx = picks.findIndex(pick => pick.key === active.key);
+    setActiveKey(picks[(idx + 1) % picks.length].key);
+  }
+
+  function finish() {
+    onComplete?.(active);
+    setStartedAt(null);
+    setTick(t => t + 1);
+  }
+
+  function postpone() {
+    onPostpone?.(active);
+    setStartedAt(null);
+    setTick(t => t + 1);
+  }
+
+  function drop() {
+    onDrop?.(active);
+    setStartedAt(null);
+    setTick(t => t + 1);
+  }
+
+  return (
+    <section style={{ background:C.ink, color:`#fff`, border:`1px solid ${C.ink}`, marginBottom:10, padding:`18px 16px`, position:`relative`, overflow:`hidden` }}>
+      <div style={{ position:`absolute`, right:-16, top:-18, fontFamily:`Fraunces, serif`, fontSize:118, lineHeight:1, opacity:0.07 }}>{timeLabel}</div>
+      <div style={{ position:`relative` }}>
+        <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:12, marginBottom:14 }}>
+          <div style={{ minWidth:0 }}>
+            <div className={`kserif`} style={{ fontSize:14, fontWeight:700, display:`flex`, alignItems:`center`, gap:7 }}>
+              <Clock size={15} /> 귀찮음 모드
+            </div>
+            <div style={{ fontSize:10.5, color:`rgba(255,255,255,0.68)`, marginTop:3 }}>하나만 보고, 하나만 결정</div>
+          </div>
+          <button onClick={() => onToggle?.(false)} className={`tap`}
+            style={{ background:`rgba(255,255,255,0.08)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`6px 8px`, fontSize:10, cursor:`pointer`, flexShrink:0 }}>
+            끄기
+          </button>
+        </div>
+
+        <div style={{ background:`rgba(255,255,255,0.08)`, border:`1px solid rgba(255,255,255,0.14)`, padding:`13px 12px`, marginBottom:12 }}>
+          <div className={`mono`} style={{ fontSize:28, fontWeight:700, lineHeight:1, color:done ? `#FFD9D9` : `#fff`, marginBottom:12 }}>{timeLabel}</div>
+          <div style={{ display:`flex`, alignItems:`baseline`, gap:7, marginBottom:6 }}>
+            <span className={`kserif`} style={{ color:active.tone || `#fff`, background:`rgba(255,255,255,0.12)`, padding:`2px 6px`, fontSize:10, fontWeight:700, flexShrink:0 }}>{active.kind}</span>
+            <div style={{ flex:1, minWidth:0, fontSize:14, fontWeight:700, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{active.title}</div>
+          </div>
+          <div style={{ fontSize:11, color:`rgba(255,255,255,0.7)`, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{active.meta}</div>
+          <div style={{ marginTop:12, height:5, background:`rgba(255,255,255,0.16)` }}>
+            <div style={{ height:`100%`, width:`${progress}%`, background:done ? C.accentSoft : `#fff`, transition:`width .2s` }} />
+          </div>
+        </div>
+
+        <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, minmax(0, 1fr))`, gap:6 }}>
+          <button onClick={() => running ? setStartedAt(null) : setStartedAt(Date.now())} className={`tap`}
+            style={{ background:running ? `rgba(255,255,255,0.12)` : `#fff`, color:running ? `#fff` : C.ink, border:`1px solid rgba(255,255,255,0.18)`, padding:`11px 3px`, fontSize:10.5, fontWeight:700, cursor:`pointer` }}>
+            {running ? `중지` : `지금 시작`}
+          </button>
+          <button onClick={finish} className={`tap`}
+            style={{ background:done ? C.accentSoft : `rgba(255,255,255,0.12)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`11px 3px`, fontSize:10.5, fontWeight:700, cursor:`pointer` }}>
+            완료
+          </button>
+          <button onClick={postpone} className={`tap`}
+            style={{ background:`rgba(255,255,255,0.08)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`11px 3px`, fontSize:10.5, cursor:`pointer` }}>
+            미룸
+          </button>
+          <button onClick={drop} className={`tap`}
+            style={{ background:`rgba(122,30,30,0.72)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`11px 3px`, fontSize:10.5, cursor:`pointer` }}>
+            버림
+          </button>
+        </div>
+
+        <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr`, gap:6, marginTop:6 }}>
+          <button onClick={rotatePick} disabled={running || picks.length <= 1} className={`tap`}
+            style={{ background:`transparent`, color:`rgba(255,255,255,0.82)`, border:`1px solid rgba(255,255,255,0.14)`, padding:`8px 3px`, fontSize:10, cursor:running || picks.length <= 1 ? `default` : `pointer`, opacity:running || picks.length <= 1 ? 0.45 : 1 }}>
+            바꾸기
+          </button>
+          <button onClick={() => onGoTo?.(active.view || active.payload?.view || `log`)} className={`tap`}
+            style={{ background:`transparent`, color:`rgba(255,255,255,0.82)`, border:`1px solid rgba(255,255,255,0.14)`, padding:`8px 3px`, fontSize:10, cursor:`pointer` }}>
+            화면 열기
           </button>
         </div>
       </div>
@@ -5158,6 +5379,19 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
     uncertainty: uncertaintySummary,
     today,
   }), [courseQueueItems, homeDueReviews, todayWeeklyPlanItems, todos, staleChecklists, uncertaintySummary, today]);
+  const [lazyMode, setLazyMode] = useState(() => {
+    try {
+      return localStorage.getItem(`bar-home-lazy-mode`) === `1`;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`bar-home-lazy-mode`, lazyMode ? `1` : `0`);
+    } catch {}
+  }, [lazyMode]);
 
   function logCourseTime(subject, studyType, minutes) {
     if (!setLogs || minutes <= 0) return;
@@ -5279,6 +5513,24 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
       return;
     }
     onGoTo(pick.view || pick.payload?.view || `log`);
+  }
+
+  function parkInstantPick(pick, bucket, reason) {
+    if (!pick || !setParkingItems) return;
+    const parkingItem = buildLazyPickParkingItem(pick, bucket, today, reason);
+    setParkingItems(prev => {
+      const list = prev || [];
+      if (parkingItem.sourceId && list.some(item => item.sourceId === parkingItem.sourceId)) return prev;
+      return [parkingItem, ...list];
+    });
+  }
+
+  function postponeInstantPick(pick) {
+    parkInstantPick(pick, `later`, `미룸`);
+  }
+
+  function dropInstantPick(pick) {
+    parkInstantPick(pick, `drop`, `버림`);
   }
 
   function applyQuickCapture(plan) {
@@ -5535,6 +5787,44 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
     parkSettlementItems(items, `later`);
   }
 
+  if (lazyMode) {
+    return (
+      <div className={`fadeIn home-shell`} style={{ paddingTop:20, display:`block`, maxWidth:760, margin:`0 auto` }}>
+        <div className={`home-primary`}>
+          <HomeWorkHeader
+            dday={dday}
+            todayMinutes={todayMinutes}
+            tracksDone={tracksDone}
+            inboxCount={todayInboxCount}
+            courseQueueSummary={courseQueueSummary}
+            dueReviews={homeDueReviews}
+            todosOpen={todayTodosOpen}
+            planCount={todayWeeklyPlanItems.length}
+            overdueTotal={overdueTotal}
+            onGoTo={onGoTo}
+          />
+
+          <QuickCapturePanel
+            date={today}
+            courses={courses}
+            onApply={applyQuickCapture}
+          />
+
+          <LazyModePanel
+            enabled
+            picks={instantPicks}
+            onToggle={() => setLazyMode(false)}
+            onComplete={completeInstantPick}
+            onPostpone={postponeInstantPick}
+            onDrop={dropInstantPick}
+            onGoTo={onGoTo}
+          />
+        </div>
+        <div style={{ height:20 }} />
+      </div>
+    );
+  }
+
   return (
     <div className={`fadeIn home-shell`} style={{ paddingTop:20 }}>
       <div className={`home-primary`}>
@@ -5555,6 +5845,11 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
         date={today}
         courses={courses}
         onApply={applyQuickCapture}
+      />
+
+      <LazyModePanel
+        picks={instantPicks}
+        onToggle={() => setLazyMode(true)}
       />
 
       <HomeInstantExecutionPanel
