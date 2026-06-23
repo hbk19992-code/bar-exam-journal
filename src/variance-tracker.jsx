@@ -495,6 +495,15 @@ const QUICK_SUBJECT_ALIASES = [
   { subject:`선택법`, aliases:[`선택법`, `선택`] },
 ];
 
+const LAZY_SUBJECT_FILTERS = [
+  { key:`all`, label:`전체` },
+  { key:`민사법`, label:`민사` },
+  { key:`형사법`, label:`형사` },
+  { key:`공법`, label:`공법` },
+  { key:`선택법`, label:`선택` },
+  { key:`other`, label:`기타` },
+];
+
 const QUICK_COURSE_HINTS = [
   { aliases:[`민소`, `민소법`], needles:[`민사소송`, `민소`] },
   { aliases:[`민법`], needles:[`민법`] },
@@ -509,10 +518,14 @@ function compactQuickText(value = ``) {
   return String(value || ``).toLowerCase().replace(/\s+/g, ``);
 }
 
-function inferQuickSubject(text = ``) {
+function inferExplicitSubject(text = ``) {
   const compact = compactQuickText(text);
   const hit = QUICK_SUBJECT_ALIASES.find(group => group.aliases.some(alias => compact.includes(compactQuickText(alias))));
-  return hit?.subject || `민사법`;
+  return hit?.subject || null;
+}
+
+function inferQuickSubject(text = ``) {
+  return inferExplicitSubject(text) || `민사법`;
 }
 
 function inferQuickTrackKey(text = ``) {
@@ -4242,6 +4255,7 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     minutes:15,
     tone:C.accent,
     view:`courses`,
+    subject:firstCourseReview.course.subject,
     priority:95,
   });
   push(dueReviews[0] && {
@@ -4254,6 +4268,7 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     minutes:12,
     tone:SUBJECTS[dueReviews[0].subject]?.color || C.good,
     view:`review`,
+    subject:dueReviews[0].subject,
     priority:90,
   });
   push(firstCourseWatch && {
@@ -4266,6 +4281,7 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     minutes:Math.max(15, Math.min(35, firstCourseWatch.lecture.durationMin || 25)),
     tone:SUBJECTS[firstCourseWatch.course.subject]?.color || C.book,
     view:`courses`,
+    subject:firstCourseWatch.course.subject,
     priority:80,
   });
   push(overdueTodos[0] && {
@@ -4278,6 +4294,7 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     minutes:10,
     tone:overdueTodos[0].age > 0 ? C.warn : C.ink,
     view:`calendar`,
+    subject:inferExplicitSubject(overdueTodos[0].todo.title),
     priority:70 + overdueTodos[0].age,
   });
   push(planItems[0] && {
@@ -4290,6 +4307,7 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     minutes:20,
     tone:C.ink,
     view:`log`,
+    subject:inferExplicitSubject(planItems[0].title),
     priority:62,
   });
   push(uncertainty?.top?.items?.[0] && {
@@ -4302,6 +4320,7 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     minutes:15,
     tone:uncertainty.top.tone,
     view:uncertainty.top.items[0].view || `review`,
+    subject:uncertainty.top.subject,
     priority:58,
   });
   push(staleChecklists[0] && {
@@ -4314,10 +4333,29 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     minutes:8,
     tone:staleChecklists[0].color || C.warn,
     view:`check`,
+    subject:staleChecklists[0].subject || inferExplicitSubject(staleChecklists[0].name),
     priority:50,
   });
 
   return picks.sort((a, b) => b.priority - a.priority).slice(0, 6);
+}
+
+function getInstantPickSubject(pick) {
+  if (!pick) return `other`;
+  if (pick.subject && SUBJECTS[pick.subject]) return pick.subject;
+  if (pick.type === `course` && pick.payload?.course?.subject) return pick.payload.course.subject;
+  if (pick.type === `review` && pick.payload?.subject) return pick.payload.subject;
+  const explicit = inferExplicitSubject(`${pick.kind || ``} ${pick.title || ``} ${pick.meta || ``}`);
+  return explicit || `other`;
+}
+
+function filterInstantPicksBySubject(picks = [], subjectFilter = `all`) {
+  if (!subjectFilter || subjectFilter === `all`) return picks;
+  return picks.filter(pick => getInstantPickSubject(pick) === subjectFilter);
+}
+
+function lazySubjectFilterLabel(value = `all`) {
+  return LAZY_SUBJECT_FILTERS.find(item => item.key === value)?.label || `전체`;
 }
 
 function buildLazyPickParkingItem(pick, bucket, today, reason) {
@@ -4673,7 +4711,43 @@ function HomeInstantExecutionPanel({ picks = [], onComplete, onGoTo }) {
   );
 }
 
-function LazyModePanel({ enabled = false, picks = [], onToggle, onComplete, onPostpone, onDrop, onGoTo }) {
+function LazySubjectFilterRow({ value = `all`, onChange, dark = false, pickCount = 0, allPickCount = 0 }) {
+  return (
+    <div style={{ marginTop:8 }}>
+      <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:6 }}>
+        <span className={`kserif`} style={{ fontSize:9.5, fontWeight:700, color:dark ? `rgba(255,255,255,0.68)` : C.muted }}>
+          우선 과목
+        </span>
+        <span className={`mono`} style={{ fontSize:9, color:dark ? `rgba(255,255,255,0.54)` : C.muted }}>
+          {lazySubjectFilterLabel(value)} {pickCount}/{allPickCount || pickCount}
+        </span>
+      </div>
+      <div style={{ display:`flex`, gap:5, overflowX:`auto`, paddingBottom:1 }} className={`hide-scroll`}>
+        {LAZY_SUBJECT_FILTERS.map(item => {
+          const active = item.key === value;
+          return (
+            <button key={item.key} onClick={() => onChange?.(item.key)} className={`tap`}
+              style={{
+                background:active ? (dark ? `#fff` : C.ink) : (dark ? `rgba(255,255,255,0.08)` : C.paper),
+                color:active ? (dark ? C.ink : `#fff`) : (dark ? `rgba(255,255,255,0.78)` : C.muted),
+                border:`1px solid ${active ? (dark ? `#fff` : C.ink) : (dark ? `rgba(255,255,255,0.16)` : C.lineSoft)}`,
+                padding:`5px 8px`,
+                fontSize:9.5,
+                fontWeight:active ? 700 : 500,
+                cursor:`pointer`,
+                whiteSpace:`nowrap`,
+                flexShrink:0,
+              }}>
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LazyModePanel({ enabled = false, picks = [], allPickCount = 0, subjectFilter = `all`, onSubjectFilterChange, onToggle, onComplete, onPostpone, onDrop, onGoTo }) {
   const [activeKey, setActiveKey] = useState(picks[0]?.key || ``);
   const [startedAt, setStartedAt] = useState(null);
   const [tick, setTick] = useState(0);
@@ -4702,17 +4776,25 @@ function LazyModePanel({ enabled = false, picks = [], onToggle, onComplete, onPo
 
   if (!enabled) {
     return (
-      <section style={{ background:C.paper, border:`1px dashed ${C.line}`, marginBottom:10, padding:`10px 12px`, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10 }}>
-        <div style={{ minWidth:0 }}>
-          <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink }}>귀찮음 모드</div>
-          <div style={{ fontSize:9.5, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
-            홈을 4버튼으로 줄입니다{picks.length ? ` · 후보 ${picks.length}개` : ``}
+      <section style={{ background:C.paper, border:`1px dashed ${C.line}`, marginBottom:10, padding:`10px 12px` }}>
+        <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10 }}>
+          <div style={{ minWidth:0 }}>
+            <div className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink }}>귀찮음 모드</div>
+            <div style={{ fontSize:9.5, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+              홈을 4버튼으로 줄입니다 · {lazySubjectFilterLabel(subjectFilter)} 후보 {picks.length}개
+            </div>
           </div>
+          <button onClick={() => onToggle?.(true)} className={`tap`}
+            style={{ background:C.ink, color:`#fff`, border:`none`, padding:`7px 9px`, fontSize:10, fontWeight:700, cursor:`pointer`, flexShrink:0 }}>
+            켜기
+          </button>
         </div>
-        <button onClick={() => onToggle?.(true)} className={`tap`}
-          style={{ background:C.ink, color:`#fff`, border:`none`, padding:`7px 9px`, fontSize:10, fontWeight:700, cursor:`pointer`, flexShrink:0 }}>
-          켜기
-        </button>
+        <LazySubjectFilterRow
+          value={subjectFilter}
+          onChange={onSubjectFilterChange}
+          pickCount={picks.length}
+          allPickCount={allPickCount}
+        />
       </section>
     );
   }
@@ -4723,10 +4805,23 @@ function LazyModePanel({ enabled = false, picks = [], onToggle, onComplete, onPo
         <div className={`kserif`} style={{ fontSize:14, fontWeight:700, display:`flex`, alignItems:`center`, gap:7 }}>
           <Clock size={15} /> 귀찮음 모드
         </div>
+        <LazySubjectFilterRow
+          value={subjectFilter}
+          onChange={onSubjectFilterChange}
+          dark
+          pickCount={picks.length}
+          allPickCount={allPickCount}
+        />
         <div style={{ fontSize:12, color:`rgba(255,255,255,0.72)`, marginTop:8, lineHeight:1.5 }}>
-          지금 바로 닫을 항목이 없습니다. 오늘은 한 줄 입력으로만 가볍게 기록해도 됩니다.
+          {allPickCount > 0 && subjectFilter !== `all`
+            ? `${lazySubjectFilterLabel(subjectFilter)} 후보가 없습니다. 전체로 바꾸거나 한 줄 입력으로 기록하세요.`
+            : `지금 바로 닫을 항목이 없습니다. 오늘은 한 줄 입력으로만 가볍게 기록해도 됩니다.`}
         </div>
-        <div style={{ display:`grid`, gridTemplateColumns:`1fr 1fr`, gap:6, marginTop:14 }}>
+        <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:6, marginTop:14 }}>
+          <button onClick={() => onSubjectFilterChange?.(`all`)} className={`tap`}
+            style={{ background:`rgba(255,255,255,0.1)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`10px 4px`, fontSize:11, cursor:`pointer` }}>
+            전체
+          </button>
           <button onClick={() => onGoTo?.(`log`)} className={`tap`}
             style={{ background:`#fff`, color:C.ink, border:`none`, padding:`10px 4px`, fontSize:11, fontWeight:700, cursor:`pointer` }}>
             기록
@@ -4784,7 +4879,9 @@ function LazyModePanel({ enabled = false, picks = [], onToggle, onComplete, onPo
             <div className={`kserif`} style={{ fontSize:14, fontWeight:700, display:`flex`, alignItems:`center`, gap:7 }}>
               <Clock size={15} /> 귀찮음 모드
             </div>
-            <div style={{ fontSize:10.5, color:`rgba(255,255,255,0.68)`, marginTop:3 }}>하나만 보고, 하나만 결정</div>
+            <div style={{ fontSize:10.5, color:`rgba(255,255,255,0.68)`, marginTop:3 }}>
+              {lazySubjectFilterLabel(subjectFilter)}만 보고, 하나만 결정
+            </div>
           </div>
           <button onClick={() => onToggle?.(false)} className={`tap`}
             style={{ background:`rgba(255,255,255,0.08)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.18)`, padding:`6px 8px`, fontSize:10, cursor:`pointer`, flexShrink:0 }}>
@@ -4792,7 +4889,15 @@ function LazyModePanel({ enabled = false, picks = [], onToggle, onComplete, onPo
           </button>
         </div>
 
-        <div style={{ background:`rgba(255,255,255,0.08)`, border:`1px solid rgba(255,255,255,0.14)`, padding:`13px 12px`, marginBottom:12 }}>
+        <LazySubjectFilterRow
+          value={subjectFilter}
+          onChange={onSubjectFilterChange}
+          dark
+          pickCount={picks.length}
+          allPickCount={allPickCount}
+        />
+
+        <div style={{ background:`rgba(255,255,255,0.08)`, border:`1px solid rgba(255,255,255,0.14)`, padding:`13px 12px`, margin:`12px 0` }}>
           <div className={`mono`} style={{ fontSize:28, fontWeight:700, lineHeight:1, color:done ? `#FFD9D9` : `#fff`, marginBottom:12 }}>{timeLabel}</div>
           <div style={{ display:`flex`, alignItems:`baseline`, gap:7, marginBottom:6 }}>
             <span className={`kserif`} style={{ color:active.tone || `#fff`, background:`rgba(255,255,255,0.12)`, padding:`2px 6px`, fontSize:10, fontWeight:700, flexShrink:0 }}>{active.kind}</span>
@@ -5386,12 +5491,27 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
       return false;
     }
   });
+  const [lazySubjectFilter, setLazySubjectFilter] = useState(() => {
+    try {
+      const value = localStorage.getItem(`bar-home-lazy-subject`) || `all`;
+      return LAZY_SUBJECT_FILTERS.some(item => item.key === value) ? value : `all`;
+    } catch {
+      return `all`;
+    }
+  });
+  const lazyPicks = useMemo(() => filterInstantPicksBySubject(instantPicks, lazySubjectFilter), [instantPicks, lazySubjectFilter]);
 
   useEffect(() => {
     try {
       localStorage.setItem(`bar-home-lazy-mode`, lazyMode ? `1` : `0`);
     } catch {}
   }, [lazyMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`bar-home-lazy-subject`, lazySubjectFilter);
+    } catch {}
+  }, [lazySubjectFilter]);
 
   function logCourseTime(subject, studyType, minutes) {
     if (!setLogs || minutes <= 0) return;
@@ -5812,7 +5932,10 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
 
           <LazyModePanel
             enabled
-            picks={instantPicks}
+            picks={lazyPicks}
+            allPickCount={instantPicks.length}
+            subjectFilter={lazySubjectFilter}
+            onSubjectFilterChange={setLazySubjectFilter}
             onToggle={() => setLazyMode(false)}
             onComplete={completeInstantPick}
             onPostpone={postponeInstantPick}
@@ -5848,7 +5971,10 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, t
       />
 
       <LazyModePanel
-        picks={instantPicks}
+        picks={lazyPicks}
+        allPickCount={instantPicks.length}
+        subjectFilter={lazySubjectFilter}
+        onSubjectFilterChange={setLazySubjectFilter}
         onToggle={() => setLazyMode(true)}
       />
 
