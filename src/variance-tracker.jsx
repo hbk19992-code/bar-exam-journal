@@ -73,6 +73,19 @@ const SUBJECTS = {
   ]},
 };
 
+const RANK_PHASES = [`1순환`, `2순환`, `3순환`, `4순환`, `모의고사`, `기타`];
+const RANK_DETAIL_SUBJECTS = [
+  { key: `민법`, group: `민사법`, aliases: [`민법`, `민`] },
+  { key: `민소법`, group: `민사법`, aliases: [`민소법`, `민소`, `민사소송법`, `민사소송`] },
+  { key: `상법`, group: `민사법`, aliases: [`상법`, `상`] },
+  { key: `형법`, group: `형사법`, aliases: [`형법`, `형`] },
+  { key: `형소법`, group: `형사법`, aliases: [`형소법`, `형소`, `형사소송법`, `형사소송`] },
+  { key: `헌법`, group: `공법`, aliases: [`헌법`, `헌`] },
+  { key: `행정법`, group: `공법`, aliases: [`행정법`, `행정`, `행`] },
+  { key: `선택법`, group: `선택법`, aliases: [`선택법`, `선택`, `경제법`, `노동법`, `국제법`, `환경법`, `조세법`, `지재법`] },
+];
+const RANK_DETAIL_SUBJECT_MAP = Object.fromEntries(RANK_DETAIL_SUBJECTS.map(item => [item.key, item]));
+
 const COURSE_WATCH_TYPE = `강의수강`;
 const COURSE_REVIEW_TYPE = `강의복습`;
 const COURSE_LOG_TYPES = [
@@ -850,13 +863,24 @@ async function exportXLSX(state, filename) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreRows), `회차점수`);
 
   // [5] Essay/case rank scores
-  const rankRows = [[`날짜`, `묶음`, `회차`, `과목`, `유형`, `점수`, `등수`, `인원`, `상위비율(%)`, `평균`, `평균대비`, `메모`]];
-  [...rankScores].sort((a,b) => (a.seriesTitle || ``).localeCompare(b.seriesTitle || ``) || (a.round || 0) - (b.round || 0)).forEach(s => {
+  const rankRows = [[`날짜`, `대분류`, `묶음`, `회차`, `대과목`, `개별과목`, `유형`, `점수`, `등수`, `인원`, `상위비율(%)`, `평균`, `평균대비`, `메모`]];
+  [...rankScores].sort((a,b) => {
+    const phase = RANK_PHASES.indexOf(getRankPhase(a)) - RANK_PHASES.indexOf(getRankPhase(b));
+    if (phase !== 0) return phase;
+    const subject = getRankDetailSubject(a).localeCompare(getRankDetailSubject(b));
+    if (subject !== 0) return subject;
+    const series = (a.seriesTitle || ``).localeCompare(b.seriesTitle || ``);
+    if (series !== 0) return series;
+    return (a.round || 0) - (b.round || 0);
+  }).forEach(s => {
+    const detailSubject = getRankDetailSubject(s);
     rankRows.push([
       s.date || ``,
+      getRankPhase(s),
       s.seriesTitle || ``,
       s.round || ``,
-      s.subject || ``,
+      getRankSubjectGroup(detailSubject),
+      detailSubject,
       s.type || ``,
       s.score ?? ``,
       s.rank ?? ``,
@@ -8011,6 +8035,47 @@ function ScoresSection({ date, examScores, setExamScores }) {
 /* 사례형/기록형 등수표 텍스트 붙여넣기 */
 const RANK_SCORE_TYPES = [`사례형`, `기록형`, `선택형`, `기타`];
 
+function inferRankPhaseFromText(value = ``) {
+  const match = String(value || ``).match(/([1-4])\s*순환/);
+  if (match) return `${match[1]}순환`;
+  if (/모의|mock/i.test(String(value || ``))) return `모의고사`;
+  return null;
+}
+
+function getRankPhase(row = {}) {
+  const value = row.phase || inferRankPhaseFromText(row.seriesTitle);
+  return RANK_PHASES.includes(value) ? value : `1순환`;
+}
+
+function getRankDetailSubject(row = {}) {
+  if (RANK_DETAIL_SUBJECT_MAP[row.detailSubject]) return row.detailSubject;
+  const text = [row.detailSubject, row.subject, row.seriesTitle, row.note].filter(Boolean).join(` `);
+  const compact = compactQuickText(text);
+  const hit = RANK_DETAIL_SUBJECTS.find(item => item.aliases.some(alias => compact.includes(compactQuickText(alias))));
+  if (hit) return hit.key;
+  if (row.subject === `민사법`) return `민법`;
+  if (row.subject === `형사법`) return `형법`;
+  if (row.subject === `공법`) return `헌법`;
+  if (row.subject === `선택법`) return `선택법`;
+  return `민법`;
+}
+
+function getRankSubjectGroup(detailSubject) {
+  return RANK_DETAIL_SUBJECT_MAP[detailSubject]?.group || (SUBJECTS[detailSubject] ? detailSubject : `민사법`);
+}
+
+function getRankSubjectColor(detailSubject) {
+  return SUBJECTS[getRankSubjectGroup(detailSubject)]?.color || C.muted;
+}
+
+function getRankMetaPatch(phase, detailSubject) {
+  return {
+    phase: RANK_PHASES.includes(phase) ? phase : `1순환`,
+    subject: getRankSubjectGroup(detailSubject),
+    detailSubject: RANK_DETAIL_SUBJECT_MAP[detailSubject] ? detailSubject : `민법`,
+  };
+}
+
 function cleanRankCell(value) {
   return String(value ?? ``)
     .replace(/`/g, ``)
@@ -8154,8 +8219,9 @@ function parseRankPasteText(text) {
 
 function rankScoreKey(score) {
   return [
+    getRankPhase(score),
     score.seriesTitle || ``,
-    score.subject || ``,
+    getRankDetailSubject(score),
     score.type || ``,
     score.round || ``,
   ].join(`::`);
@@ -8170,6 +8236,10 @@ function upsertRankScores(prev = [], incoming = []) {
     map.set(key, { ...old, ...item, id: old?.id || item.id });
   });
   return [...map.values()].sort((a, b) => {
+    const phase = RANK_PHASES.indexOf(getRankPhase(a)) - RANK_PHASES.indexOf(getRankPhase(b));
+    if (phase !== 0) return phase;
+    const subject = getRankDetailSubject(a).localeCompare(getRankDetailSubject(b));
+    if (subject !== 0) return subject;
     const series = (a.seriesTitle || ``).localeCompare(b.seriesTitle || ``);
     if (series !== 0) return series;
     return (a.round || 0) - (b.round || 0);
@@ -8253,8 +8323,9 @@ function buildRankSummary(rows = []) {
 }
 
 function RankPasteSection({ date, rankScores = [], setRankScores }) {
-  const [seriesTitle, setSeriesTitle] = useState(`1순환 민법 사례`);
-  const [subject, setSubject] = useState(`민사법`);
+  const [phase, setPhase] = useState(`1순환`);
+  const [detailSubject, setDetailSubject] = useState(`민법`);
+  const [seriesTitle, setSeriesTitle] = useState(`민법 사례`);
   const [type, setType] = useState(`사례형`);
   const [text, setText] = useState(``);
   const [manualOpen, setManualOpen] = useState(false);
@@ -8263,12 +8334,14 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
 
   const parsed = useMemo(() => parseRankPasteText(text), [text]);
   const activeSeries = seriesTitle.trim() || `등수표`;
+  const rankMeta = useMemo(() => getRankMetaPatch(phase, detailSubject), [phase, detailSubject]);
+  const detailColor = getRankSubjectColor(detailSubject);
   const manualPreview = useMemo(() => parseManualRankDraft(manualDraft), [manualDraft]);
   const savedRows = useMemo(() => (
     [...rankScores]
-      .filter(s => (s.seriesTitle || `등수표`) === activeSeries && s.subject === subject && s.type === type)
+      .filter(s => getRankPhase(s) === phase && (s.seriesTitle || `등수표`) === activeSeries && getRankDetailSubject(s) === detailSubject && s.type === type)
       .sort((a, b) => (a.round || 0) - (b.round || 0))
-  ), [rankScores, activeSeries, subject, type]);
+  ), [rankScores, activeSeries, phase, detailSubject, type]);
 
   const savedSummary = useMemo(() => {
     return buildRankSummary(savedRows);
@@ -8285,14 +8358,14 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
       id: uid(),
       date,
       seriesTitle: activeSeries,
-      subject,
+      ...rankMeta,
       type,
       ...row,
       importedAt: now,
     }));
     setRankScores(upsertRankScores(rankScores, incoming));
     setText(``);
-    alert(`${incoming.length}개 회차를 저장했어요. 같은 묶음·과목·유형·회차는 자동으로 덮어썼습니다.`);
+    alert(`${incoming.length}개 회차를 저장했어요. 같은 순환·묶음·개별과목·유형·회차는 자동으로 덮어썼습니다.`);
   }
 
   function del(id) {
@@ -8312,6 +8385,10 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
   function startEdit(row) {
     setManualOpen(true);
     setEditingRankId(row.id);
+    setPhase(getRankPhase(row));
+    setDetailSubject(getRankDetailSubject(row));
+    setSeriesTitle(row.seriesTitle || `등수표`);
+    setType(row.type || `사례형`);
     setManualDraft(rankDraftFromRow(row));
   }
 
@@ -8328,7 +8405,7 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
       id: editingRankId || uid(),
       date: old?.date || date,
       seriesTitle: activeSeries,
-      subject,
+      ...rankMeta,
       type,
       ...parsedDraft,
       importedAt: new Date().toISOString(),
@@ -8344,13 +8421,17 @@ function RankPasteSection({ date, rankScores = [], setRankScores }) {
     <div style={{ marginBottom:24 }}>
       <SectionTitle>사례형 등수표</SectionTitle>
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`12px 14px` }}>
-        <div style={{ display:`grid`, gridTemplateColumns:`1.5fr 1fr 1fr`, gap:6, marginBottom:8 }}>
+        <div style={{ display:`grid`, gridTemplateColumns:`0.9fr 1fr 1.4fr 0.9fr`, gap:6, marginBottom:8 }}>
+          <select value={phase} onChange={e => setPhase(e.target.value)}
+            style={{ minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, outline:`none` }}>
+            {RANK_PHASES.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select value={detailSubject} onChange={e => setDetailSubject(e.target.value)}
+            style={{ minWidth:0, background:C.bg, color:detailColor, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, fontWeight:700, outline:`none` }}>
+            {RANK_DETAIL_SUBJECTS.map(s => <option key={s.key} value={s.key}>{s.key}</option>)}
+          </select>
           <input value={seriesTitle} onChange={e => setSeriesTitle(e.target.value)} placeholder={`묶음 이름`}
             style={{ minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, outline:`none` }} />
-          <select value={subject} onChange={e => setSubject(e.target.value)}
-            style={{ minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, outline:`none` }}>
-            {Object.keys(SUBJECTS).map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
           <select value={type} onChange={e => setType(e.target.value)}
             style={{ minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 9px`, fontSize:11, outline:`none` }}>
             {RANK_SCORE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
@@ -8722,8 +8803,9 @@ function RankScoreOverview({ rankScores = [], setRankScores }) {
   const [editor, setEditor] = useState({
     open:false,
     id:null,
+    phase:`1순환`,
+    detailSubject:`민법`,
     seriesTitle:``,
-    subject:`민사법`,
     type:`사례형`,
     draft: emptyRankDraft(),
   });
@@ -8736,6 +8818,10 @@ function RankScoreOverview({ rankScores = [], setRankScores }) {
       if (!old || (row.importedAt || row.date || ``) > (old.importedAt || old.date || ``)) map.set(key, row);
     });
     return [...map.values()].sort((a, b) => {
+      const phase = RANK_PHASES.indexOf(getRankPhase(a)) - RANK_PHASES.indexOf(getRankPhase(b));
+      if (phase !== 0) return phase;
+      const subject = getRankDetailSubject(a).localeCompare(getRankDetailSubject(b));
+      if (subject !== 0) return subject;
       const series = (a.seriesTitle || ``).localeCompare(b.seriesTitle || ``);
       if (series !== 0) return series;
       return (a.round || 0) - (b.round || 0);
@@ -8745,7 +8831,7 @@ function RankScoreOverview({ rankScores = [], setRankScores }) {
   const grouped = useMemo(() => {
     const out = {};
     latestRows.forEach(row => {
-      const key = `${row.seriesTitle || `등수표`} · ${row.subject || ``} ${row.type || ``}`.trim();
+      const key = `${getRankPhase(row)} · ${getRankDetailSubject(row)} · ${row.seriesTitle || `등수표`} ${row.type || ``}`.trim();
       if (!out[key]) out[key] = [];
       out[key].push(row);
     });
@@ -8765,8 +8851,9 @@ function RankScoreOverview({ rankScores = [], setRankScores }) {
     setEditor({
       open:true,
       id: mode === `edit` ? row.id : null,
+      phase: getRankPhase(row),
+      detailSubject: getRankDetailSubject(row),
       seriesTitle: row.seriesTitle || `등수표`,
-      subject: row.subject || `민사법`,
       type: row.type || `사례형`,
       draft: mode === `edit` ? rankDraftFromRow(row) : emptyRankDraft(),
     });
@@ -8789,7 +8876,7 @@ function RankScoreOverview({ rankScores = [], setRankScores }) {
       id: editor.id || uid(),
       date: old?.date || todayISO(),
       seriesTitle: editor.seriesTitle.trim() || `등수표`,
-      subject: editor.subject,
+      ...getRankMetaPatch(editor.phase, editor.detailSubject),
       type: editor.type,
       ...parsedDraft,
       importedAt: new Date().toISOString(),
@@ -8829,13 +8916,17 @@ function RankScoreOverview({ rankScores = [], setRankScores }) {
 
         {editor.open && (
           <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`10px`, marginBottom:10 }}>
-            <div style={{ display:`grid`, gridTemplateColumns:`1.5fr 1fr 1fr`, gap:6, marginBottom:8 }}>
+            <div style={{ display:`grid`, gridTemplateColumns:`0.9fr 1fr 1.4fr 0.9fr`, gap:6, marginBottom:8 }}>
+              <select value={editor.phase} onChange={e => setEditor(prev => ({ ...prev, phase:e.target.value }))}
+                style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }}>
+                {RANK_PHASES.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <select value={editor.detailSubject} onChange={e => setEditor(prev => ({ ...prev, detailSubject:e.target.value }))}
+                style={{ minWidth:0, background:C.paper, color:getRankSubjectColor(editor.detailSubject), border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, fontWeight:700, outline:`none` }}>
+                {RANK_DETAIL_SUBJECTS.map(s => <option key={s.key} value={s.key}>{s.key}</option>)}
+              </select>
               <input value={editor.seriesTitle} onChange={e => setEditor(prev => ({ ...prev, seriesTitle:e.target.value }))} placeholder={`묶음 이름`}
                 style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }} />
-              <select value={editor.subject} onChange={e => setEditor(prev => ({ ...prev, subject:e.target.value }))}
-                style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }}>
-                {Object.keys(SUBJECTS).map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
               <select value={editor.type} onChange={e => setEditor(prev => ({ ...prev, type:e.target.value }))}
                 style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }}>
                 {RANK_SCORE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
