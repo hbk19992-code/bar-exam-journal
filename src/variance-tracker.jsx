@@ -1844,7 +1844,9 @@ const globalStyles = (
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         /* ↓ 변경: html, body 마진/패딩 제거 및 모바일 바운스 방지 추가 */
         html, body { margin: 0; padding: 0; overscroll-behavior-y: none; background: ${C.bg}; }
+        :root { color-scheme: light; }
         body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+        ::selection { background: rgba(122,30,30,.16); }
         input, textarea, button, select { font-family: inherit; color: inherit; }
         button:disabled { opacity: .52; cursor: default !important; }
         button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
@@ -1867,8 +1869,39 @@ const globalStyles = (
         .desktop-only { display: none; }
         .mobile-only { display: inline-flex; }
         .more-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+        .home-primary > section:not(.dday-card),
+        .home-secondary > section,
+        .home-today-card,
+        .more-grid > button {
+          border-radius: 8px;
+          box-shadow: 0 1px 0 rgba(255,255,255,.54) inset, 0 12px 30px rgba(26,25,21,.055);
+          overflow: hidden;
+        }
+        .home-core-grid button,
+        .bottom-nav button {
+          border-radius: 6px;
+        }
+        .bottom-nav button[aria-current="page"]::before {
+          content: "";
+          position: absolute;
+          top: 4px;
+          width: 18px;
+          height: 2px;
+          background: ${C.accent};
+        }
+        .more-icon-box {
+          width: 34px;
+          height: 34px;
+          display: grid;
+          place-items: center;
+          border: 1px solid ${C.lineSoft};
+          background: ${C.bg};
+          color: ${C.accent};
+          border-radius: 7px;
+        }
         @media (hover: hover) {
           .tap:hover { filter: brightness(.985); }
+          .more-grid > button:hover { transform: translateY(-1px); border-color: ${C.accent}; }
         }
         @media (max-width: 420px) {
           .home-core-grid { gap: 6px !important; }
@@ -1903,6 +1936,12 @@ const globalStyles = (
           .bottom-nav button {
             min-height: 58px !important;
             padding: 8px 4px !important;
+          }
+          .bottom-nav button[aria-current="page"]::before {
+            top: 10px;
+            left: 4px;
+            width: 2px;
+            height: 22px;
           }
           .home-shell {
             display: grid;
@@ -2746,7 +2785,7 @@ function BottomNav({ view, setView }) {
         const active = view === it.key || (it.key === `more` && moreViews.includes(view));
         const Icon = it.icon;
         return (
-          <button key={it.key} onClick={() => setView(it.key)} className={`tap`} aria-label={`${it.label} 화면으로 이동`} title={it.label}
+          <button key={it.key} onClick={() => setView(it.key)} className={`tap`} aria-label={`${it.label} 화면으로 이동`} aria-current={active ? `page` : undefined} title={it.label}
             style={{
               background: active ? C.bg : `transparent`, border:`1px solid ${active ? C.lineSoft : `transparent`}`, padding:`7px 0 6px`,
               color: active ? C.accent : C.muted,
@@ -2794,7 +2833,7 @@ function MoreView({ onGoTo }) {
                 justifyContent:`space-between`,
                 gap:12,
               }}>
-              <Icon size={18} color={C.accent} />
+              <span className={`more-icon-box`}><Icon size={17} /></span>
               <div>
                 <div className={`kserif`} style={{ fontSize:14, fontWeight:600, color:C.ink }}>{it.label}</div>
                 <div style={{ fontSize:10, color:C.muted, marginTop:4 }}>{it.desc}</div>
@@ -3631,6 +3670,213 @@ function HomeWorkHeader({ dday, todayMinutes, tracksDone, inboxCount = 0, course
             <div style={{ fontSize:9, color:`rgba(255,255,255,0.55)`, marginTop:3, whiteSpace:`nowrap`, overflow:`hidden`, textOverflow:`ellipsis` }}>{tile.sub}</div>
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function makePrescriptionPickFromWeakness(summary) {
+  const top = summary?.top;
+  const item = top?.items?.[0];
+  if (!top || !item) return null;
+  return {
+    key:`prescription-weak-${top.subject}-${item.title}`,
+    type:`go`,
+    kind:`약점`,
+    title:item.title,
+    meta:item.meta || `${top.subject} · 불확실성 ${Math.round(top.score)}`,
+    minutes:18,
+    tone:top.tone || C.warn,
+    view:item.view || `review`,
+    subject:top.subject,
+    priority:70,
+  };
+}
+
+function makePrescriptionPickFromSettlement(settlement) {
+  const item = settlement?.top?.[0];
+  if (!item) return null;
+  return {
+    key:`prescription-settlement-${item.sourceId || item.key}`,
+    type:`go`,
+    kind:`정산`,
+    title:item.title,
+    meta:[item.kind, item.meta].filter(Boolean).join(` · `),
+    minutes:12,
+    tone:item.tone || settlement.tone || C.warn,
+    view:item.view || `parking`,
+    priority:60,
+  };
+}
+
+function makePrescriptionPickFromCutLoss(candidates = []) {
+  const item = candidates[0];
+  if (!item) return null;
+  return {
+    key:`prescription-cut-${item.sourceId || item.key}`,
+    type:`go`,
+    kind:`정리`,
+    title:item.title,
+    meta:item.meta || item.reason || `밀린 항목 정리`,
+    minutes:10,
+    tone:item.tone || C.warn,
+    view:item.sourceView || `parking`,
+    priority:58,
+  };
+}
+
+function uniquePrescriptionBlocks(blocks = []) {
+  const seen = new Set();
+  return blocks.filter(block => {
+    if (!block?.title) return false;
+    const key = block.key || `${block.kind}-${block.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 3);
+}
+
+function buildStudyPrescription({ instantPicks = [], coursePaceSummary, reviewDebtSummary, uncertaintySummary, weeklySettlement, cutLossCandidates = [], todayMinutes = 0 }) {
+  const firstReview = instantPicks.find(pick => pick.kind === `강의복습` || pick.kind === `주제회독`);
+  const firstWatch = instantPicks.find(pick => pick.kind === `수강`);
+  const firstTodo = instantPicks.find(pick => pick.kind === `할 일` || pick.kind === `계획`);
+  const weaknessPick = makePrescriptionPickFromWeakness(uncertaintySummary);
+  const settlementPick = makePrescriptionPickFromSettlement(weeklySettlement);
+  const cutPick = makePrescriptionPickFromCutLoss(cutLossCandidates);
+
+  const reviewPressure = (reviewDebtSummary?.totalDue || 0)
+    + (reviewDebtSummary?.totalOverdue || 0) * 2
+    + (reviewDebtSummary?.hardDue || 0);
+  const pacePressure = (coursePaceSummary?.delayed || 0) * 4 + (coursePaceSummary?.caution || 0) * 2;
+  const weakPressure = Math.round((uncertaintySummary?.top?.score || 0) / 10);
+  const settlementPressure = Math.min(8, weeklySettlement?.stats?.total || 0);
+  const pressure = Math.min(100, 28 + reviewPressure * 5 + pacePressure * 6 + weakPressure * 4 + settlementPressure * 3);
+
+  let mode = `유지`;
+  let tone = C.good;
+  let headline = `오늘은 흐름 유지`;
+  let subline = `강의 한 덩어리와 기록 한 줄만 닫아도 충분합니다.`;
+  let primary = firstReview || firstWatch || weaknessPick || firstTodo || settlementPick || cutPick;
+
+  if ((reviewDebtSummary?.totalOverdue || 0) > 0 || reviewDebtSummary?.level === `danger`) {
+    mode = `복습 소방`;
+    tone = C.accent;
+    headline = `밀린 복습부터 끊기`;
+    subline = reviewDebtSummary?.recommendation || `오늘은 새 진도보다 복습 부채를 먼저 줄입니다.`;
+    primary = firstReview || weaknessPick || firstWatch || settlementPick || cutPick || primary;
+  } else if (pacePressure > 0) {
+    mode = `페이스 회복`;
+    tone = coursePaceSummary?.delayed > 0 ? C.accent : C.warn;
+    headline = `강의 페이스를 먼저 복구`;
+    subline = coursePaceSummary?.delayed > 0
+      ? `지연 강의가 있습니다. 오늘 수강량을 먼저 닫아야 캘린더가 살아납니다.`
+      : `주의 강의를 먼저 처리하면 이번 주 부담이 줄어듭니다.`;
+    primary = firstWatch || firstReview || weaknessPick || settlementPick || cutPick || primary;
+  } else if ((uncertaintySummary?.top?.score || 0) >= 30) {
+    mode = `약점 봉합`;
+    tone = uncertaintySummary.top.tone || C.warn;
+    headline = `${uncertaintySummary.top.subject} 약점 한 덩어리 봉합`;
+    subline = `태그, 메모, 미복습, 체크 공백을 합산한 최상위 약점입니다.`;
+    primary = weaknessPick || firstReview || firstWatch || settlementPick || cutPick || primary;
+  } else if ((weeklySettlement?.stats?.total || 0) >= 4) {
+    mode = `정산`;
+    tone = weeklySettlement.tone || C.warn;
+    headline = `쌓인 항목을 공부 가능한 형태로 정리`;
+    subline = `Top 5만 살리고 나머지는 후순위로 밀어 홈을 가볍게 만듭니다.`;
+    primary = settlementPick || cutPick || firstReview || firstWatch || primary;
+  }
+
+  const blocks = uniquePrescriptionBlocks([
+    primary && { ...primary, slot:`1교시`, label: primary.kind, action:`핵심` },
+    firstReview && firstReview.key !== primary?.key && { ...firstReview, slot:`2교시`, action:`복습` },
+    firstWatch && firstWatch.key !== primary?.key && { ...firstWatch, slot:`2교시`, action:`진도` },
+    weaknessPick && weaknessPick.key !== primary?.key && { ...weaknessPick, slot:`3교시`, action:`약점` },
+    settlementPick && settlementPick.key !== primary?.key && { ...settlementPick, slot:`3교시`, action:`정산` },
+    cutPick && cutPick.key !== primary?.key && { ...cutPick, slot:`3교시`, action:`정리` },
+    firstTodo && firstTodo.key !== primary?.key && { ...firstTodo, slot:`보조`, action:`일정` },
+  ].filter(Boolean));
+
+  return {
+    mode,
+    tone,
+    headline,
+    subline,
+    pressure,
+    primary,
+    blocks,
+    totalMinutes:blocks.reduce((sum, block) => sum + (block.minutes || 10), 0),
+    studiedLabel:todayMinutes > 0 ? `오늘 ${fmtMin(todayMinutes)} 기록됨` : `아직 기록 없음`,
+  };
+}
+
+function HomeStudyPrescriptionPanel({ prescription, onGoTo, onStartMode, onComplete }) {
+  if (!prescription) return null;
+  const primary = prescription.primary;
+  const canComplete = primary && [`course`, `review`, `todo`, `material`, `book`].includes(primary.type);
+  const hasBlocks = prescription.blocks.length > 0;
+
+  function openPrimary() {
+    if (primary?.view) onGoTo(primary.view);
+    else onGoTo(`log`);
+  }
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, borderLeft:`4px solid ${prescription.tone}`, padding:`14px`, marginBottom:10 }}>
+      <div style={{ display:`flex`, alignItems:`flex-start`, justifyContent:`space-between`, gap:12, marginBottom:12 }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{ display:`flex`, alignItems:`center`, gap:7, marginBottom:5 }}>
+            <span className={`kserif`} style={{ color:prescription.tone, fontSize:11, fontWeight:800, letterSpacing:`0.12em` }}>오늘의 처방</span>
+            <span className={`mono`} style={{ color:prescription.tone, border:`1px solid ${prescription.tone}`, padding:`1px 6px`, fontSize:9, fontWeight:700 }}>
+              {prescription.mode}
+            </span>
+          </div>
+          <div className={`kserif`} style={{ fontSize:17, color:C.ink, fontWeight:800, lineHeight:1.25 }}>{prescription.headline}</div>
+          <div style={{ fontSize:10.5, color:C.muted, marginTop:5, lineHeight:1.45 }}>{prescription.subline}</div>
+        </div>
+        <div style={{ width:58, flexShrink:0, textAlign:`right` }}>
+          <div className={`mono`} style={{ fontSize:24, color:prescription.tone, fontWeight:800, lineHeight:1 }}>{prescription.pressure}</div>
+          <div className={`kserif`} style={{ fontSize:9, color:C.muted, marginTop:3 }}>압력</div>
+        </div>
+      </div>
+
+      {hasBlocks ? (
+        <div style={{ display:`grid`, gridTemplateColumns:`repeat(${Math.min(3, prescription.blocks.length)}, minmax(0, 1fr))`, gap:6, marginBottom:10 }}>
+          {prescription.blocks.map((block, idx) => (
+            <button key={block.key || idx} onClick={() => onGoTo(block.view || `log`)} className={`tap`}
+              style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 8px`, textAlign:`left`, minHeight:82, cursor:`pointer` }}>
+              <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:6, marginBottom:6 }}>
+                <span className={`kserif`} style={{ color:block.tone || prescription.tone, fontSize:10, fontWeight:800 }}>{block.action || block.kind}</span>
+                <span className={`mono`} style={{ color:C.muted, fontSize:9 }}>{block.minutes || 10}m</span>
+              </div>
+              <div style={{ color:C.ink, fontSize:11, fontWeight:700, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{block.title}</div>
+              <div style={{ color:C.muted, fontSize:9, marginTop:3, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{block.meta}</div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:C.muted, fontSize:11, padding:`10px`, marginBottom:10 }}>
+          지금은 자동 처방할 항목이 없습니다. 한 줄 입력으로 오늘 기록만 남기면 됩니다.
+        </div>
+      )}
+
+      <div style={{ display:`grid`, gridTemplateColumns:canComplete ? `1fr 1fr 1fr` : `1fr 1fr`, gap:6 }}>
+        <button onClick={onStartMode} className={`tap`}
+          style={{ background:C.ink, color:`#fff`, border:`1px solid ${C.ink}`, padding:`9px 5px`, fontSize:10.5, fontWeight:800, cursor:`pointer` }}>
+          직접 선택 시작
+        </button>
+        <button onClick={openPrimary} className={`tap`}
+          style={{ background:C.bg, color:C.ink, border:`1px solid ${C.line}`, padding:`9px 5px`, fontSize:10.5, fontWeight:700, cursor:`pointer` }}>
+          처방 화면
+        </button>
+        {canComplete && (
+          <button onClick={() => onComplete(primary)} className={`tap`}
+            style={{ background:prescription.tone, color:`#fff`, border:`1px solid ${prescription.tone}`, padding:`9px 5px`, fontSize:10.5, fontWeight:800, cursor:`pointer` }}>
+            1개 완료
+          </button>
+        )}
+      </div>
+      <div className={`mono`} style={{ marginTop:8, color:C.muted, fontSize:9 }}>
+        {prescription.studiedLabel} · 권장 {prescription.totalMinutes || 10}분
       </div>
     </section>
   );
@@ -5624,7 +5870,7 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
   }
 
   return (
-    <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`13px 14px`, marginBottom:18 }}>
+    <div className={`home-today-card`} style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`13px 14px`, marginBottom:18 }}>
       <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:10 }}>
         <div>
           <div className={`kserif`} style={{ fontSize:12, fontWeight:600, color:C.ink }}>오늘 처리</div>
@@ -5886,6 +6132,15 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, b
     }
   });
   const lazyPicks = useMemo(() => filterInstantPicksBySubject(lazyManualPicks, lazySubjectFilter), [lazyManualPicks, lazySubjectFilter]);
+  const studyPrescription = useMemo(() => buildStudyPrescription({
+    instantPicks,
+    coursePaceSummary,
+    reviewDebtSummary,
+    uncertaintySummary,
+    weeklySettlement,
+    cutLossCandidates,
+    todayMinutes,
+  }), [instantPicks, coursePaceSummary, reviewDebtSummary, uncertaintySummary, weeklySettlement, cutLossCandidates, todayMinutes]);
 
   useEffect(() => {
     try {
@@ -6384,6 +6639,13 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, b
         planCount={todayWeeklyPlanItems.length}
         overdueTotal={overdueTotal}
         onGoTo={onGoTo}
+      />
+
+      <HomeStudyPrescriptionPanel
+        prescription={studyPrescription}
+        onGoTo={onGoTo}
+        onStartMode={() => setLazyMode(true)}
+        onComplete={completeInstantPick}
       />
 
       <QuickCapturePanel
