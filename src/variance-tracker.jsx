@@ -107,6 +107,20 @@ const PARKING_BUCKETS = [
   { key: `after`, label: `시험 후`, color: C.muted },
 ];
 
+const VIEW_META = {
+  home: { label:`작전실`, desc:`오늘 할 일` },
+  log: { label:`기록`, desc:`시간·트랙` },
+  calendar: { label:`캘린더`, desc:`일정·계획` },
+  courses: { label:`강의`, desc:`수강·복습` },
+  review: { label:`회독`, desc:`주제 복습` },
+  more: { label:`더보기`, desc:`관리 메뉴` },
+  parking: { label:`버릴 목록`, desc:`후순위 수납` },
+  exams: { label:`기출`, desc:`점수 관리` },
+  check: { label:`체크`, desc:`시험 전 점검` },
+  report: { label:`리포트`, desc:`흐름 분석` },
+  settings: { label:`설정`, desc:`동기화·백업` },
+};
+
 const CONDITION_KEYWORDS = {
   good: [`좋`, `괜찮`, `상쾌`, `개운`, `맑`, `집중`, `회복`, `잘함`, `잘 됨`, `안정`],
   bad: [`피곤`, `불안`, `아프`, `졸`, `힘들`, `무기력`, `나쁨`, `우울`, `망`, `저조`, `두통`],
@@ -1829,8 +1843,14 @@ const globalStyles = (
       <style>{`
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         /* ↓ 변경: html, body 마진/패딩 제거 및 모바일 바운스 방지 추가 */
-        html, body { margin: 0; padding: 0; overscroll-behavior-y: none; }
+        html, body { margin: 0; padding: 0; overscroll-behavior-y: none; background: ${C.bg}; }
+        body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
         input, textarea, button, select { font-family: inherit; color: inherit; }
+        button:disabled { opacity: .52; cursor: default !important; }
+        button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+          outline: 2px solid ${C.accentSoft};
+          outline-offset: 2px;
+        }
         input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
         .serif { font-family: Fraunces, Noto Serif KR, serif; }
@@ -1845,12 +1865,24 @@ const globalStyles = (
         .hide-scroll::-webkit-scrollbar { display: none; }
         .hide-scroll { scrollbar-width: none; }
         .desktop-only { display: none; }
+        .mobile-only { display: inline-flex; }
+        .more-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+        @media (hover: hover) {
+          .tap:hover { filter: brightness(.985); }
+        }
         @media (max-width: 420px) {
           .home-core-grid { gap: 6px !important; }
           .home-core-grid button { padding-left: 8px !important; padding-right: 8px !important; }
         }
+        @media (max-width: 640px) {
+          .app-main { padding-left: 14px !important; padding-right: 14px !important; }
+          .home-shell { display: flex !important; flex-direction: column; gap: 0 !important; }
+          .home-secondary { position: static !important; }
+          .bottom-nav button { min-width: 0; }
+        }
         @media (min-width: 980px) {
           .desktop-only { display: inline-flex; }
+          .mobile-only { display: none !important; }
           .app-shell { padding-bottom: 28px !important; }
           .app-main { max-width: 1120px !important; padding: 0 32px 32px 112px !important; }
           .app-main > .fadeIn:not(.home-shell) { max-width: 900px; margin-left: auto; margin-right: auto; }
@@ -1860,7 +1892,7 @@ const globalStyles = (
             bottom: auto !important;
             left: 24px !important;
             right: auto !important;
-            width: 68px !important;
+            width: 72px !important;
             display: grid !important;
             grid-template-columns: 1fr !important;
             gap: 4px !important;
@@ -2360,6 +2392,7 @@ VITE_FIREBASE_APP_ID`}</pre>
       {globalStyles}
 
       <TopBar
+        view={view}
         dday={dday}
         examLabel={settings.examLabel}
         examDate={settings.examDate}
@@ -2628,10 +2661,11 @@ function LoginView() {
 
 /* ============================================================ TOP BAR / NAV ============================================================ */
 
-function TopBar({ dday, examLabel, examDate, user, syncStatus, lastSavedAt, onRetrySync }) {
+function TopBar({ view, dday, examLabel, examDate, user, syncStatus, lastSavedAt, onRetrySync }) {
   const overdue = dday < 0;
   const displayName = user?.displayName || user?.email?.split(`@`)[0] || `사용자`;
   const savedAtText = fmtSavedAt(lastSavedAt);
+  const viewMeta = VIEW_META[view] || VIEW_META.home;
   const syncMeta = {
     saving: { label: `저장 중`, color: C.muted, Icon: Cloud },
     saved: { label: savedAtText ? `저장됨 ${savedAtText}` : `저장됨`, color: C.good, Icon: Cloud },
@@ -2668,8 +2702,16 @@ function TopBar({ dday, examLabel, examDate, user, syncStatus, lastSavedAt, onRe
             )}
           </div>
           <div className={`kserif`} style={{ fontSize:15, fontWeight:600, marginTop:4, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{examLabel}</div>
+          <div className={`desktop-only`} style={{ marginTop:4, alignItems:`center`, gap:6 }}>
+            <span className={`kserif`} style={{ fontSize:11, color:C.accent, fontWeight:700 }}>{viewMeta.label}</span>
+            <span style={{ width:3, height:3, background:C.line, borderRadius:99 }} />
+            <span style={{ fontSize:11, color:C.muted }}>{viewMeta.desc}</span>
+          </div>
         </div>
         <div style={{ textAlign:`right`, flexShrink:0 }}>
+          <div className={`mobile-only kserif`} style={{ alignItems:`center`, justifyContent:`center`, border:`1px solid ${C.line}`, background:C.paper, color:C.accent, padding:`2px 7px`, fontSize:10, fontWeight:700, marginBottom:5 }}>
+            {viewMeta.label}
+          </div>
           <div className={`serif`} style={{ fontSize:30, fontWeight:600, lineHeight:1, color: overdue ? C.muted : C.accent }}>
             D{overdue ? `+` : `−`}{Math.abs(dday)}
           </div>
@@ -2704,7 +2746,7 @@ function BottomNav({ view, setView }) {
         const active = view === it.key || (it.key === `more` && moreViews.includes(view));
         const Icon = it.icon;
         return (
-          <button key={it.key} onClick={() => setView(it.key)} className={`tap`}
+          <button key={it.key} onClick={() => setView(it.key)} className={`tap`} aria-label={`${it.label} 화면으로 이동`} title={it.label}
             style={{
               background: active ? C.bg : `transparent`, border:`1px solid ${active ? C.lineSoft : `transparent`}`, padding:`7px 0 6px`,
               color: active ? C.accent : C.muted,
@@ -2733,12 +2775,13 @@ function MoreView({ onGoTo }) {
     <div className={`fadeIn`} style={{ padding:`20px 0 24px` }}>
       <div style={{ marginBottom:16 }}>
         <h1 className={`serif`} style={{ margin:0, fontSize:30, fontWeight:600, color:C.ink }}>더보기</h1>
+        <div style={{ fontSize:11, color:C.muted, marginTop:5 }}>자주 쓰지 않는 관리 화면은 여기서 엽니다.</div>
       </div>
-      <div style={{ display:`grid`, gridTemplateColumns:`repeat(2, minmax(0, 1fr))`, gap:10 }}>
+      <div className={`more-grid`} style={{ display:`grid`, gap:10 }}>
         {items.map(it => {
           const Icon = it.icon;
           return (
-            <button key={it.key} onClick={() => onGoTo(it.key)}
+            <button key={it.key} onClick={() => onGoTo(it.key)} className={`tap`}
               style={{
                 background:C.paper,
                 border:`1px solid ${C.line}`,
@@ -3577,7 +3620,7 @@ function HomeWorkHeader({ dday, todayMinutes, tracksDone, inboxCount = 0, course
         </div>
       </div>
 
-      <div style={{ display:`grid`, gridTemplateColumns:`repeat(5, minmax(0, 1fr))`, gap:5 }}>
+      <div className={`home-core-grid`} style={{ display:`grid`, gridTemplateColumns:`repeat(auto-fit, minmax(64px, 1fr))`, gap:5 }}>
         {tiles.map(tile => (
           <button key={tile.label} onClick={() => onGoTo(tile.view)} className={`tap`}
             style={{ background:`rgba(255,255,255,0.08)`, color:`#fff`, border:`1px solid rgba(255,255,255,0.12)`, minHeight:62, padding:`8px 4px`, cursor:`pointer`, textAlign:`center` }}>
@@ -4643,7 +4686,7 @@ function buildLazyPickParkingItem(pick, bucket, today, reason) {
 }
 
 function WeeklySettlementPanel({ settlement, onGoTo, onAction, onBatchLater }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => settlement?.status === `danger`);
   if (!settlement || (settlement.stats.total === 0 && settlement.stats.parkedThisWeek === 0)) return null;
   const { stats } = settlement;
   const headline = stats.total === 0
@@ -5277,7 +5320,7 @@ function LazyModePanel({ enabled = false, picks = [], allPickCount = 0, subjectF
 }
 
 function CutLossPanel({ candidates = [], onAction, onGoTo }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   if (!candidates.length) return null;
   const top = candidates[0];
   return (
