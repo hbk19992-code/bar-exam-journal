@@ -94,12 +94,37 @@ const COURSE_LOG_TYPES = [
 ];
 const COURSE_COMPLETE_THRESHOLDS = [95, 98, 100];
 const DEFAULT_COURSE_COMPLETE_THRESHOLD = 100;
+const DEFAULT_COURSE_PRIORITY = `normal`;
+const COURSE_PRIORITIES = [
+  { key:`high`, label:`높음`, short:`상`, weight:2, color:C.accent },
+  { key:`normal`, label:`보통`, short:`중`, weight:1, color:C.ink },
+  { key:`low`, label:`낮음`, short:`하`, weight:0, color:C.muted },
+];
 const COURSE_TAGS = [
   { key: `hard`, label: `어려움` },
   { key: `case`, label: `판례` },
   { key: `memory`, label: `암기` },
   { key: `again`, label: `재복습` },
 ];
+
+function normalizeCoursePriority(value) {
+  return COURSE_PRIORITIES.some(item => item.key === value) ? value : DEFAULT_COURSE_PRIORITY;
+}
+
+function getCoursePriorityMeta(courseOrKey) {
+  const key = typeof courseOrKey === `string`
+    ? normalizeCoursePriority(courseOrKey)
+    : normalizeCoursePriority(courseOrKey?.priority);
+  return COURSE_PRIORITIES.find(item => item.key === key) || COURSE_PRIORITIES[1];
+}
+
+function coursePriorityWeight(course) {
+  return getCoursePriorityMeta(course).weight;
+}
+
+function compareCoursePriority(a, b) {
+  return coursePriorityWeight(b) - coursePriorityWeight(a);
+}
 
 const PARKING_BUCKETS = [
   { key: `drop`, label: `안 할 것`, color: C.accent },
@@ -407,6 +432,7 @@ const DEFAULT_SETTINGS = {
   ],
   d30Mode: true,
   autoGenMockReview: true,
+  homeFocusMode: true,
   cycleEnabled: true, // 사이클(블록) 기능 사용 여부
 };
 
@@ -982,7 +1008,7 @@ async function exportXLSX(state, filename) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(clRows), `체크리스트`);
 
   // [12] Course summary
-  const courseSummaryRows = [[`강의명`, `과목`, `완강기준(%)`, `총강`, `완강`, `완강률(%)`, `복습완료`, `복습률(%)`, `총분량(분)`, `완강분량(분)`, `시작일`, `수강목표일`, `복습목표일`, `생성일`, `마지막 갱신`]];
+  const courseSummaryRows = [[`강의명`, `과목`, `우선순위`, `완강기준(%)`, `총강`, `완강`, `완강률(%)`, `복습완료`, `복습률(%)`, `총분량(분)`, `완강분량(분)`, `시작일`, `수강목표일`, `복습목표일`, `생성일`, `마지막 갱신`]];
   courses.forEach(c => {
     const lectures = c.lectures || [];
     const total = lectures.length;
@@ -993,6 +1019,7 @@ async function exportXLSX(state, filename) {
     courseSummaryRows.push([
       c.name || ``,
       c.subject || ``,
+      getCoursePriorityMeta(c).label,
       c.completeThreshold || ``,
       total,
       completed,
@@ -1220,6 +1247,41 @@ function parseLectureRangeText(text, lectures = []) {
     if (single && allNums.has(single)) nums.add(single);
   });
   return [...nums].sort((a, b) => a - b);
+}
+
+function mergeCourseLectures(prevLectures = [], incomingLectures = [], { preserveMissing = false, monotonicProgress = false } = {}) {
+  const prevByNum = new Map(prevLectures.map(l => [l.num, l]));
+  const mergedIncoming = incomingLectures.map(incoming => {
+    const prev = prevByNum.get(incoming.num) || {};
+    const prevProgress = Number(prev.progress) || 0;
+    const incomingProgress = Number(incoming.progress) || 0;
+    const progress = monotonicProgress ? Math.max(prevProgress, incomingProgress) : incoming.progress;
+    const completed = monotonicProgress
+      ? !!prev.completed || !!incoming.completed
+      : incoming.completed;
+
+    return stripUndefined({
+      ...prev,
+      ...incoming,
+      durationMin: incoming.durationMin || prev.durationMin || 0,
+      progress,
+      completed,
+      reviewed: incoming.reviewed !== undefined ? incoming.reviewed : !!prev.reviewed,
+      reviewDurationMin: incoming.reviewDurationMin !== undefined ? incoming.reviewDurationMin : prev.reviewDurationMin,
+      lastReviewed: incoming.lastReviewed !== undefined ? incoming.lastReviewed : prev.lastReviewed,
+      nextReviewDate: incoming.nextReviewDate !== undefined ? incoming.nextReviewDate : prev.nextReviewDate,
+      hardReviewCount: incoming.hardReviewCount !== undefined ? incoming.hardReviewCount : prev.hardReviewCount,
+      tags: incoming.tags !== undefined ? incoming.tags : (prev.tags || []),
+      note: incoming.note !== undefined ? incoming.note : prev.note,
+      skipReview: incoming.skipReview !== undefined ? incoming.skipReview : prev.skipReview,
+    });
+  });
+
+  if (!preserveMissing) return mergedIncoming.sort((a, b) => a.num - b.num);
+
+  const mergedByNum = new Map(prevLectures.map(l => [l.num, l]));
+  mergedIncoming.forEach(l => mergedByNum.set(l.num, l));
+  return [...mergedByNum.values()].sort((a, b) => a.num - b.num);
 }
 
 function nextLectureTagPatch(lecture, tagKey, today) {
@@ -4580,7 +4642,7 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     tone:C.accent,
     view:`courses`,
     subject:firstCourseReview.course.subject,
-    priority:95,
+    priority:95 + coursePriorityWeight(firstCourseReview.course) * 4,
   });
   push(dueReviews[0] && {
     key:`instant-review-${dueReviews[0].id}`,
@@ -4606,7 +4668,7 @@ function buildInstantExecutionPicks({ courseQueueItems = [], dueReviews = [], pl
     tone:SUBJECTS[firstCourseWatch.course.subject]?.color || C.book,
     view:`courses`,
     subject:firstCourseWatch.course.subject,
-    priority:80,
+    priority:80 + coursePriorityWeight(firstCourseWatch.course) * 4,
   });
   push(overdueTodos[0] && {
     key:`instant-todo-${overdueTodos[0].date}-${overdueTodos[0].todo.id}`,
@@ -4699,7 +4761,9 @@ function buildLazyManualPicks({ courses = [], dueReviews = [], todos = {}, planI
     });
   };
 
-  (courses || []).forEach((course, courseIdx) => {
+  [...(courses || [])]
+    .sort((a, b) => compareCoursePriority(a, b) || (a.targetEndDate || ``).localeCompare(b.targetEndDate || ``) || (a.name || ``).localeCompare(b.name || ``))
+    .forEach((course, courseIdx) => {
     (course.lectures || []).forEach(lecture => {
       const baseOrder = courseIdx * 1000 + (lecture.num || 0);
       if (lectureNeedsCourseReview(lecture)) {
@@ -5969,6 +6033,7 @@ function HomeTodayPanel({ today, courseItems, reviews, planItems = [], todosOpen
 
 function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, books = [], setBooks, todos, setTodos, tracks, setTracks, examScores, moods, setMoods, materials = [], setMaterials, materialLog = {}, setMaterialLog, trackInbox = [], setTrackInbox, checklists = [], mcqProgress = {}, routines = [], routineLog = {}, setRoutineLog, weeklyPlans = {}, setWeeklyPlans, courses = [], setCourses, parkingItems = [], setParkingItems, user, onGoTo }) {
   const todayLog = logs[today] || {};
+  const homeFocusMode = settings.homeFocusMode !== false;
   const todayMinutes = Object.values(todayLog).reduce((s, v) => s + (v || 0), 0);
   const todayTodos = todos[today] || [];
   const droppedParkingSourceIds = useMemo(() => new Set(
@@ -6131,7 +6196,9 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, b
       return `all`;
     }
   });
+  const [showAuxHomePanels, setShowAuxHomePanels] = useState(false);
   const lazyPicks = useMemo(() => filterInstantPicksBySubject(lazyManualPicks, lazySubjectFilter), [lazyManualPicks, lazySubjectFilter]);
+  const showFullHomePanels = !homeFocusMode || showAuxHomePanels;
   const studyPrescription = useMemo(() => buildStudyPrescription({
     instantPicks,
     coursePaceSummary,
@@ -6641,12 +6708,14 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, b
         onGoTo={onGoTo}
       />
 
-      <HomeStudyPrescriptionPanel
-        prescription={studyPrescription}
-        onGoTo={onGoTo}
-        onStartMode={() => setLazyMode(true)}
-        onComplete={completeInstantPick}
-      />
+      {showFullHomePanels && (
+        <HomeStudyPrescriptionPanel
+          prescription={studyPrescription}
+          onGoTo={onGoTo}
+          onStartMode={() => setLazyMode(true)}
+          onComplete={completeInstantPick}
+        />
+      )}
 
       <QuickCapturePanel
         date={today}
@@ -6654,13 +6723,23 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, b
         onApply={applyQuickCapture}
       />
 
-      <LazyModePanel
-        picks={lazyPicks}
-        allPickCount={lazyManualPicks.length}
-        subjectFilter={lazySubjectFilter}
-        onSubjectFilterChange={setLazySubjectFilter}
-        onToggle={() => setLazyMode(true)}
-      />
+      {homeFocusMode && lazyManualPicks.length > 0 && (
+        <button onClick={() => setLazyMode(true)} className={`tap`}
+          style={{ width:`100%`, background:C.paper, border:`1px solid ${C.line}`, color:C.ink, padding:`10px 12px`, cursor:`pointer`, marginBottom:10, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8 }}>
+          <span className={`kserif`} style={{ fontSize:12, fontWeight:700 }}>귀찮음 모드</span>
+          <span className={`mono`} style={{ fontSize:10, color:C.muted }}>후보 {lazyPicks.length}개</span>
+        </button>
+      )}
+
+      {showFullHomePanels && (
+        <LazyModePanel
+          picks={lazyPicks}
+          allPickCount={lazyManualPicks.length}
+          subjectFilter={lazySubjectFilter}
+          onSubjectFilterChange={setLazySubjectFilter}
+          onToggle={() => setLazyMode(true)}
+        />
+      )}
 
       <HomeInstantExecutionPanel
         picks={instantPicks}
@@ -6680,29 +6759,41 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, b
         onReviewLecture={completeHomeLectureReview}
       />
 
-      <CutLossPanel
-        candidates={cutLossCandidates}
-        onAction={handleCutLossAction}
-        onGoTo={onGoTo}
-      />
+      {homeFocusMode && (
+        <button onClick={() => setShowAuxHomePanels(v => !v)} className={`tap`}
+          style={{ width:`100%`, background:C.bg, border:`1px dashed ${C.line}`, color:C.muted, padding:`9px 12px`, cursor:`pointer`, marginBottom:10, display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8 }}>
+          <span className={`kserif`} style={{ fontSize:11, fontWeight:700, color:C.ink }}>{showAuxHomePanels ? `보조 분석 접기` : `보조 분석 열기`}</span>
+          <span className={`mono`} style={{ fontSize:9 }}>처방 · 버릴판단 · 주간정산</span>
+        </button>
+      )}
 
-      <WeeklySettlementPanel
-        settlement={weeklySettlement}
-        onGoTo={onGoTo}
-        onAction={handleSettlementAction}
-        onBatchLater={handleSettlementBatchLater}
-      />
+      {showFullHomePanels && (
+        <>
+          <CutLossPanel
+            candidates={cutLossCandidates}
+            onAction={handleCutLossAction}
+            onGoTo={onGoTo}
+          />
 
-      <HomeMinimumMode
-        courseItems={courseQueueItems}
-        reviews={homeDueReviews}
-        planItems={todayWeeklyPlanItems}
-        todosOpen={todayTodosOpen}
-        staleChecklists={staleChecklists}
-        onGoTo={onGoTo}
-        onCourseDone={completeHomeCourseItem}
-        onReviewDone={completeHomeReview}
-      />
+          <WeeklySettlementPanel
+            settlement={weeklySettlement}
+            onGoTo={onGoTo}
+            onAction={handleSettlementAction}
+            onBatchLater={handleSettlementBatchLater}
+          />
+
+          <HomeMinimumMode
+            courseItems={courseQueueItems}
+            reviews={homeDueReviews}
+            planItems={todayWeeklyPlanItems}
+            todosOpen={todayTodosOpen}
+            staleChecklists={staleChecklists}
+            onGoTo={onGoTo}
+            onCourseDone={completeHomeCourseItem}
+            onReviewDone={completeHomeReview}
+          />
+        </>
+      )}
 
       <HomeTodayPanel
         today={today}
@@ -6759,10 +6850,12 @@ function HomeView({ today, dday, settings, logs, setLogs, reviews, setReviews, b
         onGoTo={onGoTo}
       />
 
-      <UncertaintyMapPanel
-        summary={uncertaintySummary}
-        onGoTo={onGoTo}
-      />
+      {showFullHomePanels && (
+        <UncertaintyMapPanel
+          summary={uncertaintySummary}
+          onGoTo={onGoTo}
+        />
+      )}
 
       {todayMock ? (
         <div style={{ marginBottom:18 }}>
@@ -8928,7 +9021,7 @@ function RankSummaryBox({ summary }) {
 
 /* ============================================================ EXAMS (기출 회차 점수) ============================================================ */
 
-function ExamsView({ examScores, rankScores = [], setRankScores }) {
+function ExamsView({ examScores, setExamScores, rankScores = [], setRankScores }) {
   const [filterSubject, setFilterSubject] = useState(`전체`);
 
   // matrix: subject x round
@@ -8971,6 +9064,14 @@ function ExamsView({ examScores, rankScores = [], setRankScores }) {
   const subjects = Object.keys(SUBJECTS).filter(s => s !== `선택법`);
   const filteredScores = filterSubject === `전체` ? examScores : examScores.filter(s => s.subject === filterSubject);
   const sortedScores = [...filteredScores].sort((a,b) => b.date.localeCompare(a.date));
+
+  function deleteExamScore(id) {
+    if (!setExamScores) return;
+    const row = examScores.find(s => s.id === id);
+    const label = row ? `${row.subject} ${row.round}회` : `이 기록`;
+    if (!confirm(`${label} 점수를 삭제할까요?`)) return;
+    setExamScores(prev => prev.filter(s => s.id !== id));
+  }
 
   return (
     <div className={`fadeIn`} style={{ padding:`18px 0 24px` }}>
@@ -9093,7 +9194,14 @@ function ExamsView({ examScores, rankScores = [], setRankScores }) {
                 <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{s.round}회</span>
                 <span className={`mono`} style={{ color:C.good, fontWeight:600, minWidth:34 }}>+{correct}</span>
                 <span className={`mono`} style={{ color:C.accent, minWidth:30 }}>-{s.wrong}</span>
-                {s.note && <span style={{ flex:1, fontSize:10, color:C.muted, fontStyle:`italic`, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, minWidth:0 }}>{s.note}</span>}
+                <span style={{ flex:1, fontSize:10, color:C.muted, fontStyle:s.note ? `italic` : `normal`, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, minWidth:0 }}>{s.note || ``}</span>
+                {setExamScores && (
+                  <button title={`${s.subject} ${s.round}회 삭제`} aria-label={`${s.subject} ${s.round}회 삭제`}
+                    onClick={() => deleteExamScore(s.id)}
+                    style={{ background:`none`, border:`none`, color:C.muted, cursor:`pointer`, padding:3, display:`grid`, placeItems:`center`, flexShrink:0 }}>
+                    <Trash2 size={13} />
+                  </button>
+                )}
               </div>
             );
           })}
@@ -10194,6 +10302,7 @@ function advanceReviewCycle(review, today) {
 
 function getCoursePace(course, today, settings) {
   const lectures = course.lectures || [];
+  const priorityMeta = getCoursePriorityMeta(course);
   const total = lectures.length;
   const completed = lectures.filter(l => l.completed).length;
   const remaining = Math.max(0, total - completed);
@@ -10221,6 +10330,9 @@ function getCoursePace(course, today, settings) {
 
   return {
     course,
+    priority: priorityMeta.key,
+    priorityWeight: priorityMeta.weight,
+    priorityLabel: priorityMeta.label,
     total,
     completed,
     remaining,
@@ -10248,6 +10360,7 @@ function buildCoursePaceSummary(courses, today, settings) {
     .filter(item => item.total > 0)
     .sort((a, b) => (
       rank[a.status] - rank[b.status]
+      || b.priorityWeight - a.priorityWeight
       || (b.lagDays || 0) - (a.lagDays || 0)
       || b.plannedBehind - a.plannedBehind
       || a.targetEndDate.localeCompare(b.targetEndDate)
@@ -10295,6 +10408,7 @@ function buildCourseOperationSummary(courses = [], today = todayISO(), settings 
     .filter(item => item.recovery.isCollapsed)
     .sort((a, b) => (
       b.targetPassedDays - a.targetPassedDays
+      || b.priorityWeight - a.priorityWeight
       || b.recovery.overDailyBy - a.recovery.overDailyBy
       || b.plannedBehind - a.plannedBehind
     ));
@@ -10306,7 +10420,8 @@ function buildCourseOperationSummary(courses = [], today = todayISO(), settings 
       lecture,
       sourceKey: courseLectureReviewKey(course.id, lecture.num),
       tags: getLectureTagLabels(lecture),
-      priority: (lectureHasTag(lecture, `hard`) ? 3 : 0)
+      priority: (coursePriorityWeight(course) * 3)
+        + (lectureHasTag(lecture, `hard`) ? 3 : 0)
         + (lectureHasTag(lecture, `again`) ? 2 : 0)
         + (lecture.nextReviewDate && lecture.nextReviewDate <= today ? 2 : 0)
         + (!lecture.lastReviewed ? 1 : 0),
@@ -10320,7 +10435,7 @@ function buildCourseOperationSummary(courses = [], today = todayISO(), settings 
       completed: (course.lectures || []).filter(lecture => lecture.completed).length,
     }))
     .filter(item => item.count > 0)
-    .sort((a, b) => b.count - a.count || a.course.name.localeCompare(b.course.name));
+    .sort((a, b) => compareCoursePriority(a.course, b.course) || b.count - a.count || a.course.name.localeCompare(b.course.name));
 
   return {
     paceSummary,
@@ -10361,6 +10476,7 @@ function groupCourseCalendarItems(items = []) {
         courseId: item.courseId,
         courseName: item.courseName,
         subject: item.subject,
+        priorityWeight: coursePriorityWeight(item.course || { priority:item.priority }),
         targetEndDate: item.targetEndDate,
         plannedEndDate: item.plannedEndDate,
         projectedEndDate: item.projectedEndDate,
@@ -10377,7 +10493,7 @@ function groupCourseCalendarItems(items = []) {
   });
   return [...groups.values()]
     .map(group => ({ ...group, lectureLabel: summarizeLectureNums(group.items) }))
-    .sort((a, b) => (SUBJECTS[a.subject]?.short || a.subject).localeCompare(SUBJECTS[b.subject]?.short || b.subject) || a.courseName.localeCompare(b.courseName));
+    .sort((a, b) => b.priorityWeight - a.priorityWeight || (SUBJECTS[a.subject]?.short || a.subject).localeCompare(SUBJECTS[b.subject]?.short || b.subject) || a.courseName.localeCompare(b.courseName));
 }
 
 function buildCourseCalendarPlan(courses = [], today = todayISO(), settings = {}, fromDate = today, toDate = addDays(today, 41)) {
@@ -10414,6 +10530,8 @@ function buildCourseCalendarPlan(courses = [], today = todayISO(), settings = {}
         courseId: course.id,
         courseName: course.name,
         subject: course.subject,
+        priority: normalizeCoursePriority(course.priority),
+        priorityWeight: coursePriorityWeight(course),
         lecture,
         targetEndDate,
         rawTargetEndDate,
@@ -10433,6 +10551,8 @@ function buildCourseCalendarPlan(courses = [], today = todayISO(), settings = {}
       course,
       subject: course.subject,
       courseName: course.name,
+      priority: normalizeCoursePriority(course.priority),
+      priorityWeight: coursePriorityWeight(course),
       remaining: lectures.length,
       targetEndDate,
       rawTargetEndDate,
@@ -10453,7 +10573,8 @@ function buildCourseCalendarPlan(courses = [], today = todayISO(), settings = {}
 
   Object.keys(byDate).forEach(date => {
     byDate[date].watch.sort((a, b) => (
-      (SUBJECTS[a.subject]?.short || a.subject).localeCompare(SUBJECTS[b.subject]?.short || b.subject)
+      (b.priorityWeight || 0) - (a.priorityWeight || 0)
+      || (SUBJECTS[a.subject]?.short || a.subject).localeCompare(SUBJECTS[b.subject]?.short || b.subject)
       || a.courseName.localeCompare(b.courseName)
       || a.lecture.num - b.lecture.num
     ));
@@ -10462,6 +10583,7 @@ function buildCourseCalendarPlan(courses = [], today = todayISO(), settings = {}
 
   forecasts.sort((a, b) => (
     (a.usesRecovery ? 0 : 1) - (b.usesRecovery ? 0 : 1)
+    || (b.priorityWeight || 0) - (a.priorityWeight || 0)
     || (b.lagDays || 0) - (a.lagDays || 0)
     || a.targetEndDate.localeCompare(b.targetEndDate)
     || a.courseName.localeCompare(b.courseName)
@@ -10513,13 +10635,20 @@ function buildCourseDailyQueue(course, today, settings) {
 }
 
 function buildCourseQueueItems(courses, today, settings) {
+  const typeRank = { review:0, watch:1 };
   return courses.flatMap(course => {
     const queue = buildCourseDailyQueue(course, today, settings);
     return [
       ...queue.watch.map(lecture => ({ type:`watch`, course, lecture })),
       ...queue.review.map(lecture => ({ type:`review`, course, lecture })),
     ];
-  });
+  }).sort((a, b) => (
+    compareCoursePriority(a.course, b.course)
+    || (typeRank[a.type] ?? 9) - (typeRank[b.type] ?? 9)
+    || (a.course.targetEndDate || ``).localeCompare(b.course.targetEndDate || ``)
+    || a.course.name.localeCompare(b.course.name)
+    || a.lecture.num - b.lecture.num
+  ));
 }
 
 function courseLectureReviewKey(courseId, lectureNum) {
@@ -10638,26 +10767,16 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
   function addCourse(data) {
     const completeThreshold = normalizeCourseThreshold(data.completeThreshold);
     const lectures = applyCourseCompletionThreshold(data.lectures, completeThreshold).map(l => ({ ...l, reviewed: false, tags: l.tags || [] }));
-    const c = { id: uid(), name: data.name, subject: data.subject, studyType: COURSE_WATCH_TYPE, completeThreshold, lectures, createdAt: today, lastUpdated: today };
+    const c = { id: uid(), name: data.name, subject: data.subject, priority: normalizeCoursePriority(data.priority), studyType: COURSE_WATCH_TYPE, completeThreshold, lectures, createdAt: today, lastUpdated: today };
     setCourses([...courses, c]);
     const completedMin = lectures.filter(l => l.completed).reduce((s, l) => s + l.durationMin, 0); 
     autoLogTime(c.subject, COURSE_WATCH_TYPE, completedMin);
     setShowAdd(false);
   }
-  function updateCourse(id, newLectures) {
+  function updateCourse(id, newLectures, options = {}) {
     const prev = courses.find(c => c.id === id); if (!prev) return;
     const prevSet = new Set(prev.lectures.filter(l => l.completed).map(l => l.num));
-    const prevByNum = new Map(prev.lectures.map(l => [l.num, l]));
-    
-    const mergedLectures = newLectures.map(l => {
-      const prevLecture = prevByNum.get(l.num) || {};
-      return stripUndefined({
-        ...prevLecture,
-        ...l,
-        reviewed: l.reviewed !== undefined ? l.reviewed : !!prevLecture.reviewed,
-        reviewDurationMin: l.reviewDurationMin !== undefined ? l.reviewDurationMin : prevLecture.reviewDurationMin,
-      });
-    });
+    const mergedLectures = mergeCourseLectures(prev.lectures, newLectures, options);
     
     const addedMin = mergedLectures.filter(l => l.completed && !prevSet.has(l.num)).reduce((s, l) => s + l.durationMin, 0);
     
@@ -10781,7 +10900,9 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
     }
   }
   
-  const filtered = filter === `전체` ? courses : courses.filter(c => c.subject === filter);
+  const filtered = (filter === `전체` ? courses : courses.filter(c => c.subject === filter))
+    .slice()
+    .sort((a, b) => compareCoursePriority(a, b) || (a.targetEndDate || ``).localeCompare(b.targetEndDate || ``) || (a.name || ``).localeCompare(b.name || ``));
   const stats = filtered.reduce((acc, c) => {
     const lectures = c.lectures || [];
     acc.total += lectures.length;
@@ -10847,7 +10968,7 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
         <div style={{ textAlign:`center`, padding:30, color:C.muted, fontSize:12, background:C.paper, border:`1px dashed ${C.line}` }}>{courses.length === 0 ? `강의를 추가해 보세요` : `이 과목에 등록된 강의가 없습니다.`}</div>
       ) : (
         <div style={{ display:`flex`, flexDirection:`column`, gap:10 }}>
-          {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs) => updateCourse(c.id, lecs)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onLectureMetaChange={(lecture) => syncLectureReviewTopic(c, lecture)} onAddTrackInbox={(item) => addTrackInboxItem(item)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} onToggleSkipReview={(lecNum) => toggleSkipReview(c.id, lecNum)} onBulkReviewAdvance={(lecNums) => advanceCourseReviewTopics(c.id, lecNums)} />))}
+          {filtered.map(c => (<CourseCard key={c.id} course={c} today={today} settings={settings} onUpdate={(lecs, options) => updateCourse(c.id, lecs, options)} onUpdateMeta={(patch) => updateCourseMeta(c.id, patch)} onDelete={() => delCourse(c.id)} onLogReviewTime={(minutes) => logReviewTime(c.id, minutes)} onLectureMetaChange={(lecture) => syncLectureReviewTopic(c, lecture)} onAddTrackInbox={(item) => addTrackInboxItem(item)} onToggleReview={(lecNum) => toggleReview(c.id, lecNum)} onToggleSkipReview={(lecNum) => toggleSkipReview(c.id, lecNum)} onBulkReviewAdvance={(lecNums) => advanceCourseReviewTopics(c.id, lecNums)} />))}
         </div>
       )}
     </div>
@@ -10883,6 +11004,7 @@ function CourseQueuePanel({ courses, today, settings, onCompleteLecture, onRevie
       <div style={{ display:`flex`, flexDirection:`column`, gap:8 }}>
         {queued.map(({ course, queue }) => {
           const subColor = SUBJECTS[course.subject]?.color || C.muted;
+          const priorityMeta = getCoursePriorityMeta(course);
           return (
             <div key={course.id} style={{ borderTop:`1px dashed ${C.lineSoft}`, borderLeft:`3px solid ${subColor}`, padding:`8px 0 0 9px` }}>
               <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:5 }}>
@@ -10890,7 +11012,10 @@ function CourseQueuePanel({ courses, today, settings, onCompleteLecture, onRevie
                   <span className={`kserif`} style={{ color:subColor, fontSize:11, fontWeight:600 }}>{course.subject}</span>
                   <span style={{ color:C.ink, fontSize:11, marginLeft:6, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{course.name}</span>
                 </div>
-                <span className={`mono`} style={{ color:C.muted, fontSize:9, flexShrink:0 }}>{getStudyTypeLabel(course.subject, course.studyType || COURSE_WATCH_TYPE)}</span>
+                <div style={{ display:`flex`, alignItems:`center`, gap:4, flexShrink:0 }}>
+                  <span className={`mono`} style={{ color:priorityMeta.color, border:`1px solid ${priorityMeta.color}`, padding:`1px 4px`, fontSize:8, fontWeight:700 }}>우선 {priorityMeta.short}</span>
+                  <span className={`mono`} style={{ color:C.muted, fontSize:9 }}>{getStudyTypeLabel(course.subject, course.studyType || COURSE_WATCH_TYPE)}</span>
+                </div>
               </div>
               {queue.watch.length > 0 && (
                 <CourseQueueLine label={`수강`} color={subColor} lectures={queue.watch} actionLabel={`완강`} onAction={(lecNum) => onCompleteLecture(course.id, lecNum)} />
@@ -10939,6 +11064,7 @@ function CourseQueueLine({ label, color, lectures, actionLabel, onAction, compac
 function AddCourseForm({ onAdd, onCancel }) {
   const [name, setName] = useState(``);
   const [subject, setSubject] = useState(`민사법`);
+  const [priority, setPriority] = useState(DEFAULT_COURSE_PRIORITY);
   const [completeThreshold, setCompleteThreshold] = useState(DEFAULT_COURSE_COMPLETE_THRESHOLD);
   const [text, setText] = useState(``);
   const [excludedNums, setExcludedNums] = useState([]);
@@ -10958,7 +11084,7 @@ function AddCourseForm({ onAdd, onCancel }) {
 
   function submit() {
     if (!canSubmit) return;
-    onAdd({ name: name.trim(), subject, completeThreshold, lectures: parsed });
+    onAdd({ name: name.trim(), subject, priority, completeThreshold, lectures: parsed });
   }
 
   function excludeParsedLecture(num) {
@@ -10981,6 +11107,20 @@ function AddCourseForm({ onAdd, onCancel }) {
               border: `1px solid ${subject === s ? SUBJECTS[s].color : C.lineSoft}`,
               padding:`6px 4px`, fontSize:10, cursor:`pointer`,
             }}>{SUBJECTS[s].short}</button>
+        ))}
+      </div>
+
+      <div style={{ fontSize:10, color:C.muted, marginBottom:4 }}>우선순위</div>
+      <div style={{ display:`flex`, gap:6, marginBottom:8 }}>
+        {COURSE_PRIORITIES.map(item => (
+          <button key={item.key} onClick={() => setPriority(item.key)}
+            style={{
+              flex:1,
+              background: priority === item.key ? item.color : C.bg,
+              color: priority === item.key ? `#fff` : C.muted,
+              border:`1px solid ${priority === item.key ? item.color : C.lineSoft}`,
+              padding:`6px 4px`, fontSize:10, cursor:`pointer`,
+            }}>{item.label}</button>
         ))}
       </div>
 
@@ -11131,6 +11271,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   const subColor = SUBJECTS[course.subject]?.color || C.muted; 
   const typeLabel = getStudyTypeLabel(course.subject, course.studyType || COURSE_WATCH_TYPE);
   const completeThreshold = normalizeCourseThreshold(course.completeThreshold);
+  const priorityMeta = getCoursePriorityMeta(course);
   const pace = getCoursePace(course, today, settings);
   const targetEndDate = pace.targetEndDate;
   const targetReviewDate = course.targetReviewDate || targetEndDate; 
@@ -11159,7 +11300,20 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   const existingByNum = useMemo(() => new Map(course.lectures.map(l => [l.num, l])), [course.lectures]);
   const parsedNumSet = useMemo(() => new Set(parsedUpdate.map(l => l.num)), [parsedUpdate]);
   const addedLectureCount = parsedUpdate.filter(l => !existingByNum.has(l.num)).length;
-  const removedLectureCount = course.lectures.filter(l => !parsedNumSet.has(l.num)).length;
+  const keptExistingCount = course.lectures.filter(l => !parsedNumSet.has(l.num)).length;
+  const changedLectureCount = parsedUpdate.filter(l => {
+    const prev = existingByNum.get(l.num);
+    if (!prev) return false;
+    const nextProgress = Math.max(Number(prev.progress) || 0, Number(l.progress) || 0);
+    const nextCompleted = !!prev.completed || !!l.completed;
+    const nextDuration = l.durationMin || prev.durationMin || 0;
+    return (
+      (l.title || ``) !== (prev.title || ``) ||
+      nextDuration !== (prev.durationMin || 0) ||
+      nextProgress !== (Number(prev.progress) || 0) ||
+      nextCompleted !== !!prev.completed
+    );
+  }).length;
   const excludedUpdateCount = parsedUpdateRaw.length - parsedUpdate.length;
   const newlyCompletedCount = parsedUpdate.filter(l => l.completed && !existingByNum.get(l.num)?.completed).length;
   const newlyCompletedMin = parsedUpdate
@@ -11176,7 +11330,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
 
   function submitUpdateList() {
     if (!canUpdateList) return;
-    onUpdate(parsedUpdate);
+    onUpdate(parsedUpdate, { preserveMissing:true, monotonicProgress:true });
     cancelUpdateList();
   }
 
@@ -11333,6 +11487,9 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
           
           <div style={{ fontSize:10, color:C.muted, marginTop:3, display:`flex`, alignItems:`center`, gap:6, flexWrap:`wrap` }}>
             <span style={{ color:subColor, fontWeight:600 }}>{course.subject}</span> · {typeLabel}
+            <span className={`mono`} style={{ color:priorityMeta.color, border:`1px solid ${priorityMeta.color}`, padding:`1px 5px`, fontSize:9, fontWeight:700 }}>
+              우선 {priorityMeta.short}
+            </span>
             {remainingLectures > 0 && actualPace !== null && (
               <span style={{ color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent, fontWeight: 600 }}>
                 수강 {isPaceGood ? `안정` : isPaceWarning ? `주의` : `지연`}
@@ -11373,7 +11530,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
           {manageOpen && (
             <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:10, marginBottom:12 }}>
               <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, marginBottom:10 }}>
-                <div style={{ fontSize:10, color:C.muted }}>목록 · 기준 · 목표일</div>
+                <div style={{ fontSize:10, color:C.muted }}>목록 · 우선순위 · 기준 · 목표일</div>
                 <div style={{ display:`flex`, gap:6, flexShrink:0 }}>
                   <button onClick={() => setUpdateMode(true)} style={{ background:updateMode ? C.ink : C.paper, color:updateMode ? `#fff` : C.ink, border:`1px solid ${updateMode ? C.ink : C.line}`, padding:`5px 8px`, cursor:`pointer`, fontSize:10, display:`flex`, alignItems:`center`, gap:4 }}>
                     <RefreshCw size={11} /> 목록 갱신
@@ -11381,6 +11538,23 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                   <button onClick={onDelete} style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`5px 8px`, cursor:`pointer`, fontSize:10, display:`flex`, alignItems:`center`, gap:4 }}>
                     <Trash2 size={11} /> 삭제
                   </button>
+                </div>
+              </div>
+
+              <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, marginBottom:10 }}>
+                <div style={{ fontSize:10, color:C.muted }}>
+                  우선순위 <span className={`mono`} style={{ color:priorityMeta.color, fontWeight:700 }}>{priorityMeta.label}</span>
+                </div>
+                <div style={{ display:`flex`, gap:4, flexShrink:0 }}>
+                  {COURSE_PRIORITIES.map(item => (
+                    <button key={item.key} onClick={() => onUpdateMeta && onUpdateMeta({ priority:item.key })}
+                      style={{
+                        background: priorityMeta.key === item.key ? item.color : C.paper,
+                        color: priorityMeta.key === item.key ? `#fff` : C.muted,
+                        border:`1px solid ${priorityMeta.key === item.key ? item.color : C.line}`,
+                        padding:`4px 7px`, fontSize:10, cursor:`pointer`,
+                      }}>{item.label}</button>
+                  ))}
                 </div>
               </div>
 
@@ -11475,20 +11649,21 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                     </div>
                   </div>
                   <textarea value={text} onChange={e => setText(e.target.value)} rows={6}
-                    placeholder={`사이트의 최신 강의 목록을 통째로 붙여넣으세요.\n기존 복습 체크와 복습 시간은 유지됩니다.`}
+                    placeholder={`사이트의 최신 강의 목록을 통째로 붙여넣으세요.\n붙여넣기에 없는 기존 강의는 유지되고, 복습 체크·메모·태그·복습 시간도 유지됩니다.`}
                     style={{ width:`100%`, background:C.bg, border:`1px solid ${C.line}`, padding:`8px 10px`, fontSize:11, marginBottom:10, outline:`none`, resize:`vertical`, fontFamily:`JetBrains Mono, monospace`, lineHeight:1.5 }} />
 
                   {parsedUpdateRaw.length > 0 && (
                     <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`8px 10px`, marginBottom:10 }}>
                       <div style={{ display:`flex`, gap:12, fontSize:10, marginBottom:6, flexWrap:`wrap` }}>
                         <span className={`kserif`}>추가 <span className={`mono`} style={{ color:addedLectureCount > 0 ? subColor : C.muted, fontWeight:600 }}>{addedLectureCount}</span></span>
-                        <span className={`kserif`}>제외 <span className={`mono`} style={{ color:removedLectureCount > 0 ? C.accent : C.muted, fontWeight:600 }}>{removedLectureCount}</span></span>
+                        <span className={`kserif`}>변경 <span className={`mono`} style={{ color:changedLectureCount > 0 ? subColor : C.muted, fontWeight:600 }}>{changedLectureCount}</span></span>
+                        <span className={`kserif`}>기존 유지 <span className={`mono`} style={{ color:keptExistingCount > 0 ? C.good : C.muted, fontWeight:600 }}>{keptExistingCount}</span></span>
                         <span className={`kserif`}>새 완강 <span className={`mono`} style={{ color:newlyCompletedCount > 0 ? C.good : C.muted, fontWeight:600 }}>{newlyCompletedCount}</span></span>
                         <span className={`kserif`}>합산될 학습시간 <span className={`mono`} style={{ color:newlyCompletedMin > 0 ? subColor : C.muted, fontWeight:600 }}>+{fmtMin(newlyCompletedMin)}</span></span>
                         {excludedUpdateCount > 0 && (
                           <button onClick={() => setUpdateExcludedNums([])}
                             style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`2px 6px`, fontSize:9.5, cursor:`pointer` }}>
-                            제외 {excludedUpdateCount}개 복구
+                            수동 제외 {excludedUpdateCount}개 복구
                           </button>
                         )}
                       </div>
@@ -11520,7 +11695,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                     <button onClick={cancelUpdateList} style={{ flex:1, background:C.bg, border:`1px solid ${C.line}`, padding:`7px`, cursor:`pointer`, fontSize:11 }}>취소</button>
                     <button onClick={submitUpdateList} disabled={!canUpdateList}
                       style={{ flex:2, background: canUpdateList ? C.ink : C.line, color:`#fff`, border:`none`, padding:`7px`, cursor: canUpdateList ? `pointer` : `default`, fontSize:11, fontWeight:600 }}>
-                      {newlyCompletedMin > 0 ? `갱신 · +${fmtMin(newlyCompletedMin)} 합산` : `목록 갱신`}
+                      {newlyCompletedMin > 0 ? `변경분 갱신 · +${fmtMin(newlyCompletedMin)} 합산` : `변경분 갱신`}
                     </button>
                   </div>
                 </div>
@@ -12665,6 +12840,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
   const [mockExams, setMockExams] = useState(settings.mockExams || []);
   const [d30Mode, setD30Mode] = useState(settings.d30Mode);
   const [autoGen, setAutoGen] = useState(settings.autoGenMockReview);
+  const [homeFocusMode, setHomeFocusMode] = useState(settings.homeFocusMode !== false);
   const [cycleEnabled, setCycleEnabled] = useState(settings.cycleEnabled !== false);
 
   function save() {
@@ -12676,6 +12852,7 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
       mockExams,
       d30Mode,
       autoGenMockReview: autoGen,
+      homeFocusMode,
       cycleEnabled, // 추가
     });
     alert(`저장되었습니다`);
@@ -12880,6 +13057,19 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
 
       <SectionTitle>루틴 (생활 패턴)</SectionTitle>
       <RoutineEditor routines={routines || []} setRoutines={setRoutines} />
+
+      <SectionTitle>홈 화면</SectionTitle>
+      <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`4px 0`, marginBottom:18 }}>
+        <label style={{ display:`flex`, alignItems:`center`, gap:10, padding:`10px 14px`, cursor:`pointer` }}>
+          <input type={`checkbox`} checked={homeFocusMode} onChange={e => setHomeFocusMode(e.target.checked)} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:600 }}>집중 홈 사용</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>
+              한 줄 입력·오늘 처리·강의/복습 경고를 먼저 보여주고 추천/정산/버릴판단은 접어둡니다.
+            </div>
+          </div>
+        </label>
+      </div>
 
       <SectionTitle>자동화</SectionTitle>
       <div style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`4px 0`, marginBottom:18 }}>
