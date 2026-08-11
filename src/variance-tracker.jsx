@@ -100,6 +100,7 @@ const COURSE_PRIORITIES = [
   { key:`normal`, label:`보통`, short:`중`, weight:1, color:C.ink },
   { key:`low`, label:`낮음`, short:`하`, weight:0, color:C.muted },
 ];
+const COURSE_DONE_PRIORITY_META = { key:`done`, label:`완강`, short:`완`, weight:-1, color:C.good };
 const COURSE_TAGS = [
   { key: `hard`, label: `어려움` },
   { key: `case`, label: `판례` },
@@ -112,10 +113,20 @@ function normalizeCoursePriority(value) {
 }
 
 function getCoursePriorityMeta(courseOrKey) {
+  if (courseOrKey && typeof courseOrKey === `object`) {
+    const lectures = courseOrKey.lectures || [];
+    if (lectures.length > 0 && lectures.every(lecture => lecture.completed)) {
+      return COURSE_DONE_PRIORITY_META;
+    }
+  }
   const key = typeof courseOrKey === `string`
     ? normalizeCoursePriority(courseOrKey)
     : normalizeCoursePriority(courseOrKey?.priority);
   return COURSE_PRIORITIES.find(item => item.key === key) || COURSE_PRIORITIES[1];
+}
+
+function formatCoursePriorityBadge(meta) {
+  return meta?.key === `done` ? `완강` : `우선 ${meta?.short || COURSE_PRIORITIES[1].short}`;
 }
 
 function coursePriorityWeight(course) {
@@ -11013,7 +11024,7 @@ function CourseQueuePanel({ courses, today, settings, onCompleteLecture, onRevie
                   <span style={{ color:C.ink, fontSize:11, marginLeft:6, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{course.name}</span>
                 </div>
                 <div style={{ display:`flex`, alignItems:`center`, gap:4, flexShrink:0 }}>
-                  <span className={`mono`} style={{ color:priorityMeta.color, border:`1px solid ${priorityMeta.color}`, padding:`1px 4px`, fontSize:8, fontWeight:700 }}>우선 {priorityMeta.short}</span>
+                  <span className={`mono`} style={{ color:priorityMeta.color, border:`1px solid ${priorityMeta.color}`, padding:`1px 4px`, fontSize:8, fontWeight:700 }}>{formatCoursePriorityBadge(priorityMeta)}</span>
                   <span className={`mono`} style={{ color:C.muted, fontSize:9 }}>{getStudyTypeLabel(course.subject, course.studyType || COURSE_WATCH_TYPE)}</span>
                 </div>
               </div>
@@ -11272,6 +11283,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
   const typeLabel = getStudyTypeLabel(course.subject, course.studyType || COURSE_WATCH_TYPE);
   const completeThreshold = normalizeCourseThreshold(course.completeThreshold);
   const priorityMeta = getCoursePriorityMeta(course);
+  const storedPriority = normalizeCoursePriority(course.priority);
   const pace = getCoursePace(course, today, settings);
   const targetEndDate = pace.targetEndDate;
   const targetReviewDate = course.targetReviewDate || targetEndDate; 
@@ -11488,7 +11500,7 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
           <div style={{ fontSize:10, color:C.muted, marginTop:3, display:`flex`, alignItems:`center`, gap:6, flexWrap:`wrap` }}>
             <span style={{ color:subColor, fontWeight:600 }}>{course.subject}</span> · {typeLabel}
             <span className={`mono`} style={{ color:priorityMeta.color, border:`1px solid ${priorityMeta.color}`, padding:`1px 5px`, fontSize:9, fontWeight:700 }}>
-              우선 {priorityMeta.short}
+              {formatCoursePriorityBadge(priorityMeta)}
             </span>
             {remainingLectures > 0 && actualPace !== null && (
               <span style={{ color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent, fontWeight: 600 }}>
@@ -11549,9 +11561,9 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                   {COURSE_PRIORITIES.map(item => (
                     <button key={item.key} onClick={() => onUpdateMeta && onUpdateMeta({ priority:item.key })}
                       style={{
-                        background: priorityMeta.key === item.key ? item.color : C.paper,
-                        color: priorityMeta.key === item.key ? `#fff` : C.muted,
-                        border:`1px solid ${priorityMeta.key === item.key ? item.color : C.line}`,
+                        background: storedPriority === item.key ? item.color : C.paper,
+                        color: storedPriority === item.key ? `#fff` : C.muted,
+                        border:`1px solid ${storedPriority === item.key ? item.color : C.line}`,
                         padding:`4px 7px`, fontSize:10, cursor:`pointer`,
                       }}>{item.label}</button>
                   ))}
