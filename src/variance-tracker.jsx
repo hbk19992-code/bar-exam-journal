@@ -10766,6 +10766,72 @@ function CourseHubPanel({ courses, today, settings, onCompleteLecture, onReviewL
   );
 }
 
+function CourseDeadlineBackcastPanel({ courses = [], today, settings }) {
+  const pace = buildCoursePaceSummary(courses, today, settings);
+  const active = pace.active.slice(0, 5);
+  if (active.length === 0) return null;
+
+  const tone = pace.delayed > 0 ? C.accent : pace.caution > 0 ? C.warn : C.good;
+  const headline = pace.delayed > 0
+    ? `지연 ${pace.delayed}`
+    : pace.caution > 0
+    ? `주의 ${pace.caution}`
+    : `정상`;
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, padding:`13px 14px`, marginBottom:14 }}>
+      <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:10, marginBottom:10 }}>
+        <div style={{ minWidth:0 }}>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:800, color:C.ink }}>마감 역산</div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+            남은 강의 {active.reduce((sum, item) => sum + item.remaining, 0)}강 · 오늘 기준
+          </div>
+        </div>
+        <span className={`mono`} style={{ color:tone, border:`1px solid ${tone}`, padding:`2px 6px`, fontSize:10, fontWeight:700, flexShrink:0 }}>
+          {headline}
+        </span>
+      </div>
+
+      <div style={{ display:`flex`, flexDirection:`column`, gap:7 }}>
+        {active.map(item => {
+          const subColor = SUBJECTS[item.course.subject]?.color || C.muted;
+          const priorityMeta = getCoursePriorityMeta(item.course);
+          const estimate = item.projectedEndDate ? fmtShortDate(item.projectedEndDate) : `계산 전`;
+          const statusColor = item.status === `delayed` ? C.accent : item.status === `caution` ? C.warn : C.good;
+          const pct = item.total ? Math.round((item.completed / item.total) * 100) : 0;
+          return (
+            <div key={item.course.id} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, borderLeft:`3px solid ${statusColor}`, padding:`8px 9px` }}>
+              <div style={{ display:`flex`, alignItems:`center`, justifyContent:`space-between`, gap:8, marginBottom:6 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ display:`flex`, alignItems:`center`, gap:5, minWidth:0 }}>
+                    <span className={`mono`} style={{ color:priorityMeta.color, border:`1px solid ${priorityMeta.color}`, padding:`1px 4px`, fontSize:8, fontWeight:700, flexShrink:0 }}>
+                      {formatCoursePriorityBadge(priorityMeta)}
+                    </span>
+                    <span style={{ color:C.ink, fontSize:11, fontWeight:700, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.course.name}</span>
+                  </div>
+                  <div style={{ color:C.muted, fontSize:9, marginTop:3 }}>
+                    <span style={{ color:subColor, fontWeight:700 }}>{item.course.subject}</span>
+                    {item.plannedBehind > 0 && <span style={{ color:C.accent }}> · {item.plannedBehind}강 밀림</span>}
+                    {item.lagDays > 0 && <span style={{ color:C.accent }}> · 예상 {item.lagDays}일 지연</span>}
+                  </div>
+                </div>
+                <div className={`mono`} style={{ display:`grid`, gridTemplateColumns:`repeat(3, auto)`, gap:5, alignItems:`center`, color:C.muted, fontSize:9, flexShrink:0 }}>
+                  <span>목표 {fmtShortDate(item.targetEndDate)}</span>
+                  <span style={{ color:C.ink, fontWeight:700 }}>오늘 {item.requiredDailyCeil}강</span>
+                  <span>예상 {estimate}</span>
+                </div>
+              </div>
+              <div style={{ height:4, background:C.lineSoft, position:`relative`, overflow:`hidden` }}>
+                <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background:statusColor }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, reviews = [], setReviews, setTrackInbox }) {
   const [showAdd, setShowAdd] = useState(false); const [filter, setFilter] = useState(`전체`);
   function autoLogTime(subject, studyType, minutes) {
@@ -10964,6 +11030,12 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
         settings={settings}
         onCompleteLecture={completeQueuedLecture}
         onReviewLecture={reviewQueuedLecture}
+      />
+
+      <CourseDeadlineBackcastPanel
+        courses={filtered}
+        today={today}
+        settings={settings}
       />
 
       <CourseOperationAlert
@@ -11505,6 +11577,11 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
             {remainingLectures > 0 && actualPace !== null && (
               <span style={{ color: isPaceGood ? C.good : isPaceWarning ? C.warn : C.accent, fontWeight: 600 }}>
                 수강 {isPaceGood ? `안정` : isPaceWarning ? `주의` : `지연`}
+              </span>
+            )}
+            {remainingLectures > 0 && (
+              <span style={{ color:C.ink, fontWeight:600 }}>
+                목표 {fmtShortDate(targetEndDate)} · 오늘 {requiredPace}강
               </span>
             )}
             {remainingLectures > 0 && (
