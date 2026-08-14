@@ -10832,6 +10832,245 @@ function CourseDeadlineBackcastPanel({ courses = [], today, settings }) {
   );
 }
 
+function CourseCommandCenterPanel({ courses = [], today, settings, operationSummary, onCompleteLecture, onReviewLecture, onRetargetCourse }) {
+  const queueItems = buildCourseQueueItems(courses, today, settings);
+  const watchItems = queueItems.filter(item => item.type === `watch`);
+  const reviewItems = queueItems.filter(item => item.type === `review`);
+  const pace = operationSummary?.paceSummary || buildCoursePaceSummary(courses, today, settings);
+  const activePace = pace.active || [];
+  const collapses = operationSummary?.collapses || [];
+  const leaks = operationSummary?.leaks || [];
+  const taggedLectures = courses.reduce((sum, course) => sum + (course.lectures || []).filter(l => (l.tags || []).length > 0 || (l.note || ``).trim()).length, 0);
+  const hardLectures = courses.reduce((sum, course) => sum + (course.lectures || []).filter(l => lectureHasTag(l, `hard`) || lectureHasTag(l, `again`)).length, 0);
+  const riskCount = (pace.delayed || 0) + (pace.caution || 0);
+  const initialMode = collapses.length || leaks.length ? `target` : queueItems.length ? `queue` : `pace`;
+  const [mode, setMode] = useState(initialMode);
+  const [showAllQueue, setShowAllQueue] = useState(false);
+  const [showAllPace, setShowAllPace] = useState(false);
+  const [showAllLeaks, setShowAllLeaks] = useState(false);
+
+  useEffect(() => {
+    if (mode === `target` && collapses.length === 0 && leaks.length === 0) setMode(initialMode);
+    if (mode === `queue` && queueItems.length === 0) setMode(initialMode);
+    if (mode === `pace` && activePace.length === 0) setMode(initialMode);
+  }, [activePace.length, collapses.length, initialMode, leaks.length, mode, queueItems.length]);
+
+  if (!courses.length) return null;
+
+  const topItem = reviewItems[0] || watchItems[0] || null;
+  const tone = collapses.length || pace.delayed > 0 ? C.accent : pace.caution > 0 || leaks.length > 0 ? C.warn : C.good;
+  const headline = collapses.length
+    ? `목표 재계산 ${collapses.length}`
+    : leaks.length
+    ? `복습 정리 ${leaks.length}`
+    : riskCount
+    ? `페이스 점검 ${riskCount}`
+    : `정상`;
+  const visibleQueue = showAllQueue ? queueItems : queueItems.slice(0, 8);
+  const visiblePace = showAllPace ? activePace : activePace.slice(0, 5);
+  const visibleLeaks = showAllLeaks ? leaks : leaks.slice(0, 6);
+  const totalRemaining = activePace.reduce((sum, item) => sum + item.remaining, 0);
+  const tabs = [
+    { key:`queue`, label:`오늘 큐`, count:queueItems.length },
+    { key:`pace`, label:`마감`, count:activePace.length },
+    { key:`target`, label:`정리`, count:collapses.length + leaks.length },
+  ];
+
+  return (
+    <section style={{ background:C.paper, border:`1px solid ${C.line}`, borderTop:`3px solid ${tone}`, padding:14, marginBottom:14 }}>
+      <div style={{ display:`flex`, alignItems:`flex-start`, justifyContent:`space-between`, gap:12, marginBottom:11 }}>
+        <div style={{ minWidth:0 }}>
+          <div className={`kserif`} style={{ fontSize:12, fontWeight:800, color:C.ink }}>강의 지휘센터</div>
+          <div style={{ fontSize:10, color:C.muted, marginTop:3, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+            수강 {watchItems.length} · 복습 {reviewItems.length} · 남은 강의 {totalRemaining}강
+          </div>
+        </div>
+        <span className={`mono`} style={{ color:tone, border:`1px solid ${tone}`, padding:`2px 7px`, fontSize:10, fontWeight:700, flexShrink:0 }}>
+          {headline}
+        </span>
+      </div>
+
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(4, minmax(0, 1fr))`, gap:6, marginBottom:10 }}>
+        {[
+          { label:`오늘`, value:queueItems.length, color:C.ink },
+          { label:`복습`, value:reviewItems.length, color:reviewItems.length ? C.accent : C.muted },
+          { label:`위험`, value:riskCount, color:riskCount ? C.accent : C.muted },
+          { label:`태그`, value:taggedLectures, color:taggedLectures ? C.book : C.muted },
+        ].map(stat => (
+          <div key={stat.label} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, minHeight:48, padding:`7px 5px`, textAlign:`center` }}>
+            <div className={`mono`} style={{ color:stat.color, fontSize:15, fontWeight:800, lineHeight:1 }}>{stat.value}</div>
+            <div className={`kserif`} style={{ fontSize:9, color:C.muted, marginTop:5 }}>{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {topItem && (
+        <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, borderLeft:`3px solid ${topItem.type === `review` ? C.accent : (SUBJECTS[topItem.course.subject]?.color || C.ink)}`, padding:`9px 10px`, display:`flex`, alignItems:`center`, gap:9, marginBottom:10 }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div className={`kserif`} style={{ fontSize:10, color:C.muted, fontWeight:800 }}>{topItem.type === `review` ? `오늘 우선 복습` : `오늘 우선 수강`}</div>
+            <div style={{ fontSize:11, color:C.ink, fontWeight:700, marginTop:3, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+              {topItem.course.name}
+            </div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>
+              {topItem.lecture.num}강 · {topItem.lecture.title}
+            </div>
+          </div>
+          <button onClick={() => topItem.type === `review` ? onReviewLecture(topItem.course.id, topItem.lecture.num) : onCompleteLecture(topItem.course.id, topItem.lecture.num)} className={`tap`}
+            style={{ background:C.ink, color:`#fff`, border:`none`, padding:`7px 10px`, fontSize:10, fontWeight:800, cursor:`pointer`, flexShrink:0 }}>
+            {topItem.type === `review` ? `복습완료` : `완강`}
+          </button>
+        </div>
+      )}
+
+      <div style={{ display:`grid`, gridTemplateColumns:`repeat(3, minmax(0, 1fr))`, gap:5, marginBottom:10 }}>
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => setMode(tab.key)} className={`tap`}
+            style={{ background:mode === tab.key ? C.ink : C.bg, color:mode === tab.key ? `#fff` : C.muted, border:`1px solid ${mode === tab.key ? C.ink : C.lineSoft}`, padding:`7px 6px`, fontSize:10, fontWeight:700, cursor:`pointer` }}>
+            {tab.label} <span className={`mono`} style={{ opacity:0.75 }}>{tab.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {mode === `queue` && (
+        <div style={{ display:`flex`, flexDirection:`column`, gap:6 }}>
+          {visibleQueue.length === 0 ? (
+            <div style={{ color:C.muted, fontSize:11, border:`1px dashed ${C.lineSoft}`, padding:`12px`, textAlign:`center` }}>오늘 처리할 강의 큐가 없습니다.</div>
+          ) : visibleQueue.map(item => {
+            const subColor = SUBJECTS[item.course.subject]?.color || C.muted;
+            return (
+              <div key={`${item.type}-${item.course.id}-${item.lecture.num}`} style={{ display:`flex`, alignItems:`center`, gap:7, borderTop:`1px dashed ${C.lineSoft}`, paddingTop:6, minHeight:38 }}>
+                <span className={`kserif`} style={{ color:item.type === `review` ? C.accent : subColor, fontSize:10, fontWeight:800, minWidth:30 }}>{item.type === `review` ? `복습` : `수강`}</span>
+                <span className={`mono`} style={{ color:C.muted, fontSize:10, minWidth:31 }}>{item.lecture.num}강</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:10.5, color:C.ink, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.course.name}</div>
+                  <div style={{ fontSize:9, color:C.muted, marginTop:1, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.lecture.title}</div>
+                </div>
+                {getLectureTagLabels(item.lecture).slice(0, 2).map(tag => (
+                  <span key={tag} style={{ color:C.accent, border:`1px solid ${C.lineSoft}`, padding:`1px 4px`, fontSize:8, flexShrink:0 }}>
+                    {tag}
+                  </span>
+                ))}
+                <button onClick={() => item.type === `review` ? onReviewLecture(item.course.id, item.lecture.num) : onCompleteLecture(item.course.id, item.lecture.num)} className={`tap`}
+                  style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, color:item.type === `review` ? C.accent : C.ink, padding:`5px 7px`, fontSize:9, fontWeight:700, cursor:`pointer`, flexShrink:0 }}>
+                  {item.type === `review` ? `복습완료` : `완강`}
+                </button>
+              </div>
+            );
+          })}
+          {queueItems.length > 8 && (
+            <button onClick={() => setShowAllQueue(v => !v)} className={`tap`}
+              style={{ background:C.paper, color:C.ink, border:`1px solid ${C.line}`, padding:`7px 8px`, fontSize:10, cursor:`pointer`, marginTop:2 }}>
+              {showAllQueue ? `접기` : `나머지 ${queueItems.length - 8}개 펼치기`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {mode === `pace` && (
+        <div style={{ display:`flex`, flexDirection:`column`, gap:7 }}>
+          {visiblePace.length === 0 ? (
+            <div style={{ color:C.muted, fontSize:11, border:`1px dashed ${C.lineSoft}`, padding:`12px`, textAlign:`center` }}>진행 중인 강의가 없습니다.</div>
+          ) : visiblePace.map(item => {
+            const statusColor = item.status === `delayed` ? C.accent : item.status === `caution` ? C.warn : C.good;
+            const priorityMeta = getCoursePriorityMeta(item.course);
+            const estimate = item.projectedEndDate ? fmtShortDate(item.projectedEndDate) : `계산 전`;
+            const pct = item.total ? Math.round((item.completed / item.total) * 100) : 0;
+            return (
+              <div key={item.course.id} style={{ border:`1px solid ${C.lineSoft}`, borderLeft:`3px solid ${statusColor}`, padding:`8px 9px`, background:C.bg }}>
+                <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8 }}>
+                  <div style={{ minWidth:0, flex:1 }}>
+                    <div style={{ display:`flex`, alignItems:`center`, gap:5, minWidth:0 }}>
+                      <span className={`mono`} style={{ color:priorityMeta.color, border:`1px solid ${priorityMeta.color}`, padding:`1px 4px`, fontSize:8, fontWeight:700, flexShrink:0 }}>{formatCoursePriorityBadge(priorityMeta)}</span>
+                      <span style={{ color:C.ink, fontSize:11, fontWeight:700, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.course.name}</span>
+                    </div>
+                    <div style={{ color:C.muted, fontSize:9, marginTop:3 }}>
+                      목표 {fmtShortDate(item.targetEndDate)} · 오늘 {item.requiredDailyCeil}강 · 예상 {estimate}
+                      {item.plannedBehind > 0 ? <span style={{ color:C.accent }}> · {item.plannedBehind}강 밀림</span> : null}
+                    </div>
+                  </div>
+                  <span className={`mono`} style={{ color:statusColor, fontSize:10, fontWeight:800, flexShrink:0 }}>{pct}%</span>
+                </div>
+                <div style={{ height:4, background:C.lineSoft, position:`relative`, overflow:`hidden`, marginTop:7 }}>
+                  <div style={{ position:`absolute`, left:0, top:0, bottom:0, width:`${pct}%`, background:statusColor }} />
+                </div>
+              </div>
+            );
+          })}
+          {activePace.length > 5 && (
+            <button onClick={() => setShowAllPace(v => !v)} className={`tap`}
+              style={{ background:C.paper, color:C.ink, border:`1px solid ${C.line}`, padding:`7px 8px`, fontSize:10, cursor:`pointer`, marginTop:2 }}>
+              {showAllPace ? `접기` : `나머지 ${activePace.length - 5}개 펼치기`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {mode === `target` && (
+        <div style={{ display:`flex`, flexDirection:`column`, gap:8 }}>
+          {collapses.length === 0 && leaks.length === 0 && (
+            <div style={{ color:C.muted, fontSize:11, border:`1px dashed ${C.lineSoft}`, padding:`12px`, textAlign:`center` }}>정리할 목표 붕괴나 복습 누수가 없습니다.</div>
+          )}
+
+          {collapses.map(item => (
+            <div key={item.course.id} style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, borderLeft:`3px solid ${C.accent}`, padding:`8px 9px` }}>
+              <div style={{ display:`flex`, alignItems:`baseline`, justifyContent:`space-between`, gap:8, marginBottom:6 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ color:C.ink, fontSize:11, fontWeight:800, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.course.name}</div>
+                  <div style={{ color:C.muted, fontSize:9, marginTop:2 }}>
+                    남은 {item.remaining}강 · 현재 목표 {fmtShortDate(item.targetEndDate)} · 권장 {fmtShortDate(item.recovery.suggestedTargetDate)}
+                  </div>
+                </div>
+                {onRetargetCourse && (
+                  <button onClick={() => onRetargetCourse(item.course.id, item.recovery.suggestedTargetDate)} className={`tap`}
+                    style={{ background:C.ink, color:`#fff`, border:`none`, padding:`6px 8px`, fontSize:10, cursor:`pointer`, fontWeight:800, flexShrink:0 }}>
+                    목표 재계산
+                  </button>
+                )}
+              </div>
+              <div style={{ color:C.muted, fontSize:9 }}>
+                필요 {item.requiredDailyCeil}강/일 · 적정 {item.recovery.reasonableDaily}강/일{item.targetPassedDays > 0 ? ` · 목표 ${item.targetPassedDays}일 지남` : ``}
+              </div>
+            </div>
+          ))}
+
+          {visibleLeaks.length > 0 && (
+            <div style={{ display:`flex`, flexDirection:`column`, gap:5 }}>
+              <div className={`kserif`} style={{ fontSize:10, color:C.muted, fontWeight:800, marginTop:collapses.length ? 2 : 0 }}>복습 누수</div>
+              {visibleLeaks.map(item => (
+                <div key={item.sourceKey} style={{ display:`flex`, alignItems:`center`, gap:7, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px` }}>
+                  <span className={`mono`} style={{ color:C.muted, fontSize:10, minWidth:32 }}>{item.lecture.num}강</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ color:C.ink, fontSize:10.5, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.lecture.title}</div>
+                    <div style={{ color:C.muted, fontSize:9, marginTop:2, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{item.course.name}{item.tags.length ? ` · ${item.tags.slice(0, 2).join(` · `)}` : ``}</div>
+                  </div>
+                  {onReviewLecture && (
+                    <button onClick={() => onReviewLecture(item.course.id, item.lecture.num)} className={`tap`}
+                      style={{ background:C.paper, color:C.accent, border:`1px solid ${C.line}`, padding:`5px 7px`, fontSize:9, fontWeight:700, cursor:`pointer`, flexShrink:0 }}>
+                      복습완료
+                    </button>
+                  )}
+                </div>
+              ))}
+              {leaks.length > 6 && (
+                <button onClick={() => setShowAllLeaks(v => !v)} className={`tap`}
+                  style={{ background:C.paper, color:C.ink, border:`1px solid ${C.line}`, padding:`7px 8px`, fontSize:10, cursor:`pointer`, marginTop:2 }}>
+                  {showAllLeaks ? `접기` : `나머지 ${leaks.length - 6}개 펼치기`}
+                </button>
+              )}
+            </div>
+          )}
+
+          {hardLectures > 0 && (
+            <div style={{ color:C.muted, fontSize:10, lineHeight:1.5 }}>
+              어려움·재복습 태그 {hardLectures}개
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, reviews = [], setReviews, setTrackInbox }) {
   const [showAdd, setShowAdd] = useState(false); const [filter, setFilter] = useState(`전체`);
   function autoLogTime(subject, studyType, minutes) {
@@ -11024,28 +11263,16 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
         {[`전체`, ...Object.keys(SUBJECTS)].map(s => (<button key={s} onClick={() => setFilter(s)} style={{ background: filter === s ? C.ink : C.paper, color: filter === s ? `#fff` : C.muted, border: `1px solid ${filter === s ? C.ink : C.line}`, padding:`5px 10px`, fontSize:11, cursor:`pointer`, whiteSpace:`nowrap` }}>{s}</button>))}
       </div>
 
-      <CourseHubPanel
+      <CourseCommandCenterPanel
         courses={filtered}
         today={today}
         settings={settings}
+        operationSummary={courseOperationSummary}
         onCompleteLecture={completeQueuedLecture}
         onReviewLecture={reviewQueuedLecture}
-      />
-
-      <CourseDeadlineBackcastPanel
-        courses={filtered}
-        today={today}
-        settings={settings}
-      />
-
-      <CourseOperationAlert
-        summary={courseOperationSummary}
         onRetargetCourse={retargetCourseFromRecovery}
-        onReviewLecture={reviewQueuedLecture}
-        compact
       />
 
-      <CourseQueuePanel courses={filtered} today={today} settings={settings} onCompleteLecture={completeQueuedLecture} onReviewLecture={reviewQueuedLecture} />
       {showAdd && <AddCourseForm onAdd={addCourse} onCancel={() => setShowAdd(false)} />}
       {filtered.length === 0 ? (
         <div style={{ textAlign:`center`, padding:30, color:C.muted, fontSize:12, background:C.paper, border:`1px dashed ${C.line}` }}>{courses.length === 0 ? `강의를 추가해 보세요` : `이 과목에 등록된 강의가 없습니다.`}</div>
