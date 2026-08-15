@@ -907,9 +907,9 @@ async function exportXLSX(state, filename) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(inboxRows), `5트랙인박스`);
 
   // [4] MCQ round scores
-  const scoreRows = [[`날짜`, `회차`, `과목`, `유형`, `틀림`, `총문항`, `메모`]];
+  const scoreRows = [[`날짜`, `제목`, `회차`, `과목`, `유형`, `틀림`, `총문항`, `메모`]];
   [...examScores].sort((a,b) => a.date.localeCompare(b.date) || a.subject.localeCompare(b.subject)).forEach(s => {
-    scoreRows.push([s.date, s.round, s.subject, s.type || `선택형`, s.wrong, s.total || ``, s.note || ``]);
+    scoreRows.push([s.date, s.title || ``, s.round, s.subject, s.type || `선택형`, s.wrong, s.total || ``, s.note || ``]);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreRows), `회차점수`);
 
@@ -8333,6 +8333,7 @@ const MCQ_TOTAL = { 공법: 40, 형사법: 40, 민사법: 70 };
 
 function ScoresSection({ date, examScores, setExamScores }) {
   const [round, setRound] = useState(``);
+  const [title, setTitle] = useState(``);
   const [subject, setSubject] = useState(`공법`);
   const [wrong, setWrong] = useState(``);
   const [note, setNote] = useState(``);
@@ -8352,6 +8353,7 @@ function ScoresSection({ date, examScores, setExamScores }) {
     const newScore = {
       id: uid(),
       date,
+      title: title.trim() || null,
       round: parseInt(round),
       subject,
       type: `선택형`,
@@ -8360,7 +8362,7 @@ function ScoresSection({ date, examScores, setExamScores }) {
       note: note.trim() || null,
     };
     setExamScores([...examScores, newScore]);
-    setRound(``); setWrong(``); setNote(``);
+    setRound(``); setTitle(``); setWrong(``); setNote(``);
   }
   function del(id) {
     setExamScores(examScores.filter(s => s.id !== id));
@@ -8378,6 +8380,7 @@ function ScoresSection({ date, examScores, setExamScores }) {
                 <div key={s.id} style={{ display:`flex`, alignItems:`center`, gap:8, padding:`6px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:12 }}>
                   <span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:30 }}>{SUBJECTS[s.subject].short}</span>
                   <span className={`mono`} style={{ color:C.muted, minWidth:34 }}>{s.round}회</span>
+                  {s.title && <span style={{ color:C.ink, fontSize:10, maxWidth:110, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{s.title}</span>}
                   <span className={`mono`} style={{ color:C.good, fontWeight:600, minWidth:48 }}>+{correct ?? `-`}</span>
                   <span className={`mono`} style={{ color:C.accent, minWidth:36 }}>-{s.wrong}</span>
                   <span style={{ flex:1, color:C.muted, fontSize:10, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{s.note || ``}</span>
@@ -8389,6 +8392,9 @@ function ScoresSection({ date, examScores, setExamScores }) {
             })}
           </div>
         )}
+
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder={`제목 (선택 · 예: 25변시 공법)`}
+          style={{ width:`100%`, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 10px`, fontSize:11, outline:`none`, marginBottom:6 }} />
 
         {/* 1행: 과목 선택 */}
         <div style={{ display:`flex`, gap:5, marginBottom:6 }}>
@@ -9034,6 +9040,16 @@ function RankSummaryBox({ summary }) {
 
 function ExamsView({ examScores, setExamScores, rankScores = [], setRankScores }) {
   const [filterSubject, setFilterSubject] = useState(`전체`);
+  const [editingScoreId, setEditingScoreId] = useState(null);
+  const [scoreDraft, setScoreDraft] = useState({
+    date:``,
+    title:``,
+    round:``,
+    subject:`공법`,
+    wrong:``,
+    total:``,
+    note:``,
+  });
 
   // matrix: subject x round
   const matrix = useMemo(() => {
@@ -9082,6 +9098,61 @@ function ExamsView({ examScores, setExamScores, rankScores = [], setRankScores }
     const label = row ? `${row.subject} ${row.round}회` : `이 기록`;
     if (!confirm(`${label} 점수를 삭제할까요?`)) return;
     setExamScores(prev => prev.filter(s => s.id !== id));
+  }
+
+  function openExamScoreEditor(row) {
+    setEditingScoreId(row.id);
+    setScoreDraft({
+      date: row.date || todayISO(),
+      title: row.title || ``,
+      round: String(row.round || ``),
+      subject: row.subject || `공법`,
+      wrong: String(row.wrong ?? ``),
+      total: String(row.total || MCQ_TOTAL[row.subject] || ``),
+      note: row.note || ``,
+    });
+  }
+
+  function updateScoreDraft(field, value) {
+    setScoreDraft(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === `subject` && (!next.total || next.total === String(MCQ_TOTAL[prev.subject] || ``))) {
+        next.total = String(MCQ_TOTAL[value] || ``);
+      }
+      return next;
+    });
+  }
+
+  function closeExamScoreEditor() {
+    setEditingScoreId(null);
+    setScoreDraft({ date:``, title:``, round:``, subject:`공법`, wrong:``, total:``, note:`` });
+  }
+
+  function saveExamScoreEditor() {
+    if (!setExamScores || !editingScoreId) return;
+    const roundNum = parseInt(scoreDraft.round);
+    const wrongNum = parseInt(scoreDraft.wrong);
+    const totalNum = parseInt(scoreDraft.total) || MCQ_TOTAL[scoreDraft.subject] || 0;
+    if (!roundNum || Number.isNaN(roundNum) || roundNum < 1) {
+      alert(`회차를 입력해 주세요.`);
+      return;
+    }
+    if (Number.isNaN(wrongNum) || wrongNum < 0 || wrongNum > totalNum) {
+      alert(`틀린 개수는 0~${totalNum} 사이여야 합니다.`);
+      return;
+    }
+    setExamScores(prev => prev.map(row => row.id === editingScoreId ? {
+      ...row,
+      date: scoreDraft.date || row.date || todayISO(),
+      title: scoreDraft.title.trim() || null,
+      round: roundNum,
+      subject: scoreDraft.subject,
+      type: row.type || `선택형`,
+      wrong: wrongNum,
+      total: totalNum,
+      note: scoreDraft.note.trim() || null,
+    } : row));
+    closeExamScoreEditor();
   }
 
   return (
@@ -9198,20 +9269,68 @@ function ExamsView({ examScores, setExamScores, rankScores = [], setRankScores }
           {sortedScores.map(s => {
             const totalQ = s.total || MCQ_TOTAL[s.subject];
             const correct = totalQ - s.wrong;
+            const isEditing = editingScoreId === s.id;
             return (
-              <div key={s.id} style={{ display:`flex`, alignItems:`center`, gap:8, padding:`8px 0`, borderBottom:`1px dashed ${C.lineSoft}`, fontSize:12 }}>
-                <span className={`mono`} style={{ color:C.muted, fontSize:10, minWidth:48 }}>{s.date.slice(5)}</span>
-                <span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:42 }}>{s.subject}</span>
-                <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{s.round}회</span>
-                <span className={`mono`} style={{ color:C.good, fontWeight:600, minWidth:34 }}>+{correct}</span>
-                <span className={`mono`} style={{ color:C.accent, minWidth:30 }}>-{s.wrong}</span>
-                <span style={{ flex:1, fontSize:10, color:C.muted, fontStyle:s.note ? `italic` : `normal`, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, minWidth:0 }}>{s.note || ``}</span>
-                {setExamScores && (
-                  <button title={`${s.subject} ${s.round}회 삭제`} aria-label={`${s.subject} ${s.round}회 삭제`}
-                    onClick={() => deleteExamScore(s.id)}
-                    style={{ background:`none`, border:`none`, color:C.muted, cursor:`pointer`, padding:3, display:`grid`, placeItems:`center`, flexShrink:0 }}>
-                    <Trash2 size={13} />
-                  </button>
+              <div key={s.id} style={{ borderBottom:`1px dashed ${C.lineSoft}` }}>
+                <div style={{ display:`flex`, alignItems:`center`, gap:8, padding:`8px 0`, fontSize:12 }}>
+                  <span className={`mono`} style={{ color:C.muted, fontSize:10, minWidth:48 }}>{s.date.slice(5)}</span>
+                  <span style={{ color:SUBJECTS[s.subject].color, fontWeight:600, minWidth:42 }}>{s.subject}</span>
+                  <span className={`mono`} style={{ color:C.muted, minWidth:30 }}>{s.round}회</span>
+                  <span className={`mono`} style={{ color:C.good, fontWeight:600, minWidth:34 }}>+{correct}</span>
+                  <span className={`mono`} style={{ color:C.accent, minWidth:30 }}>-{s.wrong}</span>
+                  <span style={{ flex:1, fontSize:10, color:s.title ? C.ink : C.muted, fontStyle:s.note && !s.title ? `italic` : `normal`, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, minWidth:0 }}>
+                    {s.title || s.note || ``}{s.title && s.note ? ` · ${s.note}` : ``}
+                  </span>
+                  {setExamScores && (
+                    <>
+                      <button onClick={() => isEditing ? closeExamScoreEditor() : openExamScoreEditor(s)}
+                        style={{ background:isEditing ? C.ink : C.bg, color:isEditing ? `#fff` : C.muted, border:`1px solid ${isEditing ? C.ink : C.lineSoft}`, padding:`4px 7px`, fontSize:10, cursor:`pointer`, flexShrink:0 }}>
+                        수정
+                      </button>
+                      <button title={`${s.subject} ${s.round}회 삭제`} aria-label={`${s.subject} ${s.round}회 삭제`}
+                        onClick={() => deleteExamScore(s.id)}
+                        style={{ background:`none`, border:`none`, color:C.muted, cursor:`pointer`, padding:3, display:`grid`, placeItems:`center`, flexShrink:0 }}>
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  )}
+                </div>
+                {isEditing && (
+                  <div style={{ background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`9px 10px`, margin:`0 0 8px 0` }}>
+                    <div style={{ display:`grid`, gridTemplateColumns:`repeat(auto-fit, minmax(92px, 1fr))`, gap:6, marginBottom:6 }}>
+                      <input type={`date`} value={scoreDraft.date} onChange={e => updateScoreDraft(`date`, e.target.value)}
+                        style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
+                      <input value={scoreDraft.title} onChange={e => updateScoreDraft(`title`, e.target.value)} placeholder={`제목`}
+                        style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none` }} />
+                      <select value={scoreDraft.subject} onChange={e => updateScoreDraft(`subject`, e.target.value)}
+                        style={{ minWidth:0, background:C.paper, color:SUBJECTS[scoreDraft.subject]?.color || C.ink, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, fontWeight:700 }}>
+                        {subjects.map(sub => <option key={sub} value={sub}>{sub}</option>)}
+                      </select>
+                      <input value={scoreDraft.round} onChange={e => updateScoreDraft(`round`, e.target.value)} placeholder={`회차`} type={`number`} inputMode={`numeric`}
+                        style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
+                      <input value={scoreDraft.wrong} onChange={e => updateScoreDraft(`wrong`, e.target.value)} placeholder={`틀림`} type={`number`} inputMode={`numeric`}
+                        style={{ minWidth:0, background:C.paper, color:C.accent, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, fontFamily:`JetBrains Mono, monospace`, fontWeight:700 }} />
+                      <input value={scoreDraft.total} onChange={e => updateScoreDraft(`total`, e.target.value)} placeholder={`총문항`} type={`number`} inputMode={`numeric`}
+                        style={{ minWidth:0, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, fontFamily:`JetBrains Mono, monospace` }} />
+                    </div>
+                    <input value={scoreDraft.note} onChange={e => updateScoreDraft(`note`, e.target.value)} placeholder={`메모`}
+                      style={{ width:`100%`, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, marginBottom:7 }} />
+                    <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8 }}>
+                      <div className={`mono`} style={{ fontSize:10, color:C.muted }}>
+                        {scoreDraft.total && scoreDraft.wrong !== `` ? `맞음 ${Math.max(0, (parseInt(scoreDraft.total) || 0) - (parseInt(scoreDraft.wrong) || 0))}/${scoreDraft.total}` : `회차·틀린 개수 저장`}
+                      </div>
+                      <div style={{ display:`flex`, gap:6 }}>
+                        <button onClick={closeExamScoreEditor}
+                          style={{ background:C.paper, color:C.muted, border:`1px solid ${C.line}`, padding:`6px 9px`, fontSize:10.5, cursor:`pointer` }}>
+                          취소
+                        </button>
+                        <button onClick={saveExamScoreEditor}
+                          style={{ background:C.ink, color:`#fff`, border:`none`, padding:`6px 10px`, fontSize:10.5, cursor:`pointer`, fontWeight:700 }}>
+                          수정 저장
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             );
@@ -11099,7 +11218,24 @@ function CoursesReview({ today, courses, setCourses, logs, setLogs, settings, re
     setCourses(courses.map(c => c.id === id ? { ...c, lectures: mergedLectures, lastUpdated: today } : c)); 
     autoLogTime(prev.subject, COURSE_WATCH_TYPE, addedMin);
   }
-  function updateCourseMeta(id, patch) { setCourses(courses.map(c => c.id === id ? { ...c, ...patch, lastUpdated: today } : c)); }
+  function updateCourseMeta(id, patch) {
+    const prevCourse = courses.find(c => c.id === id);
+    setCourses(courses.map(c => c.id === id ? { ...c, ...patch, lastUpdated: today } : c));
+    if (setReviews && prevCourse && (Object.prototype.hasOwnProperty.call(patch, `name`) || Object.prototype.hasOwnProperty.call(patch, `subject`))) {
+      const nextName = Object.prototype.hasOwnProperty.call(patch, `name`) ? patch.name : prevCourse.name;
+      const nextSubject = Object.prototype.hasOwnProperty.call(patch, `subject`) ? patch.subject : prevCourse.subject;
+      setReviews(prev => prev.map(r => {
+        if (r.sourceType !== `courseLecture` || r.courseId !== id) return r;
+        const lecture = prevCourse.lectures.find(l => l.num === r.lectureNum);
+        return {
+          ...r,
+          subject: nextSubject,
+          title: `[강의] ${nextName} ${r.lectureNum}강 · ${lecture?.title || ``}`.trim(),
+          updatedFromLectureAt: today,
+        };
+      }));
+    }
+  }
   function delCourse(id) {
     if (!confirm(`이 강의를 삭제할까요? 이미 합산된 학습시간은 그대로 유지됩니다.`)) return;
     setCourses(courses.filter(c => c.id !== id));
@@ -11857,6 +11993,22 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                 </div>
               </div>
 
+              <div style={{ display:`grid`, gridTemplateColumns:`minmax(0, 1fr) minmax(110px, 0.32fr)`, gap:6, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, marginBottom:10 }}>
+                <label style={{ minWidth:0 }}>
+                  <span className={`kserif`} style={{ display:`block`, fontSize:9, color:C.muted, marginBottom:3, fontWeight:700 }}>강의명</span>
+                  <input value={course.name || ``} onChange={e => onUpdateMeta && onUpdateMeta({ name:e.target.value })}
+                    placeholder={`강의명`}
+                    style={{ width:`100%`, minWidth:0, background:C.bg, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, color:C.ink }} />
+                </label>
+                <label style={{ minWidth:0 }}>
+                  <span className={`kserif`} style={{ display:`block`, fontSize:9, color:C.muted, marginBottom:3, fontWeight:700 }}>과목</span>
+                  <select value={course.subject} onChange={e => onUpdateMeta && onUpdateMeta({ subject:e.target.value })}
+                    style={{ width:`100%`, minWidth:0, background:C.bg, color:SUBJECTS[course.subject]?.color || C.ink, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, fontSize:11, outline:`none`, fontWeight:700 }}>
+                    {Object.keys(SUBJECTS).map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+              </div>
+
               <div style={{ display:`flex`, justifyContent:`space-between`, alignItems:`center`, gap:8, background:C.paper, border:`1px solid ${C.lineSoft}`, padding:`7px 8px`, marginBottom:10 }}>
                 <div style={{ fontSize:10, color:C.muted }}>
                   우선순위 <span className={`mono`} style={{ color:priorityMeta.color, fontWeight:700 }}>{priorityMeta.label}</span>
@@ -12072,7 +12224,13 @@ function CourseCard({ course, today, settings, onUpdate, onUpdateMeta, onDelete,
                 <div key={l.num} style={{ borderBottom:`1px dashed ${C.lineSoft}`, padding:`6px 0` }}>
                   <div style={{ display:`flex`, gap:6, fontSize:11, alignItems: 'center', minHeight:36 }}>
                     <span className={`mono`} style={{ color:C.muted, minWidth:26 }}>{l.num}강</span>
-                    <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                    {manageOpen ? (
+                      <input value={l.title || ``} onChange={e => updateLectureMeta(l.num, { title:e.target.value })}
+                        placeholder={`강의 제목`}
+                        style={{ flex:1, minWidth:0, background:C.bg, color:C.ink, border:`1px solid ${C.lineSoft}`, padding:`5px 7px`, fontSize:10.5, outline:`none` }} />
+                    ) : (
+                      <span style={{ flex:1, color:C.ink, minWidth:0, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap` }}>{l.title}</span>
+                    )}
                     {activeTags.length > 0 && (
                       <span style={{ color:C.accent, fontSize:9, maxWidth:82, overflow:`hidden`, textOverflow:`ellipsis`, whiteSpace:`nowrap`, flexShrink:0 }}>{activeTags.join(`·`)}</span>
                     )}
