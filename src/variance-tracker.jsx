@@ -208,12 +208,7 @@ const SCHEDULE_PALETTE = [
 ];
 
 const CYCLE_DEFS = [
-  { id: 1, label: `사이클 1`, blocks: [
-    { subject: `민사법`, days: 8 },
-    { subject: `형사법`, days: 6 },
-    { subject: `공법`, days: 5 },
-  ]},
-  { id: 2, label: `사이클 2`, blocks: [
+  { id: 2, label: `5·3·2 회독`, blocks: [
     { subject: `민사법`, days: 5 },
     { subject: `형사법`, days: 3 },
     { subject: `공법`, days: 2 },
@@ -1687,13 +1682,29 @@ function asArray(value, fallback = []) {
   return Array.isArray(value) ? value : fallback;
 }
 
+function normalizeCycleDefs(value) {
+  const cycles = asArray(value, CYCLE_DEFS);
+  const matchesDays = (cycle, days) => Array.isArray(cycle?.blocks)
+    && cycle.blocks.length === days.length
+    && cycle.blocks.every((block, i) => block?.subject === CYCLE_DEFS[0].blocks[i].subject && block.days === days[i]);
+
+  // Migrate the old default rotation without changing user-customized blocks.
+  if (cycles.length === 2 && matchesDays(cycles[0], [8, 6, 5]) && matchesDays(cycles[1], [5, 3, 2])) {
+    return [{ ...cycles[1], label: CYCLE_DEFS[0].label }];
+  }
+  if (cycles.length === 1 && matchesDays(cycles[0], [5, 3, 2]) && cycles[0].label === `사이클 2`) {
+    return [{ ...cycles[0], label: CYCLE_DEFS[0].label }];
+  }
+  return cycles;
+}
+
 function normalizeSettings(value = {}) {
   const raw = asPlainObject(value);
   return {
     ...DEFAULT_SETTINGS,
     ...raw,
     weeklyTargets: { ...DEFAULT_SETTINGS.weeklyTargets, ...asPlainObject(raw.weeklyTargets) },
-    cycleDefs: asArray(raw.cycleDefs, CYCLE_DEFS),
+    cycleDefs: normalizeCycleDefs(raw.cycleDefs),
     mockExams: asArray(raw.mockExams, DEFAULT_SETTINGS.mockExams),
   };
 }
@@ -13333,9 +13344,11 @@ function SettingsView({ settings, setSettings, schedules = [], setSchedules, rou
   }
 
   function updCycleBlock(cycleId, blockIdx, days) {
-    setCycleDefs(cycleDefs.map(c => c.id === cycleId ? {
-      ...c, blocks: c.blocks.map((b, i) => i === blockIdx ? { ...b, days: parseInt(days) || 1 } : b),
-    } : c));
+    setCycleDefs(cycleDefs.map(c => {
+      if (c.id !== cycleId) return c;
+      const blocks = c.blocks.map((b, i) => i === blockIdx ? { ...b, days: parseInt(days) || 1 } : b);
+      return { ...c, blocks, label: `${blocks.map(b => b.days).join(`·`)} 회독` };
+    }));
   }
 
   function addMock() {
